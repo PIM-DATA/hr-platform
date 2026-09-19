@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from './lib/prisma';
 import { authRouter } from './modules/auth/auth.routes';
+import { usersRouter } from './modules/users/users.routes';
+import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
 
 /**
  * API root router — every business module mounts here.
@@ -14,7 +16,9 @@ apiRouter.get('/health', async (_req, res) => {
 });
 
 apiRouter.use('/auth', authRouter);
-// Task 3: apiRouter.use('/users', usersRouter); apiRouter.use('/roles', rolesRouter); apiRouter.use('/permissions', ...)
+apiRouter.use('/users', usersRouter);
+apiRouter.use('/roles', rolesRouter);
+apiRouter.use('/permissions', permissionsRouter);
 // Task 4: apiRouter.use('/organizations' | '/departments' | '/jobs' | '/positions', ...)
 // Task 5: apiRouter.use('/employees', employeesRouter)
 // Task 6: apiRouter.use('/audit-logs', auditRouter)

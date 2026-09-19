@@ -42,3 +42,17 @@ export async function cleanUsers() {
   await prisma.auditLog.deleteMany();
   await prisma.user.deleteMany();
 }
+
+/** Restores role ↔ permission mapping exactly as defined in @hr/shared (tests that edit roles call this). */
+export async function resetRolePermissions() {
+  await prisma.rolePermission.deleteMany();
+  await seedRolesAndPermissions(prisma);
+}
+
+/** Logs in and returns { cookie, csrf, user } ready for authenticated requests. */
+export async function loginAs(app: import('express').Express, email: string, password: string) {
+  const request = (await import('supertest')).default;
+  const res = await request(app).post('/api/v1/auth/login').send({ email, password });
+  if (res.status !== 200) throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
+  return { cookie: sessionCookie(res)!, csrf: res.body.data.csrfToken as string, user: res.body.data };
+}

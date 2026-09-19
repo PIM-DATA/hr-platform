@@ -60,9 +60,9 @@ export const MENU: MenuGroup[] = [
   {
     label: 'Administration',
     items: [
-      { label: 'Users', path: '/admin/users', icon: UserCog, permission: P.USERS_VIEW, comingSoon: true },
-      { label: 'Roles', path: '/admin/roles', icon: ShieldCheck, permission: P.ROLES_VIEW, comingSoon: true },
-      { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW, comingSoon: true },
+      { label: 'Users', path: '/admin/users', icon: UserCog, permission: P.USERS_VIEW },
+      { label: 'Roles', path: '/admin/roles', icon: ShieldCheck, permission: P.ROLES_VIEW },
+      { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW },
       { label: 'Audit Logs', path: '/admin/audit-logs', icon: ScrollText, permission: P.AUDIT_VIEW, comingSoon: true },
       { label: 'Settings', path: '/admin/settings', icon: Settings, permission: P.SETTINGS_MANAGE, comingSoon: true },
     ],

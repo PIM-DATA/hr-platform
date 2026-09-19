@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { DATA_SCOPES, type DataScope } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
+import { buildAuthContext } from '../../services/authorization/authorization.service';
 import type { AuthContext } from './auth.types';
 
 /**
@@ -18,14 +18,6 @@ export function generateToken(): string {
 
 export function hashToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
-}
-
-const SCOPE_RANK: Record<DataScope, number> = { SELF: 0, TEAM: 1, ALL: 2 };
-function widestScope(scopes: string[]): DataScope {
-  return scopes.reduce<DataScope>((best, s) => {
-    const scope = (s in SCOPE_RANK ? s : DATA_SCOPES.SELF) as DataScope;
-    return SCOPE_RANK[scope] > SCOPE_RANK[best] ? scope : best;
-  }, DATA_SCOPES.SELF);
 }
 
 export const sessionService = {
@@ -66,20 +58,12 @@ export const sessionService = {
     }
     if (!session.user.isActive) return null;
 
-    const roles = session.user.userRoles.map((ur) => ur.role);
-    const permissions = new Set<string>();
-    for (const role of roles) for (const rp of role.rolePermissions) permissions.add(rp.permission.code);
-
-    return {
-      userId: session.user.id,
-      email: session.user.email,
-      employeeId: session.user.employeeId,
-      roles: roles.map((r) => r.code),
-      permissions: [...permissions],
-      dataScope: widestScope(roles.map((r) => r.dataScope)),
+    return buildAuthContext({
+      user: session.user,
+      roles: session.user.userRoles.map((ur) => ur.role),
       sessionId: session.id,
       csrfToken: session.csrfToken,
-    };
+    });
   },
 
   async revokeByRawToken(rawToken: string) {

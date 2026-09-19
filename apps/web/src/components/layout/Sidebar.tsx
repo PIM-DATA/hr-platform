@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { Building2, X } from 'lucide-react';
 import { MENU, type MenuItem } from '@/config/menu';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -9,8 +10,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
-  // Task 3: filter MENU by the current user's permissions here.
-  const groups = MENU;
+  // Items with a `permission` are shown only when the user has it; groups without visible items disappear.
+  // (UX only — every API endpoint enforces permissions itself.)
+  const { hasPermission } = useAuth();
+  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => !i.permission || hasPermission(i.permission)) })).filter((g) => g.items.length > 0);
 
   return (
     <>

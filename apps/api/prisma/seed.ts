@@ -111,11 +111,44 @@ async function seedSampleOrganization() {
   console.log(`✓ sample organization: 1 org, 4 departments, 7 positions, ${people.length} employees`);
 }
 
+/** Demo accounts for manual testing of each role (local dev only; password from SEED_DEMO_PASSWORD). */
+async function seedDemoUsers() {
+  if (!env.SEED_DEMO_PASSWORD || env.isProduction) {
+    console.log('- SEED_DEMO_PASSWORD not set (or production) → skipping demo users');
+    return;
+  }
+  const demo: { email: string; role: string; employeeCode?: string }[] = [
+    { email: 'hradmin@company.local', role: ROLES.HR_ADMIN },
+    { email: 'hr@company.local', role: ROLES.HR },
+    { email: 'executive@company.local', role: ROLES.EXECUTIVE, employeeCode: 'EMP001' },
+    { email: 'manager@company.local', role: ROLES.MANAGER, employeeCode: 'EMP002' },
+    { email: 'employee@company.local', role: ROLES.EMPLOYEE, employeeCode: 'EMP003' },
+  ];
+  const passwordHash = await hashPassword(env.SEED_DEMO_PASSWORD);
+  let created = 0;
+  for (const d of demo) {
+    if (await prisma.user.findUnique({ where: { email: d.email } })) continue;
+    const role = await prisma.role.findUniqueOrThrow({ where: { code: d.role } });
+    const employee = d.employeeCode ? await prisma.employee.findUnique({ where: { employeeCode: d.employeeCode }, include: { user: true } }) : null;
+    await prisma.user.create({
+      data: {
+        email: d.email,
+        passwordHash,
+        employeeId: employee && !employee.user ? employee.id : null,
+        userRoles: { create: { roleId: role.id } },
+      },
+    });
+    created++;
+  }
+  console.log(`✓ demo users: ${created} created (${demo.length - created} already existed)`);
+}
+
 async function main() {
   const counts = await seedRolesAndPermissions(prisma);
   console.log(`✓ ${counts.permissions} permissions, ${counts.roles} roles`);
   await seedAdmin();
   await seedSampleOrganization();
+  await seedDemoUsers();
 }
 
 main()

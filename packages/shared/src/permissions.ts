@@ -60,3 +60,25 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 
   { code: PERMISSIONS.SETTINGS_MANAGE, module: 'settings', description: 'Manage system settings' },
 ];
+
+/**
+ * Permissions the SYSTEM_ADMIN role can never lose (guards against locking every admin out).
+ * Enforced by PATCH /roles/:id/permissions; the UI locks these checkboxes for SYSTEM_ADMIN.
+ */
+export const CRITICAL_PERMISSIONS: PermissionCode[] = [
+  PERMISSIONS.USERS_VIEW,
+  PERMISSIONS.USERS_CREATE,
+  PERMISSIONS.USERS_UPDATE,
+  PERMISSIONS.USERS_ACTIVATE,
+  PERMISSIONS.ROLES_VIEW,
+  PERMISSIONS.ROLES_MANAGE,
+];
+
+/** Human labels for the action part of a permission code, used by the Roles UI. */
+export const PERMISSION_ACTION_LABELS: Record<string, string> = {
+  view: 'View',
+  create: 'Create',
+  update: 'Update',
+  activate: 'Activate / Deactivate',
+  manage: 'Manage',
+};

@@ -27,7 +27,7 @@ apps/web/             SPA        (src/features/<domain>, src/components/{ui,layo
 
 ```bash
 npm install
-cp apps/api/.env.example apps/api/.env      # then set SEED_ADMIN_PASSWORD
+cp apps/api/.env.example apps/api/.env      # then set SEED_ADMIN_PASSWORD (and SEED_DEMO_PASSWORD for demo role accounts)
 npm run db:migrate                          # creates apps/api/prisma/dev.db and runs the seed
 npm run dev                                 # api → http://localhost:4000, web → http://localhost:5173
 ```
@@ -92,6 +92,34 @@ Every response carries `x-request-id`; the same id appears in the API log line f
 - **Middleware for new modules**: `requireAuth` (401 without session) → `req.auth = { userId, employeeId, roles, permissions, dataScope, ... }`.
   `requirePermission(...)` arrives in Task 3.
 - **Login rate limit**: `LOGIN_MAX_ATTEMPTS` failures per IP within `LOGIN_WINDOW_MINUTES` → 429. In-memory; use a shared store (Redis) when running more than one API instance.
+
+## Authorization (RBAC)
+
+- **Permission codes are the source of truth** (`packages/shared/src/permissions.ts`). Routes declare
+  `requirePermission('users.update')`; nothing authorizes by role name.
+- **Effective permissions** = union of all assigned roles' permissions (deduplicated, sorted);
+  **data scope** = widest of the roles' scopes (`ALL > TEAM > SELF`). Both are computed in
+  `services/authorization/authorization.service.ts`, rebuilt from the DB on every request by `authenticate`
+  (so permission changes apply on the next request) and exposed on `req.auth` and `GET /auth/me`.
+- **SYSTEM_ADMIN policy (Option B)**: the role's permissions are DB-driven like any other role, but
+  `PATCH /roles/:id/permissions` refuses to remove `CRITICAL_PERMISSIONS` from it (`409 CRITICAL_PERMISSION_REQUIRED`).
+- **Admin safety**: no self-deactivation (`SELF_DEACTIVATION_NOT_ALLOWED`), no removing SYSTEM_ADMIN from yourself
+  (`SELF_ROLE_REMOVAL_NOT_ALLOWED`), the last active SYSTEM_ADMIN cannot be deactivated or demoted (`LAST_SYSTEM_ADMIN`),
+  and nobody can grant a role whose permissions exceed their own (`ROLE_ESCALATION_NOT_ALLOWED`).
+- **Frontend** (`usePermission`, `<PermissionGuard>`, `<RequirePermission>` → 403 page, permission-aware sidebar) is UX only.
+
+| Users API | Permission |
+|---|---|
+| `GET /users`, `GET /users/:id` | `users.view` |
+| `POST /users` | `users.create` |
+| `PATCH /users/:id`, `PATCH /users/:id/roles`, `POST /users/:id/reset-password` | `users.update` |
+| `PATCH /users/:id/activate`, `PATCH /users/:id/deactivate` (revokes all sessions) | `users.activate` |
+| `GET /users/employee-options` | `users.create` or `users.update` |
+| `GET /roles`, `GET /roles/:id`, `GET /permissions` | `roles.view` |
+| `PATCH /roles/:id/permissions` | `roles.manage` |
+
+Administrative mutations write their audit row inside the same transaction (rollback if the audit fails);
+auth events (login/logout) are best-effort.
 
 ## Security notes
 
