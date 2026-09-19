@@ -8,30 +8,55 @@ export class ApiClientError extends Error {
 }
 
 const BASE = '/api/v1';
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+// CSRF token lives in module scope (memory only) — set by AuthProvider from /auth/me or /auth/login.
+let csrfToken: string | null = null;
+export function setCsrfToken(token: string | null) {
+  csrfToken = token;
+}
+
+// Centralized 401 handling. AuthProvider registers a handler that drops the auth state,
+// which makes RequireAuth redirect to /login. Calls made during auth bootstrap / login
+// pass `skipUnauthorizedHandler` so a 401 there does not trigger a redirect loop.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
+export interface RequestOptions {
+  skipUnauthorizedHandler?: boolean;
+}
 
 /**
- * Thin fetch wrapper: JSON in/out, cookies included, standard error envelope → ApiClientError.
- * Task 2 adds the CSRF header for state-changing requests here (single place).
+ * Thin fetch wrapper: JSON in/out, cookies included (`credentials: 'include'`),
+ * CSRF header on mutations, standard error envelope → ApiClientError.
+ * The session token is never touched here — the browser sends the httpOnly cookie itself.
  */
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (UNSAFE.has(method) && csrfToken) headers['x-csrf-token'] = csrfToken;
+
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'include',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
   if (!res.ok) {
+    if (res.status === 401 && !options.skipUnauthorizedHandler) onUnauthorized?.();
     throw new ApiClientError(res.status, json.error ?? { code: 'UNKNOWN', message: res.statusText });
   }
   return json as T;
 }
 
 export const api = {
-  get: <T>(path: string) => request<{ data: T; meta?: ApiListMeta }>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<{ data: T }>('POST', path, body),
-  patch: <T>(path: string, body?: unknown) => request<{ data: T }>('PATCH', path, body),
-  delete: <T>(path: string) => request<{ data: T }>('DELETE', path),
+  get: <T>(path: string, options?: RequestOptions) => request<{ data: T; meta?: ApiListMeta }>('GET', path, undefined, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<{ data: T }>('POST', path, body, options),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) => request<{ data: T }>('PATCH', path, body, options),
+  delete: <T>(path: string, options?: RequestOptions) => request<{ data: T }>('DELETE', path, undefined, options),
 };

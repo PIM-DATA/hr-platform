@@ -74,9 +74,29 @@ Every response carries `x-request-id`; the same id appears in the API log line f
 2. `DATABASE_URL="postgresql://user:password@host:5432/hr_platform?schema=public"`.
 3. Delete `apps/api/prisma/migrations/` (SQLite SQL is not portable) and run `npm run db:migrate -- --name init`.
 
+## Authentication
+
+| Endpoint | Auth | CSRF | Notes |
+|---|---|---|---|
+| `POST /auth/login` | – | exempt | `{ email, password }` → user payload + `hr_session` cookie. Rate limited per IP. |
+| `POST /auth/logout` | cookie | required | Revokes the session, clears the cookie (idempotent, 204). |
+| `GET /auth/me` | cookie | – | Current user: employee summary, roles, permissions, dataScope, csrfToken. |
+
+- **Session**: `crypto.randomBytes(32)` token in an `httpOnly; SameSite=Lax; Path=/` cookie (`Secure` in production).
+  The DB stores only `SHA-256(token)` plus a separate random `csrf_token`. TTL = `SESSION_TTL_HOURS`.
+  Login always creates a fresh session (any session presented at login is revoked). Expired sessions and
+  sessions of deactivated users are rejected by the `authenticate` middleware.
+- **CSRF**: synchronizer token. Mutations (POST/PUT/PATCH/DELETE) made with a session must send
+  `x-csrf-token: <csrfToken from /auth/me>`; the global `csrfGuard` compares it against the session row.
+  When an `Origin` header is present it must match `CORS_ORIGIN` or the request host (defense-in-depth).
+- **Middleware for new modules**: `requireAuth` (401 without session) → `req.auth = { userId, employeeId, roles, permissions, dataScope, ... }`.
+  `requirePermission(...)` arrives in Task 3.
+- **Login rate limit**: `LOGIN_MAX_ATTEMPTS` failures per IP within `LOGIN_WINDOW_MINUTES` → 429. In-memory; use a shared store (Redis) when running more than one API instance.
+
 ## Security notes
 
-- Sessions are DB-backed; only a SHA-256 hash of the cookie token is stored. Cookies are `httpOnly`, `sameSite`, and `secure` in production.
+- Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.
 - Permissions are enforced in the API (`requirePermission`) — the UI only hides what the user cannot do.
-- Audit logs never contain passwords, hashes, tokens or cookies (redacted before write).
+- Audit logs never contain passwords, hashes, tokens or cookies (`services/audit/redact.ts` runs before every write).
 - Seed admin credentials come from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` and are skipped in production.
+- The frontend keeps the current user in memory only; nothing auth-related is stored in localStorage/sessionStorage.

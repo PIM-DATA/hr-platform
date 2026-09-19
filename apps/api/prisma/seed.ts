@@ -5,44 +5,12 @@
  *  3. sample organization structure + employees (only when the tables are empty)
  */
 import { PrismaClient } from '@prisma/client';
-import { PERMISSION_DEFINITIONS, ROLE_DEFINITIONS, ROLES } from '@hr/shared';
+import { ROLES } from '@hr/shared';
+import { seedRolesAndPermissions } from './seeders/roles';
 import { env } from '../src/config/env';
 import { hashPassword } from '../src/lib/password';
 
 const prisma = new PrismaClient();
-
-async function seedRolesAndPermissions() {
-  for (const p of PERMISSION_DEFINITIONS) {
-    await prisma.permission.upsert({
-      where: { code: p.code },
-      update: { module: p.module, description: p.description },
-      create: { code: p.code, module: p.module, description: p.description },
-    });
-  }
-  const permissions = await prisma.permission.findMany();
-  const idByCode = new Map(permissions.map((p) => [p.code, p.id]));
-
-  for (const r of ROLE_DEFINITIONS) {
-    const role = await prisma.role.upsert({
-      where: { code: r.code },
-      update: { name: r.name, description: r.description, dataScope: r.dataScope, isSystem: true },
-      create: { code: r.code, name: r.name, description: r.description, dataScope: r.dataScope, isSystem: true },
-    });
-    // Only ADD missing permissions; never remove ones an admin granted via the Roles page.
-    await prisma.rolePermission.createMany({
-      data: r.permissions.map((code) => ({ roleId: role.id, permissionId: idByCode.get(code)! })),
-    }).catch(async () => {
-      for (const code of r.permissions) {
-        await prisma.rolePermission.upsert({
-          where: { roleId_permissionId: { roleId: role.id, permissionId: idByCode.get(code)! } },
-          update: {},
-          create: { roleId: role.id, permissionId: idByCode.get(code)! },
-        });
-      }
-    });
-  }
-  console.log(`✓ ${PERMISSION_DEFINITIONS.length} permissions, ${ROLE_DEFINITIONS.length} roles`);
-}
 
 async function seedAdmin() {
   if (!env.SEED_ADMIN_EMAIL || !env.SEED_ADMIN_PASSWORD) {
@@ -144,7 +112,8 @@ async function seedSampleOrganization() {
 }
 
 async function main() {
-  await seedRolesAndPermissions();
+  const counts = await seedRolesAndPermissions(prisma);
+  console.log(`✓ ${counts.permissions} permissions, ${counts.roles} roles`);
   await seedAdmin();
   await seedSampleOrganization();
 }

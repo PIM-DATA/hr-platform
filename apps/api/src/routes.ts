@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from './lib/prisma';
+import { authRouter } from './modules/auth/auth.routes';
 
 /**
  * API root router — every business module mounts here.
@@ -12,7 +13,7 @@ apiRouter.get('/health', async (_req, res) => {
   res.json({ data: { status: 'ok', database: 'ok', timestamp: new Date().toISOString() } });
 });
 
-// Task 2: apiRouter.use('/auth', authRouter)
+apiRouter.use('/auth', authRouter);
 // Task 3: apiRouter.use('/users', usersRouter); apiRouter.use('/roles', rolesRouter); apiRouter.use('/permissions', ...)
 // Task 4: apiRouter.use('/organizations' | '/departments' | '/jobs' | '/positions', ...)
 // Task 5: apiRouter.use('/employees', employeesRouter)

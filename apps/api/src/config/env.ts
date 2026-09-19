@@ -12,6 +12,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   SESSION_TTL_HOURS: z.coerce.number().positive().default(12),
+  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+  LOGIN_WINDOW_MINUTES: z.coerce.number().positive().default(15),
   COOKIE_SECURE: z
     .string()
     .optional()

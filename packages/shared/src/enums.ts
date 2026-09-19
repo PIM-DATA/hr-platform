@@ -10,7 +10,7 @@ export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
 export const AUDIT_ACTIONS = {
-  LOGIN: 'LOGIN',
+  LOGIN_SUCCESS: 'LOGIN_SUCCESS',
   LOGIN_FAILED: 'LOGIN_FAILED',
   LOGOUT: 'LOGOUT',
   CREATE_USER: 'CREATE_USER',

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import { AuthProvider } from '@/hooks/useAuth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -7,7 +8,11 @@ const queryClient = new QueryClient({
   },
 });
 
-/** App-wide providers. AuthProvider is added here in Task 2. */
+/** App-wide providers. AuthProvider bootstraps the session via GET /auth/me. */
 export function AppProviders({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  );
 }

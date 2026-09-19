@@ -89,10 +89,12 @@ model RolePermission {
 }
 
 /// DB-backed sessions. Only the SHA-256 hash of the cookie token is stored.
+/// csrf_token is a separate random value (synchronizer token) — never the session token.
 model Session {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
   tokenHash String   @unique @map("token_hash")
+  csrfToken String   @map("csrf_token")
   expiresAt DateTime @map("expires_at")
   ipAddress String?  @map("ip_address")
   userAgent String?  @map("user_agent")
