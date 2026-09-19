@@ -1,0 +1,299 @@
+// HR Enterprise Platform — Phase 1 schema
+//
+// Conventions
+//  - Table / column names are snake_case via @@map / @map (portable to PostgreSQL).
+//  - ids are cuid strings (no guessable sequential ids).
+//  - Enum-like values are TEXT columns; the allowed values live in @hr/shared (SQLite has no enums).
+//  - No hard deletes for master data: is_active / employment_status flags instead.
+//
+// Switching to PostgreSQL: change `provider` below, set DATABASE_URL, delete prisma/migrations
+// (SQLite SQL is not portable) and run `prisma migrate dev --name init` again.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================================
+// SECURITY / IDENTITY
+// =====================================================================
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  employeeId   String?   @unique @map("employee_id")
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  userRoles UserRole[]
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  code        String   @unique // EMPLOYEE | MANAGER | HR | HR_ADMIN | EXECUTIVE | SYSTEM_ADMIN
+  name        String
+  description String?
+  dataScope   String   @default("SELF") @map("data_scope") // SELF | TEAM | ALL
+  isSystem    Boolean  @default(false) @map("is_system") // system roles cannot be deleted
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  code        String  @unique // e.g. employees.update
+  module      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// DB-backed sessions. Only the SHA-256 hash of the cookie token is stored.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// =====================================================================
+// ORGANIZATION
+// =====================================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  departments Department[]
+  employees   Employee[]
+
+  @@map("organizations")
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  parentId       String?      @map("parent_id") // sub-department support
+  parent         Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  children       Department[] @relation("DepartmentTree")
+  code           String
+  name           String
+  headEmployeeId String?      @map("head_employee_id")
+  headEmployee   Employee?    @relation("DepartmentHead", fields: [headEmployeeId], references: [id])
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  positions         Position[]
+  employees         Employee[]
+  employeePositions EmployeePosition[]
+
+  @@unique([organizationId, code])
+  @@index([parentId])
+  @@map("departments")
+}
+
+/// Job = job title / level template, independent of department (e.g. "Manager", level 3).
+model Job {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  title       String
+  level       Int      @default(1)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  positions Position[]
+
+  @@map("jobs")
+}
+
+/// Position = a concrete seat inside a department (e.g. "Sales Manager" in Sales).
+model Position {
+  id           String     @id @default(cuid())
+  departmentId String     @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id])
+  jobId        String?    @map("job_id")
+  job          Job?       @relation(fields: [jobId], references: [id])
+  code         String     @unique
+  title        String
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  employees         Employee[]
+  employeePositions EmployeePosition[]
+
+  @@index([departmentId])
+  @@map("positions")
+}
+
+// =====================================================================
+// EMPLOYEE MASTER  (single source of truth — every module references employees.id)
+// =====================================================================
+
+model Employee {
+  id              String    @id @default(cuid())
+  employeeCode    String    @unique @map("employee_code")
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  nickname        String?
+  email           String    @unique
+  phone           String?
+  hireDate        DateTime  @map("hire_date")
+  terminationDate DateTime? @map("termination_date")
+
+  // current assignment (denormalized for fast queries; history in employee_positions / employee_managers)
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  departmentId   String       @map("department_id")
+  department     Department   @relation(fields: [departmentId], references: [id])
+  positionId     String       @map("position_id")
+  position       Position     @relation(fields: [positionId], references: [id])
+  managerId      String?      @map("manager_id")
+  manager        Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports  Employee[]   @relation("EmployeeManager")
+
+  employmentType   String @default("FULL_TIME") @map("employment_type") // FULL_TIME | PART_TIME | CONTRACT | INTERN
+  employmentStatus String @default("ACTIVE") @map("employment_status") // ACTIVE | INACTIVE | TERMINATED
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") // users.id
+  updatedBy String?  @map("updated_by") // users.id
+
+  user             User?
+  headOfDepartments Department[]       @relation("DepartmentHead")
+  positionHistory  EmployeePosition[]
+  managerHistory   EmployeeManager[]   @relation("ManagerHistoryEmployee")
+  managedHistory   EmployeeManager[]   @relation("ManagerHistoryManager")
+
+  @@index([departmentId])
+  @@index([managerId])
+  @@index([employmentStatus])
+  @@map("employees")
+}
+
+/// Position assignment history. end_date NULL = current.
+model EmployeePosition {
+  id           String     @id @default(cuid())
+  employeeId   String     @map("employee_id")
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  positionId   String     @map("position_id")
+  position     Position   @relation(fields: [positionId], references: [id])
+  departmentId String     @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id])
+  startDate    DateTime   @map("start_date")
+  endDate      DateTime?  @map("end_date")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@index([employeeId])
+  @@map("employee_positions")
+}
+
+/// Manager assignment history. end_date NULL = current.
+model EmployeeManager {
+  id         String    @id @default(cuid())
+  employeeId String    @map("employee_id")
+  employee   Employee  @relation("ManagerHistoryEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  managerId  String    @map("manager_id")
+  manager    Employee  @relation("ManagerHistoryManager", fields: [managerId], references: [id])
+  startDate  DateTime  @map("start_date")
+  endDate    DateTime? @map("end_date")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([employeeId])
+  @@map("employee_managers")
+}
+
+// =====================================================================
+// SHARED SERVICES
+// =====================================================================
+
+/// Field-level audit trail. old_value / new_value are JSON text (only changed fields, sensitive keys redacted).
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id") // actor; null for system actions
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // e.g. UPDATE_EMPLOYEE
+  module     String   // e.g. employees
+  recordType String   @map("record_type") // e.g. Employee
+  recordId   String?  @map("record_id")
+  oldValue   String?  @map("old_value")
+  newValue   String?  @map("new_value")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([module, recordId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  key         String   @id
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedBy   String?  @map("updated_by")
+
+  @@map("system_settings")
+}
+
+// Reserved for future phases (not created yet):
+//   workflow_definitions, workflow_steps, workflow_requests, workflow_history,
+//   notifications, documents

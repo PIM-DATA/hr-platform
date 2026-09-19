@@ -1,0 +1,70 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
+  Route, BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
+  ScrollText, Settings,
+} from 'lucide-react';
+import { PERMISSIONS, type PermissionCode } from '@hr/shared';
+
+export interface MenuItem {
+  label: string;
+  path: string;
+  icon: LucideIcon;
+  /** Item is hidden unless the current user has this permission (enforced from Task 3). */
+  permission?: PermissionCode;
+  /** Not implemented yet → renders ComingSoonPage. */
+  comingSoon?: boolean;
+}
+export interface MenuGroup {
+  label?: string;
+  items: MenuItem[];
+}
+
+const P = PERMISSIONS;
+
+/** Sidebar definition. Adding a module = add an item here + its route. */
+export const MENU: MenuGroup[] = [
+  { items: [{ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, permission: P.DASHBOARD_VIEW }] },
+  {
+    label: 'People',
+    items: [
+      { label: 'Employees', path: '/employees', icon: Users, permission: P.EMPLOYEES_VIEW, comingSoon: true },
+      { label: 'Organization', path: '/organization', icon: Network, permission: P.ORGANIZATION_VIEW, comingSoon: true },
+    ],
+  },
+  {
+    label: 'HRM',
+    items: [
+      { label: 'Attendance', path: '/hrm/attendance', icon: CalendarCheck, comingSoon: true },
+      { label: 'Leave', path: '/hrm/leave', icon: CalendarOff, comingSoon: true },
+      { label: 'Performance', path: '/hrm/performance', icon: Target, comingSoon: true },
+    ],
+  },
+  {
+    label: 'HRD',
+    items: [
+      { label: 'Competency', path: '/hrd/competency', icon: Award, comingSoon: true },
+      { label: 'Training', path: '/hrd/training', icon: GraduationCap, comingSoon: true },
+      { label: 'IDP', path: '/hrd/idp', icon: Route, comingSoon: true },
+    ],
+  },
+  {
+    label: 'HROD',
+    items: [
+      { label: 'Workforce', path: '/hrod/workforce', icon: BriefcaseBusiness, comingSoon: true },
+      { label: 'Talent', path: '/hrod/talent', icon: Star, comingSoon: true },
+      { label: 'Succession', path: '/hrod/succession', icon: GitBranch, comingSoon: true },
+    ],
+  },
+  { items: [{ label: 'Analytics', path: '/analytics', icon: BarChart3, comingSoon: true }] },
+  {
+    label: 'Administration',
+    items: [
+      { label: 'Users', path: '/admin/users', icon: UserCog, permission: P.USERS_VIEW, comingSoon: true },
+      { label: 'Roles', path: '/admin/roles', icon: ShieldCheck, permission: P.ROLES_VIEW, comingSoon: true },
+      { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW, comingSoon: true },
+      { label: 'Audit Logs', path: '/admin/audit-logs', icon: ScrollText, permission: P.AUDIT_VIEW, comingSoon: true },
+      { label: 'Settings', path: '/admin/settings', icon: Settings, permission: P.SETTINGS_MANAGE, comingSoon: true },
+    ],
+  },
+];
