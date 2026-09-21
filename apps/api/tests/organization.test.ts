@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
-import { cleanUsers, createUser, ensureRoles, loginAs } from './helpers';
+import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase } from './helpers';
 
 const app = createApp();
 const PW = 'Correct-Horse-1';
@@ -13,18 +13,8 @@ let noAccess: Session; // custom role without organization.*
 
 const as = (s: Session, m: 'get' | 'post' | 'patch', url: string) => request(app)[m](url).set('Cookie', s.cookie).set('x-csrf-token', s.csrf);
 
-async function cleanOrgData() {
-  await prisma.employee.deleteMany();
-  await prisma.position.deleteMany();
-  await prisma.department.deleteMany();
-  await prisma.job.deleteMany();
-  await prisma.organization.deleteMany();
-}
-
 beforeAll(async () => {
-  await ensureRoles();
-  await cleanUsers();
-  await cleanOrgData();
+  await resetDatabase();
   const dash = await prisma.permission.findUniqueOrThrow({ where: { code: 'dashboard.view' } });
   await prisma.role.upsert({ where: { code: 'NO_ORG' }, update: {}, create: { code: 'NO_ORG', name: 'No org access', dataScope: 'SELF', rolePermissions: { create: [{ permissionId: dash.id }] } } });
   await createUser({ email: 'admin@org.local', password: PW, role: 'SYSTEM_ADMIN' });
@@ -35,9 +25,7 @@ beforeAll(async () => {
   noAccess = await loginAs(app, 'none@org.local', PW);
 });
 afterAll(async () => {
-  await cleanOrgData();
-  await cleanUsers();
-  await prisma.role.deleteMany({ where: { code: 'NO_ORG' } });
+  await resetDatabase();
   await prisma.$disconnect();
 });
 

@@ -5,7 +5,7 @@ import { prisma } from '../src/lib/prisma';
 import { hashToken } from '../src/modules/auth/session.service';
 import { loginRateLimiter } from '../src/middleware/login-rate-limit';
 import { env } from '../src/config/env';
-import { cleanUsers, createUser, ensureRoles, rawSetCookie, sessionCookie } from './helpers';
+import { cleanUsers, createUser, ensureRoles, rawSetCookie, resetDatabase, sessionCookie } from './helpers';
 
 const app = createApp();
 const PASSWORD = 'Correct-Horse-1';
@@ -23,13 +23,12 @@ async function loginOk(email = ADMIN, password = PASSWORD) {
 }
 
 beforeAll(async () => {
-  await ensureRoles();
-  await cleanUsers();
+  await resetDatabase();
   await createUser({ email: ADMIN, password: PASSWORD, role: 'SYSTEM_ADMIN' });
   await createUser({ email: INACTIVE, password: PASSWORD, role: 'EMPLOYEE', isActive: false });
 });
 afterAll(async () => {
-  await cleanUsers();
+  await resetDatabase();
   await prisma.$disconnect();
 });
 

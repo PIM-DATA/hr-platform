@@ -43,6 +43,30 @@ export async function cleanUsers() {
   await prisma.user.deleteMany();
 }
 
+/**
+ * Wipes ALL application data in FK-safe order and re-seeds roles/permissions.
+ * Every test file calls this in beforeAll so files are independent of execution order
+ * (vitest re-orders files by previous failures/durations, so leftovers from another file must never matter).
+ */
+export async function resetDatabase() {
+  await prisma.employeeManager.deleteMany();
+  await prisma.employeePosition.deleteMany();
+  await prisma.session.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.userRole.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.department.updateMany({ data: { headEmployeeId: null } });
+  await prisma.employee.deleteMany();
+  await prisma.position.deleteMany();
+  await prisma.department.deleteMany();
+  await prisma.job.deleteMany();
+  await prisma.organization.deleteMany();
+  await prisma.rolePermission.deleteMany();
+  await prisma.role.deleteMany(); // custom roles created by tests go too; system roles are re-seeded below
+  await prisma.systemSetting.deleteMany();
+  await seedRolesAndPermissions(prisma);
+}
+
 /** Restores role ↔ permission mapping exactly as defined in @hr/shared (tests that edit roles call this). */
 export async function resetRolePermissions() {
   await prisma.rolePermission.deleteMany();

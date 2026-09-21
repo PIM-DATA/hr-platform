@@ -8,6 +8,10 @@ export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const;
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
+/** Known audit modules (audit_logs.module). Used to validate the module filter. */
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees'] as const;
+export type AuditModule = (typeof AUDIT_MODULES)[number];
+
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
 export const AUDIT_ACTIONS = {
   LOGIN_SUCCESS: 'LOGIN_SUCCESS',
@@ -36,6 +40,7 @@ export const AUDIT_ACTIONS = {
   UPDATE_POSITION: 'UPDATE_POSITION',
   ACTIVATE_POSITION: 'ACTIVATE_POSITION',
   DEACTIVATE_POSITION: 'DEACTIVATE_POSITION',
+  // settings.* actions are added when the Settings module is built (no orphan codes: every code here has a writer)
   CREATE_EMPLOYEE: 'CREATE_EMPLOYEE',
   UPDATE_EMPLOYEE: 'UPDATE_EMPLOYEE',
   ACTIVATE_EMPLOYEE: 'ACTIVATE_EMPLOYEE',
@@ -43,6 +48,34 @@ export const AUDIT_ACTIONS = {
   CHANGE_EMPLOYEE_POSITION: 'CHANGE_EMPLOYEE_POSITION',
   CHANGE_EMPLOYEE_MANAGER: 'CHANGE_EMPLOYEE_MANAGER',
   UPDATE_DEPARTMENT_HEAD: 'UPDATE_DEPARTMENT_HEAD',
-  UPDATE_SETTING: 'UPDATE_SETTING',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+
+/** Human-readable label for an audit action; unknown codes fall back to the raw code. */
+export function auditActionLabel(action: string): string {
+  const known: Record<string, string> = {
+    LOGIN_SUCCESS: 'Login success',
+    LOGIN_FAILED: 'Login failed',
+    LOGOUT: 'Logout',
+    RESET_USER_PASSWORD: 'Reset user password',
+    UPDATE_USER_ROLES: 'Update user roles',
+    UPDATE_ROLE_PERMISSIONS: 'Update role permissions',
+    UPDATE_DEPARTMENT_HEAD: 'Update department head',
+    CHANGE_EMPLOYEE_POSITION: 'Change employee position',
+    CHANGE_EMPLOYEE_MANAGER: 'Change employee manager',
+  };
+  if (known[action]) return known[action];
+  // generic <VERB>_<ENTITY> → "Verb entity"
+  const [verb, ...rest] = action.split('_');
+  if (!verb || rest.length === 0) return action;
+  const text = `${verb} ${rest.join(' ')}`.toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export const AUDIT_MODULE_LABELS: Record<string, string> = {
+  auth: 'Authentication',
+  users: 'Users',
+  roles: 'Roles',
+  organization: 'Organization',
+  employees: 'Employees',
+};

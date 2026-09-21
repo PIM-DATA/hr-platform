@@ -173,6 +173,26 @@ exclusive boundary and equals the next row's `startDate`).
 - Audit (same transaction): `CREATE_EMPLOYEE`, `UPDATE_EMPLOYEE` (field diff), `CHANGE_EMPLOYEE_POSITION` (org/dept/position old→new),
   `CHANGE_EMPLOYEE_MANAGER`, `ACTIVATE_EMPLOYEE`, `DEACTIVATE_EMPLOYEE`, `UPDATE_DEPARTMENT_HEAD`.
 
+## Audit log
+
+Read-only API (`audit.view`): `GET /audit-logs` (filters `userId`, `module`, `action`, `recordType`, `recordId`, `dateFrom`
+inclusive, `dateTo` **exclusive**, UTC ISO timestamps; `page`/`pageSize` ≤ 100; `sortDir`, newest first) and `GET /audit-logs/:id`
+(old/new payload, parsed safely — `{ "_unparsed": true }` for malformed rows — and redacted again on read). No create/update/delete
+endpoint exists; `prisma.auditLog` is written only by `services/audit/audit.service.ts`.
+
+Audit matrix (every mutation endpoint → action; all admin actions are written inside the mutation's transaction, auth events are best-effort):
+
+| Module | Actions |
+|---|---|
+| auth | LOGIN_SUCCESS, LOGIN_FAILED, LOGOUT |
+| users | CREATE_USER, UPDATE_USER, UPDATE_USER_ROLES, ACTIVATE_USER, DEACTIVATE_USER, RESET_USER_PASSWORD |
+| roles | UPDATE_ROLE_PERMISSIONS |
+| organization | CREATE/UPDATE/ACTIVATE/DEACTIVATE_ORGANIZATION, …_DEPARTMENT (+ UPDATE_DEPARTMENT_HEAD), …_JOB, …_POSITION |
+| employees | CREATE_EMPLOYEE, UPDATE_EMPLOYEE, CHANGE_EMPLOYEE_POSITION, CHANGE_EMPLOYEE_MANAGER, ACTIVATE_EMPLOYEE, DEACTIVATE_EMPLOYEE |
+
+Known limitations: `actor.email` is the user's *current* email (the immutable identity is `actor.userId`); no retention/archive or export yet;
+validation failures (duplicates, cycles, in-use) are not audited by design.
+
 ## Security notes
 
 - Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.

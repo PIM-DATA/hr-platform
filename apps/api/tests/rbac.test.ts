@@ -3,14 +3,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { computeEffectivePermissions, resolveDataScope } from '../src/services/authorization/authorization.service';
-import { cleanUsers, createUser, ensureRoles, loginAs, resetRolePermissions } from './helpers';
+import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
 
 const app = createApp();
 const PW = 'Correct-Horse-1';
 
 beforeAll(async () => {
-  await ensureRoles();
-  await cleanUsers();
+  await resetDatabase();
   await createUser({ email: 'sysadmin@rbac.local', password: PW, role: 'SYSTEM_ADMIN' });
   await createUser({ email: 'employee@rbac.local', password: PW, role: 'EMPLOYEE' });
   // multi-role user: HR (ALL) + MANAGER (TEAM)
@@ -19,8 +18,7 @@ beforeAll(async () => {
   await prisma.userRole.create({ data: { userId: multi.id, roleId: manager.id } });
 });
 afterAll(async () => {
-  await resetRolePermissions();
-  await cleanUsers();
+  await resetDatabase();
   await prisma.$disconnect();
 });
 

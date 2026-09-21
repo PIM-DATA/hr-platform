@@ -280,9 +280,12 @@ model AuditLog {
   userAgent  String?  @map("user_agent")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  @@index([userId])
-  @@index([module, recordId])
+  // list is always ordered by created_at desc and filtered by one of: actor, module, action, record
   @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([module, createdAt])
+  @@index([action, createdAt])
+  @@index([recordType, recordId])
   @@map("audit_logs")
 }
 

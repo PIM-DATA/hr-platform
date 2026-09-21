@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
-import { cleanUsers, createUser, ensureRoles, loginAs, sessionCookie } from './helpers';
+import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase, sessionCookie } from './helpers';
 
 const app = createApp();
 const PW = 'Correct-Horse-1';
@@ -12,15 +12,14 @@ let admin: { cookie: string; csrf: string; user: { id: string } };
 const authed = (m: 'get' | 'post' | 'patch', url: string, a = admin) => request(app)[m](url).set('Cookie', a.cookie).set('x-csrf-token', a.csrf);
 
 beforeAll(async () => {
-  await ensureRoles();
-  await cleanUsers();
+  await resetDatabase();
   await createUser({ email: ADMIN, password: PW, role: 'SYSTEM_ADMIN' });
   await createUser({ email: 'hradmin@users.local', password: PW, role: 'HR_ADMIN' });
   await createUser({ email: 'employee@users.local', password: PW, role: 'EMPLOYEE' });
   admin = await loginAs(app, ADMIN, PW);
 });
 afterAll(async () => {
-  await cleanUsers();
+  await resetDatabase();
   await prisma.$disconnect();
 });
 

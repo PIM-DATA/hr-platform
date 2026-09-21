@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
-import { cleanUsers, createUser, ensureRoles, loginAs } from './helpers';
+import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase } from './helpers';
 
 const app = createApp();
 const PW = 'Correct-Horse-1';
@@ -14,18 +14,6 @@ let org: string, orgB: string, deptData: string, deptSales: string, deptSalesB: 
 let posDataMgr: string, posAnalyst: string, posSalesExec: string, posSalesExecB: string, posInactive: string, jobActive: string;
 let A: string, B: string, C: string, X: string; // A manages B, B manages C; X unrelated (Sales)
 let hr: Session, admin: Session, sysNoEmp: Session, aTeam: Session, cSelf: Session, noPerm: Session;
-
-async function resetData() {
-  await prisma.employeeManager.deleteMany();
-  await prisma.employeePosition.deleteMany();
-  await prisma.user.updateMany({ data: { employeeId: null } });
-  await prisma.department.updateMany({ data: { headEmployeeId: null } });
-  await prisma.employee.deleteMany();
-  await prisma.position.deleteMany();
-  await prisma.department.deleteMany();
-  await prisma.job.deleteMany();
-  await prisma.organization.deleteMany();
-}
 
 async function mkEmployee(code: string, positionId: string, managerId: string | null, extra: Partial<{ status: string }> = {}) {
   const pos = await prisma.position.findUniqueOrThrow({ where: { id: positionId }, include: { department: true } });
@@ -42,9 +30,7 @@ async function mkEmployee(code: string, positionId: string, managerId: string | 
 }
 
 beforeAll(async () => {
-  await ensureRoles();
-  await cleanUsers();
-  await resetData();
+  await resetDatabase();
   const o = await prisma.organization.create({ data: { code: 'ACME', name: 'ACME' } });
   const ob = await prisma.organization.create({ data: { code: 'OTHER', name: 'Other Co' } });
   org = o.id; orgB = ob.id;
@@ -81,9 +67,7 @@ beforeAll(async () => {
   noPerm = await loginAs(app, 'noperm@emp.local', PW);
 });
 afterAll(async () => {
-  await resetData();
-  await cleanUsers();
-  await prisma.role.deleteMany({ where: { code: 'NO_EMP' } });
+  await resetDatabase();
   await prisma.$disconnect();
 });
 

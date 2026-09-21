@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CRITICAL_PERMISSIONS } from '@hr/shared';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
-import { cleanUsers, createUser, ensureRoles, loginAs, resetRolePermissions } from './helpers';
+import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
 
 const app = createApp();
 const PW = 'Correct-Horse-1';
@@ -14,8 +14,7 @@ let employee: { cookie: string; csrf: string }; // neither
 const authed = (a: { cookie: string; csrf: string }, m: 'get' | 'patch', url: string) => request(app)[m](url).set('Cookie', a.cookie).set('x-csrf-token', a.csrf);
 
 beforeAll(async () => {
-  await ensureRoles();
-  await cleanUsers();
+  await resetDatabase();
   await createUser({ email: 'sys@roles.local', password: PW, role: 'SYSTEM_ADMIN' });
   await createUser({ email: 'hradmin@roles.local', password: PW, role: 'HR_ADMIN' });
   await createUser({ email: 'emp@roles.local', password: PW, role: 'EMPLOYEE' });
@@ -24,8 +23,7 @@ beforeAll(async () => {
   employee = await loginAs(app, 'emp@roles.local', PW);
 });
 afterAll(async () => {
-  await resetRolePermissions();
-  await cleanUsers();
+  await resetDatabase();
   await prisma.$disconnect();
 });
 
