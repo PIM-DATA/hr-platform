@@ -28,7 +28,7 @@ export const MENU: MenuGroup[] = [
   {
     label: 'People',
     items: [
-      { label: 'Employees', path: '/employees', icon: Users, permission: P.EMPLOYEES_VIEW, comingSoon: true },
+      { label: 'Employees', path: '/employees', icon: Users, permission: P.EMPLOYEES_VIEW },
       { label: 'Organization', path: '/organization', icon: Network, permission: P.ORGANIZATION_VIEW },
     ],
   },

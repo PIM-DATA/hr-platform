@@ -140,6 +140,37 @@ auth events (login/logout) are best-effort.
   `JOB_IN_USE` (active positions), `POSITION_IN_USE` (active employees).
 - The tree endpoint runs three queries (organizations, departments, positions+job) and nests in memory; inactive nodes are hidden unless `includeInactive=true`.
 
+## Employee master
+
+`employees` is the single source of truth; every future module references `employees.id`.
+Current assignment lives on the row (`organizationId`, `departmentId`, `positionId`, `managerId`); history in
+`employee_positions` / `employee_managers` (`endDate = null` = current, at most one open row each; `endDate` is the
+exclusive boundary and equals the next row's `startDate`).
+
+| API | Permission |
+|---|---|
+| `GET /employees` (search, filters, whitelisted sort, pagination), `GET /employees/options`, `GET /employees/:id`, `/:id/position-history`, `/:id/manager-history`, `/:id/reports` | `employees.view` |
+| `POST /employees` (profile + `positionId` + optional `managerId`) | `employees.create` |
+| `PATCH /employees/:id` (profile only), `PATCH /employees/:id/position`, `PATCH /employees/:id/manager` | `employees.update` |
+| `PATCH /employees/:id/activate`, `PATCH /employees/:id/deactivate` (INACTIVE, never TERMINATED) | `employees.activate` |
+| `PATCH /departments/:id/head` | `organization.manage` |
+
+- **Data scope** (`req.auth.dataScope`) is added to the Prisma WHERE of every employee query: SELF = own record,
+  TEAM = self + direct reports (`managerId = me`, not recursive), ALL = everything. Out-of-scope records answer
+  `404 EMPLOYEE_NOT_FOUND` (no existence leak); mutations use the same scoped lookup.
+- **Position is the source of truth**: the server derives department/organization from `positionId`
+  (`resolvePositionAssignment`, requires the position → department → organization → job chain to be active).
+  Changing a position closes the open history row, opens a new one and updates the three pointers in one transaction.
+- **Manager**: must be an active employee, not self, and not create a cycle (`MANAGER_CYCLE_NOT_ALLOWED`, checked by
+  walking the manager chain in memory). Cross-department managers are allowed. Clearing closes the open history row.
+- **Department head ≠ manager**: head must be an active employee of that department; setting it never touches
+  `managerId`. A head cannot be moved to another department (`EMPLOYEE_IS_DEPARTMENT_HEAD`) or deactivated until cleared.
+- **Deactivation** is refused while the employee manages active reports or heads a department (`EMPLOYEE_IN_USE` with
+  counts). Re-activation requires the current position chain and manager to be active. Employment status and the linked
+  user account (`users.isActive`) are independent — neither cascades to the other.
+- Audit (same transaction): `CREATE_EMPLOYEE`, `UPDATE_EMPLOYEE` (field diff), `CHANGE_EMPLOYEE_POSITION` (org/dept/position old→new),
+  `CHANGE_EMPLOYEE_MANAGER`, `ACTIVATE_EMPLOYEE`, `DEACTIVATE_EMPLOYEE`, `UPDATE_DEPARTMENT_HEAD`.
+
 ## Security notes
 
 - Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.

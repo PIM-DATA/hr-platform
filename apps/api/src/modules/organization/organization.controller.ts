@@ -10,6 +10,8 @@ import type { Actor } from './organization.shared';
 const actor = (req: Request): Actor => ({ auth: req.auth!, ...requestMeta(req) });
 const id = (req: Request) => req.params.id as string;
 
+export type CrudController = ReturnType<typeof crud>;
+
 /** Generic CRUD controller for the four master-data services (they share the same surface). */
 function crud(service: {
   list: (q: never) => Promise<unknown>;
@@ -37,7 +39,10 @@ export const organizationsController = {
     res.json(await departmentsService.list({ ...(res.locals.query as object), organizationId: id(req) } as never));
   },
 };
-export const departmentsController = crud(departmentsService);
+export const departmentsController = {
+  ...crud(departmentsService),
+  setHead: async (req: Request, res: Response) => res.json({ data: await departmentsService.setHead(id(req), req.body, actor(req)) }),
+};
 export const jobsController = crud(jobsService);
 export const positionsController = crud(positionsService);
 

@@ -3,6 +3,7 @@ import { UserCheck, UserX, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ApiClientError } from '@/lib/api-client';
+import { useToast } from '@/components/ui/Toast';
 
 /** Turns any thrown error into a message safe to show users (API business messages are curated; anything else is generic). */
 export function errorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
@@ -20,6 +21,7 @@ interface Target { id: string; label: string; isActive: boolean }
  * Business errors from the API (e.g. DEPARTMENT_IN_USE) are shown inside the dialog.
  */
 export function useStatusConfirm(entity: string, m: { activate: { mutateAsync: (id: string) => Promise<unknown>; isPending: boolean }; deactivate: { mutateAsync: (id: string) => Promise<unknown>; isPending: boolean } }) {
+  const toast = useToast();
   const [target, setTarget] = useState<Target | null>(null);
   const [error, setError] = useState<string | null>(null);
   const close = () => { setTarget(null); setError(null); };
@@ -28,6 +30,7 @@ export function useStatusConfirm(entity: string, m: { activate: { mutateAsync: (
     setError(null);
     try {
       await (target.isActive ? m.deactivate : m.activate).mutateAsync(target.id);
+      toast.success(`${entity[0].toUpperCase()}${entity.slice(1)} ${target.isActive ? 'deactivated' : 'activated'}`, target.label);
       close();
     } catch (err) {
       setError(errorMessage(err));

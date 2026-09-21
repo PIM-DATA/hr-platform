@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { AUDIT_ACTIONS, type CreateDepartmentInput, type DepartmentDto, type DepartmentListQuery, type UpdateDepartmentInput } from '@hr/shared';
+import { AUDIT_ACTIONS, type CreateDepartmentInput, type DepartmentDto, type DepartmentListQuery, type UpdateDepartmentHeadInput, type UpdateDepartmentInput } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService, diffFields } from '../../services/audit/audit.service';
@@ -141,6 +141,28 @@ export const departmentsService = {
       }
       const after = await tx.department.update({ where: { id }, data: { isActive: true }, include });
       await auditService.log(audit(actor, 'ACTIVATE_DEPARTMENT', id, { isActive: false }, { isActive: true }), tx);
+      return after;
+    });
+    return toDto(row);
+  },
+
+  /**
+   * Department head (≠ manager relationship — never touches employees.managerId).
+   * Head must be an ACTIVE employee whose current assignment is in this department (hence this organization).
+   */
+  async setHead(id: string, input: UpdateDepartmentHeadInput, actor: Actor) {
+    const row = await prisma.$transaction(async (tx) => {
+      const before = await findOrThrow(tx, id);
+      if (input.employeeId) {
+        const emp = await tx.employee.findUnique({ where: { id: input.employeeId }, select: { id: true, employeeCode: true, employmentStatus: true, organizationId: true, departmentId: true } });
+        if (!emp) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
+        if (emp.employmentStatus !== 'ACTIVE') throw new AppError(409, 'EMPLOYEE_INACTIVE', `${emp.employeeCode} is not an active employee`);
+        if (emp.organizationId !== before.organizationId) throw new AppError(400, 'HEAD_ORGANIZATION_MISMATCH', `${emp.employeeCode} belongs to a different organization`);
+        if (emp.departmentId !== id) throw new AppError(400, 'HEAD_DEPARTMENT_MISMATCH', `${emp.employeeCode} is not assigned to this department`);
+      }
+      if (before.headEmployeeId === input.employeeId) return before;
+      const after = await tx.department.update({ where: { id }, data: { headEmployeeId: input.employeeId }, include });
+      await auditService.log(audit(actor, 'UPDATE_DEPARTMENT_HEAD', id, { headEmployeeId: before.headEmployeeId }, { headEmployeeId: after.headEmployeeId }), tx);
       return after;
     });
     return toDto(row);

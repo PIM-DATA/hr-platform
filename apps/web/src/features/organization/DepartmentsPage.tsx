@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, UserCog } from 'lucide-react';
 import { PERMISSIONS, type DepartmentDto } from '@hr/shared';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +14,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDepartments, useOrgMutations, useOrganizationOptions } from './organization.api';
 import { DepartmentFormModal } from './DepartmentFormModal';
+import { DepartmentHeadModal } from './DepartmentHeadModal';
 import { PAGE_SIZE, RowActions, STATUS_OPTIONS, useStatusConfirm } from './shared';
 
 export function DepartmentsPage() {
@@ -27,15 +28,22 @@ export function DepartmentsPage() {
   const m = useOrgMutations<DepartmentDto>('departments');
   const confirm = useStatusConfirm('department', m);
   const [form, setForm] = useState<{ open: boolean; row: DepartmentDto | null }>({ open: false, row: null });
+  const [headFor, setHeadFor] = useState<DepartmentDto | null>(null);
 
   const columns: Column<DepartmentDto>[] = [
     { key: 'code', header: 'Code', render: (d) => <span className="font-mono text-xs text-slate-700">{d.code}</span> },
     { key: 'name', header: 'Name', render: (d) => <div><div className="font-medium text-slate-900">{d.name}</div><div className="text-xs text-slate-400 sm:hidden">{d.organization.name}</div></div> },
     { key: 'org', header: 'Organization', hideBelow: 'sm', render: (d) => d.organization.name },
     { key: 'parent', header: 'Parent', hideBelow: 'md', render: (d) => (d.parent ? d.parent.name : <span className="text-slate-400">— top level —</span>) },
+    { key: 'head', header: 'Head', hideBelow: 'md', render: (d) => (d.headEmployee ? <span>{d.headEmployee.firstName} {d.headEmployee.lastName}</span> : <span className="text-slate-400">—</span>) },
     { key: 'counts', header: 'Sub / Pos / Emp', hideBelow: 'lg', render: (d) => <span className="tabular-nums text-slate-500">{d.childCount} / {d.positionCount} / {d.employeeCount}</span> },
     { key: 'status', header: 'Status', render: (d) => <StatusBadge status={d.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
-    ...(canManage ? [{ key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', render: (d: DepartmentDto) => <RowActions isActive={d.isActive} onEdit={() => setForm({ open: true, row: d })} onToggle={() => confirm.ask({ id: d.id, label: d.name, isActive: d.isActive })} /> }] : []),
+    ...(canManage ? [{ key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', render: (d: DepartmentDto) => (
+      <div className="flex justify-end gap-1">
+        <Button variant="ghost" size="sm" onClick={() => setHeadFor(d)} aria-label="Department head" title="Department head"><UserCog className="h-4 w-4" /></Button>
+        <RowActions isActive={d.isActive} onEdit={() => setForm({ open: true, row: d })} onToggle={() => confirm.ask({ id: d.id, label: d.name, isActive: d.isActive })} />
+      </div>
+    ) }] : []),
   ];
 
   return (
@@ -55,6 +63,7 @@ export function DepartmentsPage() {
         {list.data?.meta && <Pagination {...list.data.meta} onPageChange={setPage} />}
       </Card>
       {canManage && <DepartmentFormModal open={form.open} onClose={() => setForm({ open: false, row: null })} department={form.row} />}
+      {canManage && <DepartmentHeadModal open={!!headFor} onClose={() => setHeadFor(null)} department={headFor} />}
       {confirm.dialog}
     </>
   );

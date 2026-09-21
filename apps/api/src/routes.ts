@@ -3,6 +3,7 @@ import { prisma } from './lib/prisma';
 import { authRouter } from './modules/auth/auth.routes';
 import { usersRouter } from './modules/users/users.routes';
 import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
+import { employeesRouter } from './modules/employees/employees.routes';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
 /**
@@ -25,6 +26,6 @@ apiRouter.use('/departments', departmentsRouter);
 apiRouter.use('/jobs', jobsRouter);
 apiRouter.use('/positions', positionsRouter);
 apiRouter.use('/organization', organizationTreeRouter); // GET /organization/tree
-// Task 5: apiRouter.use('/employees', employeesRouter)
+apiRouter.use('/employees', employeesRouter);
 // Task 6: apiRouter.use('/audit-logs', auditRouter)
 // Task 7: apiRouter.use('/dashboard', dashboardRouter)
