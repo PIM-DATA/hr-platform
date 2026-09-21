@@ -31,7 +31,10 @@ export function UserFormModal({ open, onClose, roles, user }: UserFormModalProps
   const { user: me } = useAuth();
   const { create, update, setRoles } = useUserMutations();
   // Mirrors the API rule: you can only grant roles whose permissions you hold yourself (roles the user already has stay editable).
-  const canGrant = (r: RoleDto) => (user?.roles.some((ur) => ur.code === r.code) ?? false) || r.permissionCodes.every((p) => me?.permissions.includes(p));
+  const SCOPE_RANK: Record<string, number> = { SELF: 0, TEAM: 1, ALL: 2 };
+  const canGrant = (r: RoleDto) =>
+    (user?.roles.some((ur) => ur.code === r.code) ?? false) ||
+    (r.permissionCodes.every((p) => me?.permissions.includes(p)) && (SCOPE_RANK[r.dataScope] ?? 0) <= (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0));
   const [serverError, setServerError] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const debouncedSearch = useDebounce(employeeSearch);

@@ -8,6 +8,7 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { hashPassword } from '../../lib/password';
 import { auditService, diffFields } from '../../services/audit/audit.service';
+import { isScopeWithin } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
@@ -50,9 +51,10 @@ async function findOrThrow(tx: Tx | typeof prisma, id: string) {
 }
 
 /**
- * Validates role codes and blocks privilege escalation: an actor may only grant roles whose
- * permissions are a subset of the actor's own effective permissions (no role-name checks).
- * Roles the target already holds are exempt, so an admin can edit a user without "re-granting" them.
+ * Validates role codes and blocks privilege escalation. A role may be granted only when BOTH hold:
+ *   1. its permissions ⊆ the actor's effective permissions      → else ROLE_ESCALATION_NOT_ALLOWED
+ *   2. its data scope ≤ the actor's effective data scope         → else ROLE_SCOPE_ESCALATION_NOT_ALLOWED
+ * (no role-name checks). Roles the target already holds are exempt, so an admin can edit a user without "re-granting" them.
  */
 async function resolveRoles(tx: Tx | typeof prisma, roleCodes: string[], actor: Actor, alreadyHeld: string[] = []) {
   const codes = [...new Set(roleCodes)];
@@ -66,6 +68,10 @@ async function resolveRoles(tx: Tx | typeof prisma, roleCodes: string[], actor: 
   const escalating = roles.filter((r) => !alreadyHeld.includes(r.code) && r.rolePermissions.some((rp) => !mine.has(rp.permission.code)));
   if (escalating.length > 0) {
     throw new AppError(403, 'ROLE_ESCALATION_NOT_ALLOWED', `You cannot grant roles with permissions you do not have: ${escalating.map((r) => r.code).join(', ')}`);
+  }
+  const widerScope = roles.filter((r) => !alreadyHeld.includes(r.code) && !isScopeWithin(r.dataScope, actor.auth.dataScope));
+  if (widerScope.length > 0) {
+    throw new AppError(403, 'ROLE_SCOPE_ESCALATION_NOT_ALLOWED', `You cannot grant roles with a wider data scope (${widerScope.map((r) => `${r.code}=${r.dataScope}`).join(', ')}) than your own (${actor.auth.dataScope})`);
   }
   return roles;
 }

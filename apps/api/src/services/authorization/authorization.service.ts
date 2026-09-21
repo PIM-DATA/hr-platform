@@ -32,6 +32,12 @@ export function resolveDataScope(roles: { dataScope: string }[]): DataScope {
   return best;
 }
 
+/** true when `candidate` is not wider than `limit` (SELF ≤ TEAM ≤ ALL). */
+export function isScopeWithin(candidate: string, limit: DataScope): boolean {
+  const c = (candidate in SCOPE_RANK ? candidate : DATA_SCOPES.SELF) as DataScope;
+  return SCOPE_RANK[c] <= SCOPE_RANK[limit];
+}
+
 export function hasPermission(auth: Pick<AuthContext, 'permissions'>, permission: string): boolean {
   return auth.permissions.includes(permission);
 }

@@ -234,6 +234,65 @@ describe('privilege escalation guard', () => {
   });
 });
 
+describe('data scope escalation guard', () => {
+  // Custom roles created only for these tests (removed afterwards):
+  //   TEAM_USER_ADMIN : scope TEAM, permissions users.view/create/update (the acting user)
+  //   TEAM_VIEWER     : scope TEAM, permissions dashboard.view           (same-scope target)
+  //   ALL_VIEWER      : scope ALL,  permissions dashboard.view           (wider-scope target)
+  let teamAdmin: { cookie: string; csrf: string; user: { id: string } };
+  beforeAll(async () => {
+    const perm = async (code: string) => (await prisma.permission.findUniqueOrThrow({ where: { code } })).id;
+    const mk = (code: string, dataScope: string, codes: string[]) =>
+      Promise.all(codes.map(perm)).then((ids) => prisma.role.create({ data: { code, name: code, dataScope, rolePermissions: { create: ids.map((permissionId) => ({ permissionId })) } } }));
+    await mk('TEAM_USER_ADMIN', 'TEAM', ['users.view', 'users.create', 'users.update', 'dashboard.view']);
+    await mk('TEAM_VIEWER', 'TEAM', ['dashboard.view']);
+    await mk('ALL_VIEWER', 'ALL', ['dashboard.view']);
+    await createUser({ email: 'teamadmin@users.local', password: PW, role: 'TEAM_USER_ADMIN' });
+    await createUser({ email: 'scope-target@users.local', password: PW, role: 'EMPLOYEE' });
+    teamAdmin = await loginAs(app, 'teamadmin@users.local', PW);
+    expect(teamAdmin.user).toMatchObject({ dataScope: 'TEAM' });
+  });
+  afterAll(async () => {
+    await prisma.role.deleteMany({ where: { code: { in: ['TEAM_USER_ADMIN', 'TEAM_VIEWER', 'ALL_VIEWER'] } } });
+  });
+  const target = () => prisma.user.findUniqueOrThrow({ where: { email: 'scope-target@users.local' } });
+
+  it('TEAM actor cannot grant an ALL-scope role → 403 ROLE_SCOPE_ESCALATION_NOT_ALLOWED (even though permissions are a subset)', async () => {
+    const t = await target();
+    const res = await authed('patch', `/api/v1/users/${t.id}/roles`, teamAdmin).send({ roleCodes: ['ALL_VIEWER'] });
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('ROLE_SCOPE_ESCALATION_NOT_ALLOWED');
+    const self = await authed('patch', `/api/v1/users/${teamAdmin.user.id}/roles`, teamAdmin).send({ roleCodes: ['TEAM_USER_ADMIN', 'ALL_VIEWER'] });
+    expect(self.status).toBe(403);
+    expect(self.body.error.code).toBe('ROLE_SCOPE_ESCALATION_NOT_ALLOWED');
+    const create = await authed('post', '/api/v1/users', teamAdmin).send({ email: 'scope-esc@users.local', password: PW, roleCodes: ['ALL_VIEWER'] });
+    expect(create.status).toBe(403);
+    expect(await prisma.user.findUnique({ where: { email: 'scope-esc@users.local' } })).toBeNull();
+  });
+
+  it('same-scope grant allowed when permissions are valid (TEAM actor → TEAM role)', async () => {
+    const t = await target();
+    const res = await authed('patch', `/api/v1/users/${t.id}/roles`, teamAdmin).send({ roleCodes: ['TEAM_VIEWER'] });
+    expect(res.status).toBe(200);
+    expect(res.body.data.roles.map((r: { code: string }) => r.code)).toEqual(['TEAM_VIEWER']);
+  });
+
+  it('TEAM actor cannot grant a same-scope role whose permissions exceed their own → ROLE_ESCALATION_NOT_ALLOWED', async () => {
+    const t = await target();
+    const res = await authed('patch', `/api/v1/users/${t.id}/roles`, teamAdmin).send({ roleCodes: ['MANAGER'] }); // TEAM scope but has organization.view
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
+  });
+
+  it('ALL actor can grant a TEAM-scope role (and an ALL-scope one)', async () => {
+    const t = await target();
+    const res = await authed('patch', `/api/v1/users/${t.id}/roles`).send({ roleCodes: ['TEAM_VIEWER', 'ALL_VIEWER', 'MANAGER'] });
+    expect(res.status).toBe(200);
+    expect(res.body.data.roles.map((r: { code: string }) => r.code)).toEqual(['ALL_VIEWER', 'MANAGER', 'TEAM_VIEWER']);
+    await authed('patch', `/api/v1/users/${t.id}/roles`).send({ roleCodes: ['EMPLOYEE'] }); // restore
+  });
+});
+
 describe('reset password', () => {
   it('sets a new password, revokes sessions, audits without the password', async () => {
     const victim = await loginAs(app, 'employee@users.local', PW);
