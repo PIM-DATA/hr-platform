@@ -43,6 +43,26 @@ async function assertActiveJob(db: Db, jobId: string) {
   if (!job.isActive) throw new AppError(409, 'JOB_INACTIVE', 'Job is inactive');
 }
 
+/**
+ * Structural fields (departmentId, jobId) define what a position *means*. Once any employee
+ * holds or ever held the position (current pointer or employee_positions history), changing them
+ * would silently rewrite history and break the employee ↔ department ↔ organization invariant.
+ * Moving people between positions/departments is done only through the employee assignment service.
+ */
+async function assertStructureChangeable(db: Db, positionId: string) {
+  const [current, historical] = await Promise.all([
+    db.employee.count({ where: { positionId } }),
+    db.employeePosition.count({ where: { positionId } }),
+  ]);
+  if (current > 0 || historical > 0) {
+    throw new AppError(
+      409,
+      'POSITION_ASSIGNMENT_IN_USE',
+      `Department and job of this position cannot be changed: it is referenced by ${current} current and ${historical} historical employee assignment(s). Create a new position and move the employees instead.`,
+    );
+  }
+}
+
 const audit = (actor: Actor, action: keyof typeof AUDIT_ACTIONS, recordId: string, oldValue?: unknown, newValue?: unknown) => ({
   ...actorMeta(actor), action: AUDIT_ACTIONS[action], module: MODULE, recordType: 'Position', recordId, oldValue, newValue,
 });
@@ -81,6 +101,8 @@ export const positionsService = {
   async update(id: string, input: UpdatePositionInput, actor: Actor) {
     const row = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
+      const structuralChange = (input.departmentId !== undefined && input.departmentId !== before.departmentId) || (input.jobId !== undefined && input.jobId !== before.jobId);
+      if (structuralChange) await assertStructureChangeable(tx, id);
       // an active position keeps the active-department / active-job invariant when re-pointed
       if (input.departmentId && input.departmentId !== before.departmentId && before.isActive) await assertActiveDepartment(tx, input.departmentId);
       else if (input.departmentId && !(await tx.department.findUnique({ where: { id: input.departmentId } }))) throw notFound.department();

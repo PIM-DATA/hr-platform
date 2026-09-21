@@ -328,6 +328,74 @@ describe('positions', () => {
   });
 });
 
+// ------------------------------------------------------------------ position structure protection (Task 4.1)
+describe('position structural fields are frozen once assigned', () => {
+  let sales: string, hq: string, jobSE: string, jobDA: string, orgA: string;
+  beforeAll(async () => {
+    sales = (await prisma.department.findFirstOrThrow({ where: { code: 'SALES', isActive: true } })).id;
+    hq = (await prisma.department.findFirstOrThrow({ where: { code: 'HQ' } })).id;
+    jobSE = (await prisma.job.findUniqueOrThrow({ where: { code: 'SE' } })).id;
+    orgA = (await prisma.organization.findUniqueOrThrow({ where: { code: 'ACME' } })).id;
+    const da = await prisma.job.findUniqueOrThrow({ where: { code: 'DA' } });
+    await prisma.job.update({ where: { id: da.id }, data: { isActive: true } });
+    jobDA = da.id;
+  });
+  afterAll(async () => {
+    // remove fixtures created by this block so the tree assertions below see the original structure
+    await prisma.employeePosition.deleteMany({ where: { position: { code: 'POS-HIST' } } });
+    await prisma.position.deleteMany({ where: { code: { in: ['POS-FREE', 'POS-HIST'] } } });
+  });
+  const snapshotEmployees = () => prisma.employee.findMany({ select: { id: true, organizationId: true, departmentId: true, positionId: true, managerId: true, updatedAt: true }, orderBy: { id: 'asc' } });
+
+  it('unused position can change department and job', async () => {
+    const pos = await as(admin, 'post', '/api/v1/positions').send({ departmentId: sales, jobId: jobSE, code: 'POS-FREE', title: 'Free seat' });
+    const res = await as(admin, 'patch', `/api/v1/positions/${pos.body.data.id}`).send({ departmentId: hq, jobId: jobDA });
+    expect(res.status).toBe(200);
+    expect(res.body.data.department.code).toBe('HQ');
+    expect(res.body.data.job.code).toBe('DA');
+  });
+
+  it('position held as CURRENT assignment cannot change department; employees untouched', async () => {
+    const held = await prisma.position.findUniqueOrThrow({ where: { code: 'POS-SE-BKK' } }); // E1's current position
+    const before = await snapshotEmployees();
+    const res = await as(admin, 'patch', `/api/v1/positions/${held.id}`).send({ departmentId: hq });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('POSITION_ASSIGNMENT_IN_USE');
+    expect(res.body.error.message).toContain('1 current');
+    expect((await prisma.position.findUniqueOrThrow({ where: { id: held.id } })).departmentId).toBe(held.departmentId);
+    expect(await snapshotEmployees()).toEqual(before); // no silent cascade
+  });
+
+  it('position that only appears in HISTORY cannot change department', async () => {
+    const pos = await as(admin, 'post', '/api/v1/positions').send({ departmentId: sales, jobId: jobSE, code: 'POS-HIST', title: 'Former seat' });
+    const emp = await prisma.employee.findFirstOrThrow({ where: { employeeCode: 'E1' } });
+    await prisma.employeePosition.create({ data: { employeeId: emp.id, positionId: pos.body.data.id, departmentId: sales, startDate: new Date('2020-01-01'), endDate: new Date('2021-01-01') } });
+    const res = await as(admin, 'patch', `/api/v1/positions/${pos.body.data.id}`).send({ departmentId: hq });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('POSITION_ASSIGNMENT_IN_USE');
+    expect(res.body.error.message).toContain('1 historical');
+  });
+
+  it('used position cannot change job either', async () => {
+    const held = await prisma.position.findUniqueOrThrow({ where: { code: 'POS-SE-BKK' } });
+    const res = await as(admin, 'patch', `/api/v1/positions/${held.id}`).send({ jobId: jobDA });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('POSITION_ASSIGNMENT_IN_USE');
+    expect((await prisma.position.findUniqueOrThrow({ where: { id: held.id } })).jobId).toBe(held.jobId);
+  });
+
+  it('used position can still change cosmetic fields (title/code) and status', async () => {
+    const held = await prisma.position.findUniqueOrThrow({ where: { code: 'POS-SE-BKK' } });
+    const res = await as(admin, 'patch', `/api/v1/positions/${held.id}`).send({ title: 'Sales Executive — Bangkok', code: 'POS-SE-BKK' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.title).toBe('Sales Executive — Bangkok');
+    // sending the SAME department/job is not a structural change
+    const same = await as(admin, 'patch', `/api/v1/positions/${held.id}`).send({ departmentId: held.departmentId, jobId: held.jobId });
+    expect(same.status).toBe(200);
+    expect(orgA).toBeDefined();
+  });
+});
+
 // ------------------------------------------------------------------ tree
 describe('organization tree', () => {
   it('35–37. nesting, multi-level, positions under the right department; 39. no duplicates', async () => {
