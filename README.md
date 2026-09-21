@@ -122,6 +122,24 @@ Every response carries `x-request-id`; the same id appears in the API log line f
 Administrative mutations write their audit row inside the same transaction (rollback if the audit fails);
 auth events (login/logout) are best-effort.
 
+## Organization structure
+
+`Organization → Department (nested via parent_id) → Position → Job`. Jobs are reusable job definitions; positions are concrete seats in a department.
+
+| API | Permission |
+|---|---|
+| `GET /organizations`, `/departments`, `/jobs`, `/positions` (+ `/:id`), `GET /organizations/:id/departments`, `GET /organization/tree?organizationId&includeInactive` | `organization.view` |
+| `POST`, `PATCH /:id`, `PATCH /:id/activate`, `PATCH /:id/deactivate` on each resource | `organization.manage` |
+
+- Codes are trimmed/upper-cased. Unique: organization + job + position codes globally; department code within its organization.
+- Department hierarchy: parent must exist, be active and belong to the same organization; a department cannot be its own parent or
+  be moved under one of its descendants (`CIRCULAR_HIERARCHY`). `organizationId` is immutable after creation.
+- Active positions require an active department (in an active organization) and an active job.
+- No hard deletes and no cascading: deactivation is refused while dependants are active —
+  `ORGANIZATION_IN_USE` (active departments/employees), `DEPARTMENT_IN_USE` (active sub-departments/positions/employees),
+  `JOB_IN_USE` (active positions), `POSITION_IN_USE` (active employees).
+- The tree endpoint runs three queries (organizations, departments, positions+job) and nests in memory; inactive nodes are hidden unless `includeInactive=true`.
+
 ## Security notes
 
 - Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.

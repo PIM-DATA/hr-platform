@@ -10,6 +10,12 @@ import { UserListPage } from '@/features/users/UserListPage';
 import { RoleListPage } from '@/features/roles/RoleListPage';
 import { RoleDetailPage } from '@/features/roles/RoleDetailPage';
 import { PermissionMatrixPage } from '@/features/roles/PermissionMatrixPage';
+import { OrganizationLayout } from '@/features/organization/OrganizationLayout';
+import { OrgTreePage } from '@/features/organization/OrgTreePage';
+import { OrganizationsPage } from '@/features/organization/OrganizationsPage';
+import { DepartmentsPage } from '@/features/organization/DepartmentsPage';
+import { JobsPage } from '@/features/organization/JobsPage';
+import { PositionsPage } from '@/features/organization/PositionsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -44,7 +50,24 @@ export const router = createBrowserRouter([
               { path: 'admin/permissions', element: <PermissionMatrixPage /> },
             ],
           },
-          // Task 4: organization   Task 5: employees   Task 6: audit-logs
+          // Organization — tabbed sub-pages under one guard
+          {
+            element: <RequirePermission permission={PERMISSIONS.ORGANIZATION_VIEW} />,
+            children: [
+              {
+                path: 'organization',
+                element: <OrganizationLayout />,
+                children: [
+                  { index: true, element: <OrgTreePage /> },
+                  { path: 'organizations', element: <OrganizationsPage /> },
+                  { path: 'departments', element: <DepartmentsPage /> },
+                  { path: 'jobs', element: <JobsPage /> },
+                  { path: 'positions', element: <PositionsPage /> },
+                ],
+              },
+            ],
+          },
+          // Task 5: employees   Task 6: audit-logs
           ...comingSoonRoutes,
           { path: '*', element: <ComingSoonPage title="Page not found" description="The page you are looking for does not exist." /> },
         ],
