@@ -43,7 +43,7 @@ so the browser talks to one origin (cookies work without CORS).
 | `npm run db:migrate` | `prisma migrate dev` (creates a migration from schema changes + seeds) |
 | `npm run db:seed` | re-run the seed (idempotent) |
 | `npm run db:studio` | Prisma Studio (DB browser) |
-| `npm test` | API tests against a throwaway `apps/api/prisma/test.db` |
+| `npm test` | API tests against a throwaway `apps/api/prisma/test.db` (single SQLite connection; set `TEST_LOG_LEVEL=error` to see server-side 5xx causes) |
 | `npm run typecheck` | `tsc --noEmit` in every workspace |
 
 ## API conventions
@@ -158,6 +158,8 @@ exclusive boundary and equals the next row's `startDate`).
 - **Data scope** (`req.auth.dataScope`) is added to the Prisma WHERE of every employee query: SELF = own record,
   TEAM = self + direct reports (`managerId = me`, not recursive), ALL = everything. Out-of-scope records answer
   `404 EMPLOYEE_NOT_FOUND` (no existence leak); mutations use the same scoped lookup.
+- **Effective date** (position/manager change): defaults to now; must not be in the future (`FUTURE_EFFECTIVE_DATE_NOT_SUPPORTED`)
+  and not before the current open history row's start (`INVALID_EFFECTIVE_DATE`); backdating inside the current assignment is allowed.
 - **Position is the source of truth**: the server derives department/organization from `positionId`
   (`resolvePositionAssignment`, requires the position → department → organization → job chain to be active).
   Changing a position closes the open history row, opens a new one and updates the three pointers in one transaction.

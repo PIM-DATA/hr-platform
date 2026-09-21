@@ -63,6 +63,23 @@ const audit = (a: Actor, action: keyof typeof AUDIT_ACTIONS, recordId: string, o
   ...actorMeta(a), action: AUDIT_ACTIONS[action], module: MODULE, recordType: 'Employee', recordId, oldValue, newValue,
 });
 
+/**
+ * Phase 1 effective-date policy for assignment changes (no scheduled assignments yet):
+ *   default now · never in the future · never before the start of the current open history row.
+ * Backdating inside the current assignment is allowed; endDate stays an exclusive boundary.
+ */
+function resolveEffectiveDate(requested: Date | undefined, currentStart: Date | null): Date {
+  const now = new Date();
+  const effective = requested ?? now;
+  if (effective.getTime() > now.getTime()) {
+    throw new AppError(400, 'FUTURE_EFFECTIVE_DATE_NOT_SUPPORTED', 'Effective date cannot be in the future (scheduled assignments are not supported yet)');
+  }
+  if (currentStart && effective.getTime() < currentStart.getTime()) {
+    throw new AppError(400, 'INVALID_EFFECTIVE_DATE', `Effective date cannot be before the start of the current assignment (${currentStart.toISOString()})`);
+  }
+  return effective;
+}
+
 /** Scoped lookup: an employee outside the caller's data scope is reported as not found (no existence leak). */
 async function findInScope(db: Db, auth: AuthContext, id: string) {
   const row = await db.employee.findFirst({ where: { AND: [{ id }, employeeScopeWhere(auth)] }, include: detailInclude });
@@ -221,7 +238,8 @@ export const employeesService = {
       if (blockingHead) {
         throw new AppError(409, 'EMPLOYEE_IS_DEPARTMENT_HEAD', `${before.employeeCode} is head of department ${blockingHead.code}; change or clear the department head before moving them`);
       }
-      const effective = input.effectiveDate ?? new Date();
+      const open = await tx.employeePosition.findFirst({ where: { employeeId: id, endDate: null }, select: { startDate: true } });
+      const effective = resolveEffectiveDate(input.effectiveDate, open?.startDate ?? null);
       await tx.employeePosition.updateMany({ where: { employeeId: id, endDate: null }, data: { endDate: effective } });
       await tx.employeePosition.create({ data: { employeeId: id, positionId: next.positionId, departmentId: next.departmentId, startDate: effective } });
       const after = await tx.employee.update({ where: { id }, data: { ...next, updatedBy: actor.auth.userId }, include: detailInclude });
@@ -240,7 +258,8 @@ export const employeesService = {
       const before = await findInScope(tx, actor.auth, id);
       if (before.managerId === input.managerId) return before; // no-op
       if (input.managerId) await assertValidManager(tx, id, input.managerId);
-      const effective = input.effectiveDate ?? new Date();
+      const open = await tx.employeeManager.findFirst({ where: { employeeId: id, endDate: null }, select: { startDate: true } });
+      const effective = resolveEffectiveDate(input.effectiveDate, open?.startDate ?? null);
       await tx.employeeManager.updateMany({ where: { employeeId: id, endDate: null }, data: { endDate: effective } });
       if (input.managerId) await tx.employeeManager.create({ data: { employeeId: id, managerId: input.managerId, startDate: effective } });
       const after = await tx.employee.update({ where: { id }, data: { managerId: input.managerId, updatedBy: actor.auth.userId }, include: detailInclude });

@@ -7,7 +7,8 @@ import { env } from '../config/env';
  *   const log = logger.child({ module: 'employees' })
  */
 export const logger = pino({
-  level: env.isTest ? 'silent' : env.LOG_LEVEL,
+  // tests are silent unless TEST_LOG_LEVEL is set (e.g. TEST_LOG_LEVEL=error to surface 5xx causes)
+  level: env.isTest ? (process.env.TEST_LOG_LEVEL ?? 'silent') : env.LOG_LEVEL,
   redact: {
     // never let secrets leak into logs, even by accident
     paths: ['password', 'passwordHash', 'password_hash', 'token', 'tokenHash', 'cookie', 'req.headers.cookie', 'req.headers.authorization'],

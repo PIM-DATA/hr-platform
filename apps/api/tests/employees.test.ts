@@ -274,12 +274,15 @@ describe('position change', () => {
     expect(await prisma.employeePosition.count({ where: { employeeId: X } })).toBe(2);
   });
   it('30. move across departments / organizations through a new position (effectiveDate honoured)', async () => {
-    const res = await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posSalesExecB, effectiveDate: '2026-03-01' });
+    // Task 5.1 policy: effectiveDate may be backdated only within the current assignment (>= its startDate) and never in the future
+    const current = await prisma.employeePosition.findFirstOrThrow({ where: { employeeId: X, endDate: null } });
+    const effective = new Date(Math.min(Date.now(), current.startDate.getTime() + 1000)); // backdated inside the current row, never in the future
+    const res = await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posSalesExecB, effectiveDate: effective.toISOString() });
     expect(res.status).toBe(200);
     expect(res.body.data.organization.code).toBe('OTHER');
     await assertConsistent(X);
     const open = await prisma.employeePosition.findFirst({ where: { employeeId: X, endDate: null } });
-    expect(open!.startDate.toISOString()).toBe(new Date('2026-03-01').toISOString());
+    expect(open!.startDate.toISOString()).toBe(effective.toISOString());
     await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posSalesExec }); // back to Sales
   });
   it('31. department head cannot move out until the head is cleared', async () => {
@@ -295,6 +298,52 @@ describe('position change', () => {
     expect((await as(hr, 'patch', `/api/v1/employees/${A}/position`).send({ positionId: posSalesExec })).status).toBe(200);
     await as(hr, 'patch', `/api/v1/employees/${A}/position`).send({ positionId: posDataMgr });
     await assertConsistent(A);
+  });
+});
+
+describe('position change effectiveDate policy (Task 5.1)', () => {
+  const snapshot = async () => ({
+    emp: await prisma.employee.findUniqueOrThrow({ where: { id: X }, select: { positionId: true, departmentId: true, organizationId: true, updatedAt: true } }),
+    history: await prisma.employeePosition.findMany({ where: { employeeId: X }, orderBy: { startDate: 'asc' } }),
+    audits: await prisma.auditLog.count({ where: { recordId: X, action: 'CHANGE_EMPLOYEE_POSITION' } }),
+  });
+  it('effectiveDate = now → success; backdate after current start → success (boundary preserved)', async () => {
+    const before = await snapshot();
+    const currentStart = before.history.at(-1)!.startDate;
+    const now = await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posAnalyst, effectiveDate: new Date().toISOString() });
+    expect(now.status).toBe(200);
+    await assertConsistent(X);
+    const mid = new Date(currentStart.getTime() + 60_000); // 1 minute after the (now closed) previous start → inside the new current row? no: use new current start
+    const open = await prisma.employeePosition.findFirstOrThrow({ where: { employeeId: X, endDate: null } });
+    const back = new Date(open.startDate.getTime() + 1); // 1ms after current start, in the past
+    expect(mid).toBeDefined();
+    const res = await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posSalesExec, effectiveDate: back.toISOString() });
+    expect(res.status).toBe(200);
+    const rows = await prisma.employeePosition.findMany({ where: { employeeId: X }, orderBy: { startDate: 'asc' } });
+    const closed = rows.at(-2)!, current = rows.at(-1)!;
+    expect(closed.endDate!.getTime()).toBe(back.getTime());
+    expect(current.startDate.getTime()).toBe(back.getTime());
+    expect(closed.endDate!.getTime()).toBeGreaterThanOrEqual(closed.startDate.getTime()); // no negative interval
+    await assertConsistent(X);
+  });
+  it('effectiveDate before current start → 400 INVALID_EFFECTIVE_DATE; nothing changes, no audit', async () => {
+    const before = await snapshot();
+    const currentStart = before.history.at(-1)!.startDate;
+    const res = await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posAnalyst, effectiveDate: new Date(currentStart.getTime() - 1).toISOString() });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_EFFECTIVE_DATE');
+    expect(await snapshot()).toEqual(before);
+  });
+  it('future effectiveDate → 400 FUTURE_EFFECTIVE_DATE_NOT_SUPPORTED; nothing changes, no audit', async () => {
+    const before = await snapshot();
+    const res = await as(hr, 'patch', `/api/v1/employees/${X}/position`).send({ positionId: posAnalyst, effectiveDate: new Date(Date.now() + 60_000).toISOString() });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('FUTURE_EFFECTIVE_DATE_NOT_SUPPORTED');
+    expect(await snapshot()).toEqual(before);
+    // same policy applies to manager changes
+    const mgr = await as(hr, 'patch', `/api/v1/employees/${X}/manager`).send({ managerId: A, effectiveDate: new Date(Date.now() + 60_000).toISOString() });
+    expect(mgr.body.error.code).toBe('FUTURE_EFFECTIVE_DATE_NOT_SUPPORTED');
+    expect(await openManagers(X)).toBe(0);
   });
 });
 

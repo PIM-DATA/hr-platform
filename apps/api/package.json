@@ -14,7 +14,7 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "test": "rm -f prisma/test.db prisma/test.db-journal && DATABASE_URL=file:./test.db prisma db push --skip-generate && DATABASE_URL=file:./test.db vitest run"
+    "test": "rm -f prisma/test.db prisma/test.db-journal && DATABASE_URL=file:./test.db?connection_limit=1 prisma db push --skip-generate && DATABASE_URL=file:./test.db?connection_limit=1 vitest run"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -15,6 +15,12 @@ const INACTIVE = 'inactive@test.local';
 async function login(email = ADMIN, password = PASSWORD) {
   return request(app).post('/api/v1/auth/login').send({ email, password });
 }
+/** For tests that need a working session: fails loudly with the real response instead of a TypeError. */
+async function loginOk(email = ADMIN, password = PASSWORD) {
+  const res = await login(email, password);
+  if (res.status !== 200) throw new Error(`expected login 200, got ${res.status}: ${JSON.stringify(res.body)}`);
+  return res;
+}
 
 beforeAll(async () => {
   await ensureRoles();
@@ -26,7 +32,6 @@ afterAll(async () => {
   await cleanUsers();
   await prisma.$disconnect();
 });
-beforeEach(() => loginRateLimiter.clearAll());
 
 describe('POST /auth/login', () => {
   it('1. login success returns user payload + session cookie and never leaks secrets', async () => {
@@ -105,7 +110,7 @@ describe('GET /auth/me', () => {
   });
 
   it('6. with valid session → 200 with same payload as login', async () => {
-    const cookie = sessionCookie(await login())!;
+    const cookie = sessionCookie(await loginOk())!;
     const res = await request(app).get('/api/v1/auth/me').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.data.email).toBe(ADMIN);
@@ -121,7 +126,7 @@ describe('GET /auth/me', () => {
 
 describe('Session lifecycle', () => {
   it('7. logout invalidates the session and clears the cookie', async () => {
-    const loginRes = await login();
+    const loginRes = await loginOk();
     const cookie = sessionCookie(loginRes)!;
     const csrf = loginRes.body.data.csrfToken as string;
 
@@ -135,7 +140,7 @@ describe('Session lifecycle', () => {
   });
 
   it('8. expired session is rejected and removed', async () => {
-    const cookie = sessionCookie(await login())!;
+    const cookie = sessionCookie(await loginOk())!;
     const tokenHash = hashToken(cookie.split('=')[1]);
     await prisma.session.update({ where: { tokenHash }, data: { expiresAt: new Date(Date.now() - 1000) } });
 
@@ -147,7 +152,7 @@ describe('Session lifecycle', () => {
   it('9. deactivating a user invalidates their existing session', async () => {
     const email = 'temp@test.local';
     await createUser({ email, password: PASSWORD, role: 'HR' });
-    const cookie = sessionCookie(await login(email))!;
+    const cookie = sessionCookie(await loginOk(email))!;
     expect((await request(app).get('/api/v1/auth/me').set('Cookie', cookie)).status).toBe(200);
 
     await prisma.user.update({ where: { email }, data: { isActive: false } });
@@ -157,7 +162,7 @@ describe('Session lifecycle', () => {
 
 describe('Session security', () => {
   it('10. database stores SHA-256 hash, never the raw token', async () => {
-    const cookie = sessionCookie(await login())!;
+    const cookie = sessionCookie(await loginOk())!;
     const raw = cookie.split('=')[1];
     expect(raw.length).toBeGreaterThanOrEqual(43); // 32 bytes base64url
     expect(await prisma.session.findUnique({ where: { tokenHash: raw } })).toBeNull();
@@ -168,7 +173,7 @@ describe('Session security', () => {
   });
 
   it('11. cookie is HttpOnly, SameSite=Lax, Path=/ with an expiry', async () => {
-    const header = rawSetCookie(await login());
+    const header = rawSetCookie(await loginOk());
     expect(header).toMatch(/HttpOnly/i);
     expect(header).toMatch(/SameSite=Lax/i);
     expect(header).toMatch(/Path=\//);
@@ -177,7 +182,7 @@ describe('Session security', () => {
   });
 
   it('12. login always creates a fresh session (fixation protection)', async () => {
-    const first = sessionCookie(await login())!;
+    const first = sessionCookie(await loginOk())!;
     const second = sessionCookie(await request(app).post('/api/v1/auth/login').set('Cookie', first).send({ email: ADMIN, password: PASSWORD }))!;
     expect(second).not.toBe(first);
     expect(await prisma.session.count({ where: { tokenHash: hashToken(first.split('=')[1]) } })).toBe(0);
@@ -188,7 +193,7 @@ describe('Session security', () => {
 
 describe('CSRF protection', () => {
   it('13. mutation without CSRF token → 403', async () => {
-    const cookie = sessionCookie(await login())!;
+    const cookie = sessionCookie(await loginOk())!;
     const res = await request(app).post('/api/v1/auth/logout').set('Cookie', cookie);
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('CSRF_TOKEN_MISSING');
@@ -196,14 +201,14 @@ describe('CSRF protection', () => {
   });
 
   it('14. invalid CSRF token → 403', async () => {
-    const cookie = sessionCookie(await login())!;
+    const cookie = sessionCookie(await loginOk())!;
     const res = await request(app).post('/api/v1/auth/logout').set('Cookie', cookie).set('x-csrf-token', 'wrong');
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('CSRF_TOKEN_INVALID');
   });
 
   it('15. valid CSRF token → accepted', async () => {
-    const loginRes = await login();
+    const loginRes = await loginOk();
     const res = await request(app)
       .post('/api/v1/auth/logout')
       .set('Cookie', sessionCookie(loginRes)!)
@@ -212,13 +217,13 @@ describe('CSRF protection', () => {
   });
 
   it('session token cannot be used as the CSRF token', async () => {
-    const cookie = sessionCookie(await login())!;
+    const cookie = sessionCookie(await loginOk())!;
     const res = await request(app).post('/api/v1/auth/logout').set('Cookie', cookie).set('x-csrf-token', cookie.split('=')[1]);
     expect(res.status).toBe(403);
   });
 
   it('cross-site Origin on a mutation → 403 (defense-in-depth)', async () => {
-    const loginRes = await login();
+    const loginRes = await loginOk();
     const res = await request(app)
       .post('/api/v1/auth/logout')
       .set('Cookie', sessionCookie(loginRes)!)
