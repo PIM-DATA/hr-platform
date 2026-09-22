@@ -8,6 +8,8 @@ export type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: st
 export interface WorkflowHandlers {
   onApproved?: (ctx: WorkflowCallbackContext, tx: Tx) => Promise<void>;
   onRejected?: (ctx: WorkflowCallbackContext, tx: Tx) => Promise<void>;
+  /** Runs inside the cancelling business module's transaction (engine.cancel is internal). */
+  onCancelled?: (ctx: WorkflowCallbackContext, tx: Tx) => Promise<void>;
 }
 export interface WorkflowCallbackContext {
   instanceId: string;

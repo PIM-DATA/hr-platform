@@ -139,3 +139,17 @@ export async function loginAs(app: Server, email: string, password: string) {
   if (!cookie) throw new Error(`login 200 but no session cookie: ${await explainAuthFailure(email, res)} set-cookie=${JSON.stringify(res.headers['set-cookie'])}`);
   return { cookie, csrf: res.body.data.csrfToken as string, user: res.body.data };
 }
+
+/**
+ * Concurrency tests: resolves once at least `n` OTHER sessions of this database are waiting on a lock — a
+ * database-level proof that a competing transaction is really blocked on a row lock (never a timing guess).
+ */
+export async function waitForBlockedSession(n = 1, timeoutMs = 4000) {
+  const started = Date.now();
+  for (;;) {
+    const rows = await prisma.$queryRaw<{ c: bigint }[]>`SELECT count(*) AS c FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`;
+    if (Number(rows[0].c) >= n) return;
+    if (Date.now() - started > timeoutMs) throw new Error(`no session blocked on a lock within ${timeoutMs}ms`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}

@@ -44,6 +44,18 @@ async function loadInstance(tx: Tx | typeof prisma, id: string) {
   return row;
 }
 
+/**
+ * The single place an instance is loaded for a transition (act / cancel): takes the PostgreSQL row lock FIRST
+ * (held until the caller's transaction ends), then reads status/steps — so status is never decided on a
+ * pre-lock read (no TOCTOU). Transitions of ONE instance are serialised at the database row; other instances
+ * are unaffected (no global mutex). Lock order for business handlers: workflow_instance → business record →
+ * entitlement; a handler must never lock the instance again in a different order. Parameterised tagged template.
+ */
+export async function loadWorkflowInstanceForMutation(tx: Tx, id: string) {
+  await tx.$queryRaw`SELECT "id" FROM "workflow_instances" WHERE "id" = ${id} FOR UPDATE`;
+  return loadInstance(tx, id);
+}
+
 function callbackContext(i: InstanceRow, actor: Actor, comment: string | null): WorkflowCallbackContext {
   return { instanceId: i.id, module: i.module, entityType: i.entityType, entityId: i.entityId, requesterEmployeeId: i.requesterEmployeeId, actor, comment };
 }
@@ -128,7 +140,8 @@ export const workflowEngine = {
    */
   async act(instanceId: string, input: WorkflowActionInput, actor: Actor, tx: Tx): Promise<WorkflowInstanceDto> {
     if (!hasPermission(actor.auth, PERMISSIONS.WORKFLOW_APPROVE)) throw AppError.forbidden();
-    const instance = await loadInstance(tx, instanceId);
+    // 1. lock → 2. reload → 3. status → 4. actor → 5. step → 6. instance → 7. action → 8. audit → 9. handler → commit
+    const instance = await loadWorkflowInstanceForMutation(tx, instanceId);
     if (instance.status !== IS.PENDING) throw new AppError(409, 'WORKFLOW_NOT_PENDING', `Workflow is already ${instance.status}`);
     const current = instance.steps.find((s) => s.stepOrder === instance.currentStepOrder && s.status === SS.PENDING);
     if (!current) throw new AppError(409, 'WORKFLOW_STEP_NOT_PENDING', 'No step is waiting for a decision');
@@ -168,13 +181,14 @@ export const workflowEngine = {
    * HTTP action endpoint — business modules call it from their own cancel endpoint after their rules ran.
    */
   async cancel(instanceId: string, actor: Actor, tx: Tx, comment: string | null = null): Promise<WorkflowInstanceDto> {
-    const instance = await loadInstance(tx, instanceId);
+    const instance = await loadWorkflowInstanceForMutation(tx, instanceId); // same lock-first order as act()
     if (instance.status !== IS.PENDING) throw new AppError(409, 'WORKFLOW_NOT_PENDING', `Workflow is already ${instance.status}`);
     const now = new Date();
     await tx.workflowInstanceStep.updateMany({ where: { instanceId, status: { in: [SS.PENDING, SS.WAITING] } }, data: { status: SS.CANCELLED } });
     await tx.workflowAction.create({ data: { instanceId, stepOrder: instance.currentStepOrder, action: WORKFLOW_ACTIONS.CANCEL, actorUserId: actor.auth.userId, comment } });
     const after = await tx.workflowInstance.update({ where: { id: instanceId }, data: { status: IS.CANCELLED, currentStepOrder: null, completedAt: now }, include: instanceInclude });
     await auditService.log(audit(actor, 'WORKFLOW_CANCEL', instanceId, { atStepOrder: instance.currentStepOrder }), tx);
+    await handlers.get(after.module)?.onCancelled?.(callbackContext(after, actor, comment), tx);
     return toDto(after);
   },
 

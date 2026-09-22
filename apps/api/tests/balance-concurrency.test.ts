@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import { balanceService, loadEntitlementForMutation, type Tx } from '../src/modules/leave/balance.service';
 import { AppError } from '../src/lib/errors';
-import { resetDatabase } from './helpers';
+import { resetDatabase, waitForBlockedSession } from './helpers';
 
 let orgId: string, employeeId: string, typeId: string, policyId: string, actorId: string;
 let seq = 0;
@@ -32,16 +32,6 @@ const ledgerOf = (id: string, entryType?: string) => prisma.leaveLedger.findMany
 async function expectReconciled(id: string) { const r = await balanceService.reconcile(prisma, id); expect(r.matches, JSON.stringify(r)).toBe(true); return r; }
 const errCode = (r: PromiseSettledResult<unknown>) => (r.status === 'rejected' ? (r.reason instanceof AppError ? r.reason.code : String(r.reason)) : 'OK');
 
-/** Resolves once at least `n` OTHER sessions are waiting on a lock in this database (proof that they are blocked). */
-async function waitForBlockedSession(n = 1, timeoutMs = 4000) {
-  const started = Date.now();
-  for (;;) {
-    const rows = await prisma.$queryRaw<{ c: bigint }[]>`SELECT count(*) AS c FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`;
-    if (Number(rows[0].c) >= n) return;
-    if (Date.now() - started > timeoutMs) throw new Error(`no session blocked on a lock within ${timeoutMs}ms`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
 const reserveTx = (id: string, units: number, operationKey: string) => prisma.$transaction((tx) => balanceService.reserve(tx, id, units, meta(operationKey)));
 
 beforeAll(async () => {
@@ -61,14 +51,16 @@ describe('PostgreSQL row lock — BalanceService concurrency', () => {
   it('lock is a real PostgreSQL row lock: second transaction blocks on FOR UPDATE until the first commits', async () => {
     const id = await mkEntitlement(2);
     let bStartedAt = 0, aCommittedAt = 0, bFinishedAt = 0;
+    let locked!: () => void; const aHoldsLock = new Promise<void>((r) => { locked = r; });
     const a = prisma.$transaction(async (tx) => {
       await loadEntitlementForMutation(tx, id); // lock
+      locked();
       await waitForBlockedSession(); // B is now waiting on this row at the DB level
       const r = await balanceService.reserve(tx, id, 2, meta('A'));
       aCommittedAt = Date.now();
       return r;
     });
-    await new Promise((r) => setTimeout(r, 30)); // let A take the lock first so the ordering under test is deterministic
+    await aHoldsLock; // deterministic ordering: B starts only once A holds the row lock
     bStartedAt = Date.now();
     const b = reserveTx(id, 2, 'B').finally(() => { bFinishedAt = Date.now(); });
     const [ra, rb] = await Promise.allSettled([a, b]);
@@ -143,8 +135,9 @@ describe('PostgreSQL row lock — BalanceService concurrency', () => {
     let releaseA!: () => void;
     const held = new Promise<void>((r) => { releaseA = r; });
     let bDoneWhileAHeld = false;
-    const txA = prisma.$transaction(async (tx) => { await loadEntitlementForMutation(tx, a); await held; return balanceService.reserve(tx, a, 1, meta(key('A'))); }, { timeout: 10000 });
-    await new Promise((r) => setTimeout(r, 30));
+    let locked!: () => void; const aHoldsLock = new Promise<void>((r) => { locked = r; });
+    const txA = prisma.$transaction(async (tx) => { await loadEntitlementForMutation(tx, a); locked(); await held; return balanceService.reserve(tx, a, 1, meta(key('A'))); }, { timeout: 10000 });
+    await aHoldsLock;
     const txB = reserveTx(b, 1, key('B')).then((r) => { bDoneWhileAHeld = true; return r; });
     const rb = await Promise.race([txB, new Promise<'blocked'>((r) => setTimeout(() => r('blocked'), 1500))]);
     expect(rb).not.toBe('blocked');
@@ -156,12 +149,14 @@ describe('PostgreSQL row lock — BalanceService concurrency', () => {
 
   it('20. rollback releases the lock: A reserves then throws → B acquires the lock and succeeds; no A ledger row', async () => {
     const id = await mkEntitlement(2);
+    let locked!: () => void; const aHoldsLock = new Promise<void>((r) => { locked = r; });
     const a = prisma.$transaction(async (tx) => {
-      await balanceService.reserve(tx, id, 2, meta('rollback-A'));
+      await balanceService.reserve(tx, id, 2, meta('rollback-A')); // takes the row lock
+      locked();
       await waitForBlockedSession(); // B is blocked behind A's lock right now
       throw new Error('simulated failure after ledger insert');
     });
-    await new Promise((r) => setTimeout(r, 30));
+    await aHoldsLock;
     const b = reserveTx(id, 2, 'rollback-B');
     const [ra, rb] = await Promise.allSettled([a, b]);
     expect(ra.status).toBe('rejected');

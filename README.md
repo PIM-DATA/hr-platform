@@ -23,6 +23,7 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 |---|---|
 | 8 Workflow engine foundation | ✅ |
 | 8.1 Approver resolution hardening | ✅ |
+| 8.2 Workflow transition concurrency (instance row lock) | ✅ |
 | 9 Leave master data + shared work calendars | ✅ |
 | 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only, no HTTP surface yet) |
 | 10.5 PostgreSQL migration + balance concurrency validation | ✅ |
@@ -293,6 +294,13 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - **Inbox** (`GET /workflow/inbox`) = steps where I am the snapshot approver — an authorization context independent of employee data scope. Instance reads: requester, snapshot approvers or `workflow.view_all`; others get 404.
 - **Handlers**: `workflowEngine.registerHandler(module, { onApproved, onRejected })` run inside the engine's transaction; a failing handler rolls back the transition.
 - **History**: `workflow_actions` (append-only) + `audit_logs` (`WORKFLOW_SUBMIT/APPROVE/REJECT/CANCEL`, `CREATE/ACTIVATE/DEACTIVATE_WORKFLOW_DEFINITION`) in the same transaction.
+
+- **Transition concurrency (Task 8.2)**: `loadWorkflowInstanceForMutation(tx, id)` takes `SELECT "id" FROM "workflow_instances" WHERE "id" = $1 FOR UPDATE`
+  before `act()` / `cancel()` read anything, so the order is lock → reload → status → actor → step → instance → action → audit →
+  handler → commit (no read-then-lock TOCTOU). Granularity = one instance row. Handler lock order is fixed as workflow_instance →
+  business record → entitlement. `onCancelled` runs inside the business module's cancel transaction. Validated in
+  `tests/workflow-concurrency.test.ts` (approve∥approve, approve∥reject, final approve∥cancel, multi-step double approve, different
+  instances not blocking, handler failure rollback releasing the lock); removing the lock fails 4 of 7 tests; 20/20 consecutive runs.
 
 ## Work calendars, leave types and policies (Task 9)
 
