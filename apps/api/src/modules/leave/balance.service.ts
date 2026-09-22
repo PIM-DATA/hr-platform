@@ -30,6 +30,12 @@ export interface LedgerWrite {
   referenceId?: string | null;
   note?: string | null;
   actorUserId: string | null;
+  /**
+   * RESERVE only (Task 10.6): the REQUEST policy snapshotted by the leave request. Its allowNegativeBalance rule is used
+   * instead of the entitlement's grant policy. Must exist and be for the entitlement's leave type (BALANCE_POLICY_MISMATCH).
+   * Internal callers only — never accepted from a client.
+   */
+  balancePolicyId?: string;
 }
 export interface LedgerResult {
   entry: { id: string; entryType: string; units: number; operationKey: string; createdAt: Date };
@@ -82,7 +88,7 @@ async function appendEntry(tx: Tx, w: LedgerWrite, guard: (before: BalanceSummar
 
   const before = summaryFrom(ent);
   const after = computeBalanceSummary([{ entryType: w.entryType, units: w.units }, ...toRows(before)]);
-  guard(before, after, ent.policy);
+  guard(before, after, w.balancePolicyId ? await balancePolicy(tx, ent.leaveTypeId, w.balancePolicyId) : ent.policy);
 
   const entry = await tx.leaveLedger
     .create({ data: { entitlementId: w.entitlementId, entryType: w.entryType, units: w.units, operationKey: w.operationKey, referenceType: w.referenceType ?? null, referenceId: w.referenceId ?? null, note: w.note ?? null, createdByUserId: w.actorUserId } })
@@ -97,6 +103,13 @@ async function appendEntry(tx: Tx, w: LedgerWrite, guard: (before: BalanceSummar
 }
 
 const summaryFrom = (e: BalanceSummary) => cachedSummary(e);
+/** Request policy rules for a reservation: exists + same leave type as the entitlement. Not locked: rule fields are immutable once referenced. */
+async function balancePolicy(tx: Tx, entitlementLeaveTypeId: string, policyId: string) {
+  const p = await tx.leavePolicy.findUnique({ where: { id: policyId }, select: { id: true, leaveTypeId: true, allowNegativeBalance: true, carryForwardMaxUnits: true } });
+  if (!p) throw new AppError(404, 'LEAVE_POLICY_NOT_FOUND', 'Balance policy not found');
+  if (p.leaveTypeId !== entitlementLeaveTypeId) throw new AppError(409, 'BALANCE_POLICY_MISMATCH', 'Balance policy is for a different leave type than the entitlement');
+  return p;
+}
 /** Represent a summary as pseudo-rows so the projected "after" state uses the same formula. */
 function toRows(s: BalanceSummary) {
   return [
@@ -109,6 +122,7 @@ const noNegative = (_b: BalanceSummary, after: BalanceSummary, policy: { allowNe
 };
 
 type Meta = { operationKey: string; actorUserId: string | null; note?: string | null; referenceType?: string | null; referenceId?: string | null };
+type ReserveMeta = Meta & { balancePolicyId?: string };
 
 export const balanceService = {
   loadEntitlementForMutation,
@@ -131,8 +145,11 @@ export const balanceService = {
     }),
   /** ±units manual correction; may not drive available below 0 unless the policy allows negative balance. */
   adjust: (tx: Tx, entitlementId: string, units: number, m: Meta) => appendEntry(tx, { entitlementId, entryType: LEDGER_ENTRY_TYPES.ADJUSTMENT, units, ...m }, noNegative),
-  /** +reserved for a pending request; rejects when available is insufficient (unless negative balance allowed). */
-  reserve: (tx: Tx, entitlementId: string, units: number, m: Meta) => appendEntry(tx, { entitlementId, entryType: LEDGER_ENTRY_TYPES.RESERVE, units: Math.abs(units), ...m }, noNegative),
+  /**
+   * +reserved for a pending request; rejects when available is insufficient unless negative balance is allowed by the
+   * REQUEST policy (`m.balancePolicyId`, Task 10.6) — or by the entitlement's grant policy when no request policy is given.
+   */
+  reserve: (tx: Tx, entitlementId: string, units: number, m: ReserveMeta) => appendEntry(tx, { entitlementId, entryType: LEDGER_ENTRY_TYPES.RESERVE, units: Math.abs(units), ...m }, noNegative),
   /** −reserved (request rejected/cancelled, or converted to USE); cannot exceed what is reserved. */
   release: (tx: Tx, entitlementId: string, units: number, m: Meta) =>
     appendEntry(tx, { entitlementId, entryType: LEDGER_ENTRY_TYPES.RELEASE, units: -Math.abs(units), ...m }, (_b, after) => {

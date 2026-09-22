@@ -93,13 +93,19 @@ export const leavePoliciesService = {
   async update(id: string, input: UpdateLeavePolicyInput, actor: Actor) {
     const row = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
-      const refs = await tx.leaveEntitlement.aggregate({ where: { policyId: id }, _count: { _all: true }, _max: { policyResolvedDate: true } });
-      if (refs._count._all > 0) {
+      // references = entitlements granted from this policy + submitted leave requests that snapshotted it (drafts carry no policyId)
+      const [ents, reqs] = await Promise.all([
+        tx.leaveEntitlement.aggregate({ where: { policyId: id }, _count: { _all: true }, _max: { policyResolvedDate: true } }),
+        tx.leaveRequest.aggregate({ where: { policyId: id }, _count: { _all: true }, _max: { startDate: true } }),
+      ]);
+      const refCount = ents._count._all + reqs._count._all;
+      if (refCount > 0) {
         const changed = (Object.keys(input) as (keyof UpdateLeavePolicyInput)[]).filter((k) => input[k] !== undefined && JSON.stringify(input[k] ?? null) !== JSON.stringify((before as Record<string, unknown>)[k] ?? null));
         const frozen = changed.filter((k) => !['name', 'effectiveTo'].includes(k));
-        if (frozen.length) throw new AppError(409, 'LEAVE_POLICY_IN_USE', `Policy is referenced by ${refs._count._all} entitlement(s); ${frozen.join(', ')} cannot change. Close this policy (effectiveTo) and create a new one instead.`);
-        if (changed.includes('effectiveTo') && input.effectiveTo && refs._max.policyResolvedDate && compareBusinessDate(input.effectiveTo, refs._max.policyResolvedDate) < 0) {
-          throw new AppError(409, 'LEAVE_POLICY_IN_USE', `effectiveTo cannot be before ${refs._max.policyResolvedDate}, the latest date an entitlement resolved this policy`);
+        if (frozen.length) throw new AppError(409, 'LEAVE_POLICY_IN_USE', `Policy is referenced by ${ents._count._all} entitlement(s) and ${reqs._count._all} leave request(s); ${frozen.join(', ')} cannot change. Close this policy (effectiveTo) and create a new one instead.`);
+        const latest = [ents._max.policyResolvedDate, reqs._max.startDate].filter((d): d is string => !!d).sort(compareBusinessDate).at(-1);
+        if (changed.includes('effectiveTo') && input.effectiveTo && latest && compareBusinessDate(input.effectiveTo, latest) < 0) {
+          throw new AppError(409, 'LEAVE_POLICY_IN_USE', `effectiveTo cannot be before ${latest}, the latest date an entitlement or leave request resolved this policy`);
         }
       }
       if (input.leaveTypeId && !(await tx.leaveType.findUnique({ where: { id: input.leaveTypeId } }))) throw new AppError(404, 'LEAVE_TYPE_NOT_FOUND', 'Leave type not found');

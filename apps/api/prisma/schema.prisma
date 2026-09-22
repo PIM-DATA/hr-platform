@@ -45,6 +45,7 @@ model User {
   workflowActedSteps      WorkflowInstanceStep[] @relation("WorkflowStepActedBy")
   workflowActions         WorkflowAction[]
   leaveLedgerEntries      LeaveLedger[]
+  leaveRequestsCreated    LeaveRequest[]
 
   @@map("users")
 }
@@ -242,6 +243,7 @@ model Employee {
   workflowRequests      WorkflowInstance[]     @relation("WorkflowRequesterEmployee")
   workflowApproverSteps WorkflowInstanceStep[] @relation("WorkflowStepApproverEmployee")
   leaveEntitlements     LeaveEntitlement[]
+  leaveRequests         LeaveRequest[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -492,6 +494,7 @@ model LeaveType {
 
   policies     LeavePolicy[]
   entitlements LeaveEntitlement[]
+  requests     LeaveRequest[]
 
   @@map("leave_types")
 }
@@ -527,6 +530,7 @@ model LeavePolicy {
   updatedBy                String?       @map("updated_by")
 
   entitlements LeaveEntitlement[]
+  requests     LeaveRequest[]
 
   @@index([leaveTypeId, isActive])
   @@index([organizationId])
@@ -561,7 +565,8 @@ model LeaveEntitlement {
   updatedAt          DateTime    @updatedAt @map("updated_at")
   createdByUserId    String?     @map("created_by_user_id")
 
-  ledger LeaveLedger[]
+  ledger   LeaveLedger[]
+  requests LeaveRequest[]
 
   @@unique([employeeId, leaveTypeId, periodStart])
   @@index([employeeId, leaveTypeId])
@@ -589,5 +594,49 @@ model LeaveLedger {
   @@map("leave_ledger")
 }
 
-// Reserved for later Phase 2 tasks (not created yet):
-//   leave_requests, notifications, notification_deliveries
+/// Leave request lifecycle DRAFT → PENDING → APPROVED | REJECTED | CANCELLED (Task 11 service). Snapshot fields are set at
+/// SUBMIT and never recalculated: policyId = REQUEST policy (resolved from the employee's org/type at startDate — may differ
+/// from the entitlement's grant policy), calendarId + units = calendar in force at submit, org/dept/position = assignment then.
+model LeaveRequest {
+  id                 String            @id @default(cuid())
+  employeeId         String            @map("employee_id")
+  employee           Employee          @relation(fields: [employeeId], references: [id])
+  leaveTypeId        String            @map("leave_type_id")
+  leaveType          LeaveType         @relation(fields: [leaveTypeId], references: [id])
+  startDate          String            @map("start_date") // YYYY-MM-DD
+  endDate            String            @map("end_date") // YYYY-MM-DD
+  startPart          String            @default("FULL") @map("start_part") // FULL | AM | PM
+  endPart            String            @default("FULL") @map("end_part") // FULL | AM | PM
+  units              Float             @default(0) // server-calculated; frozen at submit
+  reason             String?
+  attachmentRef      String?           @map("attachment_ref") // opaque reference only (no document service yet)
+  status             String            @default("DRAFT") // DRAFT | PENDING | APPROVED | REJECTED | CANCELLED
+  // snapshot on submit
+  entitlementId      String?           @map("entitlement_id")
+  entitlement        LeaveEntitlement? @relation(fields: [entitlementId], references: [id])
+  policyId           String?           @map("policy_id")
+  policy             LeavePolicy?      @relation(fields: [policyId], references: [id])
+  calendarId         String?           @map("calendar_id")
+  organizationId     String?           @map("organization_id")
+  departmentId       String?           @map("department_id")
+  positionId         String?           @map("position_id")
+  workflowInstanceId String?           @unique @map("workflow_instance_id")
+  submittedAt        DateTime?         @map("submitted_at")
+  approvedAt         DateTime?         @map("approved_at")
+  rejectedAt         DateTime?         @map("rejected_at")
+  cancelledAt        DateTime?         @map("cancelled_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  createdByUserId    String            @map("created_by_user_id")
+  createdBy          User              @relation(fields: [createdByUserId], references: [id])
+
+  @@index([employeeId, status])
+  @@index([employeeId, startDate, endDate])
+  @@index([status, startDate])
+  @@index([leaveTypeId])
+  @@index([organizationId, status])
+  @@index([policyId])
+  @@map("leave_requests")
+}
+
+// Reserved for later Phase 2 tasks (not created yet): notifications, notification_deliveries

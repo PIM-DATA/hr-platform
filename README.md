@@ -27,6 +27,7 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 9 Leave master data + shared work calendars | ✅ |
 | 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only, no HTTP surface yet) |
 | 10.5 PostgreSQL migration + balance concurrency validation | ✅ |
+| 10.6 Request policy vs entitlement policy semantics | ✅ |
 | 11 Leave request + workflow + reservation concurrency | ⏳ |
 | 12 Approval inbox + Leave UI · 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
 | Attendance | Phase 2B |
@@ -352,6 +353,16 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
   (signed units + required note), `POST /leave/entitlements/:id/carry-forward`, `GET /leave/employee-options`, `GET /leave/type-options`.
   Audit actions `GENERATE_/ADJUST_/CARRY_FORWARD_LEAVE_ENTITLEMENT` are written in the same transaction. There are **no employee-facing
   balance endpoints and no leave requests yet** (Task 11); `reserve/release/use/refund` have no HTTP surface.
+- **Entitlement policy vs request policy (Task 10.6)** — `leave_entitlements.policyId` is the historical *grant* policy (why the
+  employee received N units; carry-forward cap; admin adjustment/carry-forward accounting rules). A leave request resolves its own
+  *request* policy at SUBMIT from the employee's current organization/employment type + leave type + start date and snapshots it
+  in `leave_requests.policyId`; after a transfer it may differ from the entitlement's policy while the balance still comes from the
+  old entitlement (no automatic re-grant on transfer in Phase 2). `balanceService.reserve(tx, id, units, { …, balancePolicyId })`
+  applies the request policy's `allowNegativeBalance` (policy must exist and be for the entitlement's leave type, else
+  `BALANCE_POLICY_MISMATCH`); `balancePolicyId` is internal — never accepted from a client. release/use/refund settle an existing
+  reservation and resolve no policy. The `LEAVE_POLICY_IN_USE` guard counts entitlements **and** submitted leave requests
+  (drafts without `policyId` are not references); `effectiveTo` may not precede the latest resolution date of either.
+  The `leave_requests` table (schema + indexes) was added in this task; its lifecycle service is Task 11.
 - **Concurrency (Task 10.5)** — `loadEntitlementForMutation(tx, id)` runs `SELECT "id" FROM "leave_entitlements" WHERE "id" = $1 FOR UPDATE`
   (parameterised tagged template) before loading the row, so every mutation of an existing entitlement (adjust, carryForward,
   reserve, release, use, refund) is serialised per entitlement: **lock → operationKey check → balance guard → insert → recompute →
