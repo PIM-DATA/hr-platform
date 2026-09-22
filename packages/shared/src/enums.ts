@@ -9,7 +9,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -48,6 +48,13 @@ export const AUDIT_ACTIONS = {
   CHANGE_EMPLOYEE_POSITION: 'CHANGE_EMPLOYEE_POSITION',
   CHANGE_EMPLOYEE_MANAGER: 'CHANGE_EMPLOYEE_MANAGER',
   UPDATE_DEPARTMENT_HEAD: 'UPDATE_DEPARTMENT_HEAD',
+  CREATE_WORKFLOW_DEFINITION: 'CREATE_WORKFLOW_DEFINITION',
+  ACTIVATE_WORKFLOW_DEFINITION: 'ACTIVATE_WORKFLOW_DEFINITION',
+  DEACTIVATE_WORKFLOW_DEFINITION: 'DEACTIVATE_WORKFLOW_DEFINITION',
+  WORKFLOW_SUBMIT: 'WORKFLOW_SUBMIT',
+  WORKFLOW_APPROVE: 'WORKFLOW_APPROVE',
+  WORKFLOW_REJECT: 'WORKFLOW_REJECT',
+  WORKFLOW_CANCEL: 'WORKFLOW_CANCEL',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -63,6 +70,10 @@ export function auditActionLabel(action: string): string {
     UPDATE_DEPARTMENT_HEAD: 'Update department head',
     CHANGE_EMPLOYEE_POSITION: 'Change employee position',
     CHANGE_EMPLOYEE_MANAGER: 'Change employee manager',
+    WORKFLOW_SUBMIT: 'Workflow submitted',
+    WORKFLOW_APPROVE: 'Workflow step approved',
+    WORKFLOW_REJECT: 'Workflow step rejected',
+    WORKFLOW_CANCEL: 'Workflow cancelled',
   };
   if (known[action]) return known[action];
   // generic <VERB>_<ENTITY> → "Verb entity"
@@ -78,4 +89,5 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   roles: 'Roles',
   organization: 'Organization',
   employees: 'Employees',
+  workflow: 'Workflow',
 };

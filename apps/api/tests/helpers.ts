@@ -69,6 +69,11 @@ export async function cleanUsers() {
  * (vitest re-orders files by previous failures/durations, so leftovers from another file must never matter).
  */
 export async function resetDatabase() {
+  await prisma.workflowAction.deleteMany();
+  await prisma.workflowInstanceStep.deleteMany();
+  await prisma.workflowInstance.deleteMany();
+  await prisma.workflowDefinitionStep.deleteMany();
+  await prisma.workflowDefinition.deleteMany();
   await prisma.employeeManager.deleteMany();
   await prisma.employeePosition.deleteMany();
   await prisma.session.deleteMany();

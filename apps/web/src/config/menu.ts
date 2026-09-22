@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   Route, BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings,
+  ScrollText, Settings, Workflow,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -64,6 +64,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Roles', path: '/admin/roles', icon: ShieldCheck, permission: P.ROLES_VIEW },
       { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW },
       { label: 'Audit Logs', path: '/admin/audit-logs', icon: ScrollText, permission: P.AUDIT_VIEW },
+      { label: 'Workflows', path: '/admin/workflows', icon: Workflow, permission: P.WORKFLOW_MANAGE_DEFINITIONS },
       { label: 'Settings', path: '/admin/settings', icon: Settings, permission: P.SETTINGS_MANAGE, comingSoon: true },
     ],
   },

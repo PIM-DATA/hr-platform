@@ -19,6 +19,7 @@ import { PositionsPage } from '@/features/organization/PositionsPage';
 import { EmployeeListPage } from '@/features/employees/EmployeeListPage';
 import { EmployeeDetailPage } from '@/features/employees/EmployeeDetailPage';
 import { AuditLogPage } from '@/features/audit/AuditLogPage';
+import { WorkflowDefinitionsPage } from '@/features/workflow/WorkflowDefinitionsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -79,6 +80,7 @@ export const router = createBrowserRouter([
             ],
           },
           { element: <RequirePermission permission={PERMISSIONS.AUDIT_VIEW} />, children: [{ path: 'admin/audit-logs', element: <AuditLogPage /> }] },
+          { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS} />, children: [{ path: 'admin/workflows', element: <WorkflowDefinitionsPage /> }] },
           ...comingSoonRoutes,
           { path: '*', element: <ComingSoonPage title="Page not found" description="The page you are looking for does not exist." /> },
         ],

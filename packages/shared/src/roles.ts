@@ -43,7 +43,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Manager',
     description: 'Manager self service: own team',
     dataScope: DATA_SCOPES.TEAM,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE],
   },
   {
     code: ROLES.HR,
@@ -56,6 +56,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.EMPLOYEES_CREATE,
       P.EMPLOYEES_UPDATE,
       P.ORGANIZATION_VIEW,
+      P.WORKFLOW_APPROVE,
     ],
   },
   {
@@ -77,6 +78,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.USERS_ACTIVATE,
       P.ROLES_VIEW,
       P.AUDIT_VIEW,
+      P.WORKFLOW_APPROVE,
+      P.WORKFLOW_VIEW_ALL,
+      P.WORKFLOW_MANAGE_DEFINITIONS,
     ],
   },
   {
@@ -84,7 +88,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Executive',
     description: 'Executive: read-only organization-wide view and dashboards',
     dataScope: DATA_SCOPES.ALL,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE],
   },
   {
     code: ROLES.SYSTEM_ADMIN,

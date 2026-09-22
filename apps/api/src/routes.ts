@@ -6,6 +6,7 @@ import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
 import { employeesRouter } from './modules/employees/employees.routes';
 import { auditRouter } from './modules/audit/audit.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
+import { workflowRouter } from './modules/workflow/workflow.routes';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
 /**
@@ -31,3 +32,4 @@ apiRouter.use('/organization', organizationTreeRouter); // GET /organization/tre
 apiRouter.use('/employees', employeesRouter);
 apiRouter.use('/audit-logs', auditRouter);
 apiRouter.use('/dashboard', dashboardRouter);
+apiRouter.use('/workflow', workflowRouter);

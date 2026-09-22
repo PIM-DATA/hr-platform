@@ -26,6 +26,10 @@ export const PERMISSIONS = {
   AUDIT_VIEW: 'audit.view',
 
   SETTINGS_MANAGE: 'settings.manage',
+
+  WORKFLOW_APPROVE: 'workflow.approve',
+  WORKFLOW_VIEW_ALL: 'workflow.view_all',
+  WORKFLOW_MANAGE_DEFINITIONS: 'workflow.manage_definitions',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -59,6 +63,10 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.AUDIT_VIEW, module: 'audit', description: 'View audit logs' },
 
   { code: PERMISSIONS.SETTINGS_MANAGE, module: 'settings', description: 'Manage system settings' },
+
+  { code: PERMISSIONS.WORKFLOW_APPROVE, module: 'workflow', description: 'Act on approval steps assigned to me' },
+  { code: PERMISSIONS.WORKFLOW_VIEW_ALL, module: 'workflow', description: 'View every workflow instance' },
+  { code: PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS, module: 'workflow', description: 'Create and activate workflow definition versions' },
 ];
 
 /**

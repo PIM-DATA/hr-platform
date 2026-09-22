@@ -6,3 +6,4 @@ export * from './organization';
 export * from './employee';
 export * from './audit';
 export * from './dashboard';
+export * from './workflow';

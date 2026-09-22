@@ -37,6 +37,13 @@ model User {
   sessions  Session[]
   auditLogs AuditLog[]
 
+  // workflow (Phase 2)
+  workflowDefinitionSteps WorkflowDefinitionStep[]
+  workflowRequests        WorkflowInstance[]     @relation("WorkflowRequesterUser")
+  workflowApproverSteps   WorkflowInstanceStep[] @relation("WorkflowStepApproverUser")
+  workflowActedSteps      WorkflowInstanceStep[] @relation("WorkflowStepActedBy")
+  workflowActions         WorkflowAction[]
+
   @@map("users")
 }
 
@@ -52,6 +59,7 @@ model Role {
 
   userRoles       UserRole[]
   rolePermissions RolePermission[]
+  workflowDefinitionSteps WorkflowDefinitionStep[] // reserved for ROLE approvers (not enabled)
 
   @@map("roles")
 }
@@ -222,6 +230,8 @@ model Employee {
   positionHistory  EmployeePosition[]
   managerHistory   EmployeeManager[]   @relation("ManagerHistoryEmployee")
   managedHistory   EmployeeManager[]   @relation("ManagerHistoryManager")
+  workflowRequests      WorkflowInstance[]     @relation("WorkflowRequesterEmployee")
+  workflowApproverSteps WorkflowInstanceStep[] @relation("WorkflowStepApproverEmployee")
 
   @@index([departmentId])
   @@index([managerId])
@@ -299,6 +309,119 @@ model SystemSetting {
   @@map("system_settings")
 }
 
-// Reserved for future phases (not created yet):
-//   workflow_definitions, workflow_steps, workflow_requests, workflow_history,
-//   notifications, documents
+// =====================================================================
+// WORKFLOW ENGINE (shared service, Phase 2)
+// =====================================================================
+
+/// MASTER, versioned. A (code, version) row is immutable once created; "editing" = new version. One active version per code (enforced in service).
+model WorkflowDefinition {
+  id          String    @id @default(cuid())
+  code        String
+  version     Int
+  name        String
+  description String?
+  module      String // business module key, e.g. leave
+  entityType  String // business entity, e.g. LeaveRequest
+  isActive    Boolean   @default(false) @map("is_active")
+  activatedAt DateTime? @map("activated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by")
+
+  steps     WorkflowDefinitionStep[]
+  instances WorkflowInstance[]
+
+  @@unique([code, version])
+  @@index([code, isActive])
+  @@map("workflow_definitions")
+}
+
+/// MASTER. Sequential steps 1..n of a definition version.
+model WorkflowDefinitionStep {
+  id             String             @id @default(cuid())
+  definitionId   String             @map("definition_id")
+  definition     WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  stepOrder      Int                @map("step_order")
+  name           String
+  approverType   String             @map("approver_type") // DIRECT_MANAGER | DEPARTMENT_HEAD | SPECIFIC_USER | ROLE (reserved)
+  approverUserId String?            @map("approver_user_id")
+  approverUser   User?              @relation(fields: [approverUserId], references: [id])
+  approverRoleId String?            @map("approver_role_id") // reserved, never set in Phase 2
+  approverRole   Role?              @relation(fields: [approverRoleId], references: [id])
+  onSelf         String             @default("FAIL") @map("on_self") // FAIL | SKIP
+  onUnresolved   String             @default("FAIL") @map("on_unresolved") // FAIL | SKIP
+
+  @@unique([definitionId, stepOrder])
+  @@map("workflow_definition_steps")
+}
+
+/// TRANSACTION. One running/finished workflow for a business entity (module, entityType, entityId).
+model WorkflowInstance {
+  id                  String             @id @default(cuid())
+  definitionId        String             @map("definition_id") // the exact version used
+  definition          WorkflowDefinition @relation(fields: [definitionId], references: [id])
+  module              String
+  entityType          String             @map("entity_type")
+  entityId            String             @map("entity_id")
+  requesterEmployeeId String             @map("requester_employee_id")
+  requesterEmployee   Employee           @relation("WorkflowRequesterEmployee", fields: [requesterEmployeeId], references: [id])
+  requesterUserId     String?            @map("requester_user_id")
+  requesterUser       User?              @relation("WorkflowRequesterUser", fields: [requesterUserId], references: [id])
+  status              String             @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  currentStepOrder    Int?               @map("current_step_order")
+  submittedAt         DateTime           @default(now()) @map("submitted_at")
+  completedAt         DateTime?          @map("completed_at")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  steps   WorkflowInstanceStep[]
+  actions WorkflowAction[]
+
+  @@index([module, entityType, entityId])
+  @@index([requesterEmployeeId])
+  @@index([status])
+  @@map("workflow_instances")
+}
+
+/// SNAPSHOT. Steps copied from the definition at submit time with the approver resolved then; later org changes never touch these rows.
+model WorkflowInstanceStep {
+  id                 String           @id @default(cuid())
+  instanceId         String           @map("instance_id")
+  instance           WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  stepOrder          Int              @map("step_order")
+  name               String
+  approverType       String           @map("approver_type")
+  approverEmployeeId String?          @map("approver_employee_id")
+  approverEmployee   Employee?        @relation("WorkflowStepApproverEmployee", fields: [approverEmployeeId], references: [id])
+  approverUserId     String?          @map("approver_user_id")
+  approverUser       User?            @relation("WorkflowStepApproverUser", fields: [approverUserId], references: [id])
+  approverRoleId     String?          @map("approver_role_id") // reserved
+  status             String           @default("WAITING") // WAITING | PENDING | APPROVED | REJECTED | SKIPPED | CANCELLED
+  skipReason         String?          @map("skip_reason") // SELF | UNRESOLVED
+  actedByUserId      String?          @map("acted_by_user_id") // kept separate from approverUserId (future delegation)
+  actedBy            User?            @relation("WorkflowStepActedBy", fields: [actedByUserId], references: [id])
+  actedAt            DateTime?        @map("acted_at")
+  comment            String?
+
+  @@unique([instanceId, stepOrder])
+  @@index([approverUserId, status])
+  @@map("workflow_instance_steps")
+}
+
+/// HISTORY, append-only. SUBMIT / APPROVE / REJECT / CANCEL with actor and comment.
+model WorkflowAction {
+  id          String           @id @default(cuid())
+  instanceId  String           @map("instance_id")
+  instance    WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  stepOrder   Int?             @map("step_order")
+  action      String
+  actorUserId String?          @map("actor_user_id")
+  actor       User?            @relation(fields: [actorUserId], references: [id])
+  comment     String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  @@index([instanceId, createdAt])
+  @@map("workflow_actions")
+}
+
+// Reserved for later Phase 2 tasks (not created yet):
+//   leave_*, work_calendars, holidays, notifications, notification_deliveries

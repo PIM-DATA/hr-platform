@@ -17,6 +17,18 @@ One employee data · One organization structure · One permission system · One 
 
 Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same core without changing it.
 
+### Phase 2 — HRM Operations (in progress)
+
+| Task | Status |
+|---|---|
+| 8 Workflow engine foundation | ✅ |
+| 9 Leave master data (calendar, holidays, types, policies) | ⏳ |
+| 10 Leave entitlement + ledger | ⏳ |
+| 10.5 PostgreSQL migration / integration validation | ⏳ required before 11 |
+| 11 Leave request + workflow + reservation concurrency | ⏳ |
+| 12 Approval inbox + Leave UI · 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
+| Attendance | Phase 2B |
+
 ## Stack
 
 | Layer | Technology |
@@ -250,6 +262,18 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - No forgot-password / self-service password change; admins reset passwords.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
+
+## Workflow engine (shared service)
+
+`services/workflow/` is reused by every approval-driven module; it knows only `(module, entityType, entityId)`.
+
+- **Definitions are versioned and immutable**: `workflow_definitions (code, version)` + `workflow_definition_steps`. "Editing" = `POST /workflow/definitions` creates `max(version)+1` (inactive); `POST /workflow/definitions/:id/activate` validates (≥1 step, contiguous 1..n, approver config) and makes it the single active version of that code.
+- **Instances snapshot their approvers**: `workflowEngine.submit()` (called inside the business module's transaction) resolves each step from the requester's *current* data — `DIRECT_MANAGER` → `employees.managerId`, `DEPARTMENT_HEAD` → `departments.headEmployeeId`, `SPECIFIC_USER` → configured user — requires an ACTIVE employee with an active login, and stores `approverEmployeeId/approverUserId/approverType` on `workflow_instance_steps`. Later org changes never affect a running instance. `ROLE` approvers are reserved, not enabled (RBAC roles are not organization-scoped approval groups).
+- **onSelf / onUnresolved** default `FAIL`: submit answers `409 SELF_APPROVAL_NOT_ALLOWED` / `409 APPROVER_UNRESOLVED` (step + reason only). `SKIP` must be configured per step; if every step is skipped the instance is approved immediately (audited `autoApproved`).
+- **Sequential**: only the current `PENDING` step's snapshot approver may `APPROVE`/`REJECT` (`POST /workflow/instances/:id/actions`, `workflow.approve`); approve advances or completes, reject completes and cancels remaining steps. `CANCEL` is internal (`workflowEngine.cancel`) and only exposed by business endpoints (e.g. `POST /leave/requests/:id/cancel`).
+- **Inbox** (`GET /workflow/inbox`) = steps where I am the snapshot approver — an authorization context independent of employee data scope. Instance reads: requester, snapshot approvers or `workflow.view_all`; others get 404.
+- **Handlers**: `workflowEngine.registerHandler(module, { onApproved, onRejected })` run inside the engine's transaction; a failing handler rolls back the transition.
+- **History**: `workflow_actions` (append-only) + `audit_logs` (`WORKFLOW_SUBMIT/APPROVE/REJECT/CANCEL`, `CREATE/ACTIVATE/DEACTIVATE_WORKFLOW_DEFINITION`) in the same transaction.
 
 ## Security notes
 

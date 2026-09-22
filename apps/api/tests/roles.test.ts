@@ -1,6 +1,9 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CRITICAL_PERMISSIONS } from '@hr/shared';
+import { CRITICAL_PERMISSIONS, PERMISSION_DEFINITIONS, ROLE_DEFINITIONS } from '@hr/shared';
+
+const ALL_PERMISSIONS = PERMISSION_DEFINITIONS.length; // permission catalogue grows per phase; tests derive from the shared source of truth
+const rolePerms = (code: string) => [...ROLE_DEFINITIONS.find((r) => r.code === code)!.permissions].sort();
 import { prisma } from '../src/lib/prisma';
 import { cleanUsers, createTestServer, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
 
@@ -33,12 +36,12 @@ describe('view roles / permissions', () => {
     expect(roles.body.data.map((r: { code: string }) => r.code).sort()).toEqual(['EMPLOYEE', 'EXECUTIVE', 'HR', 'HR_ADMIN', 'MANAGER', 'SYSTEM_ADMIN']);
     const sys = roles.body.data.find((r: { code: string }) => r.code === 'SYSTEM_ADMIN');
     expect(sys.isSystem).toBe(true);
-    expect(sys.permissionCodes).toHaveLength(15);
+    expect(sys.permissionCodes).toHaveLength(ALL_PERMISSIONS);
     expect(sys.userCount).toBe(1);
 
     const perms = await authed(hrAdmin, 'get', '/api/v1/permissions');
     expect(perms.status).toBe(200);
-    expect(perms.body.data).toHaveLength(15);
+    expect(perms.body.data).toHaveLength(ALL_PERMISSIONS);
     expect(perms.body.data[0]).toHaveProperty('module');
 
     const one = await authed(hrAdmin, 'get', `/api/v1/roles/${sys.id}`);
@@ -63,7 +66,7 @@ describe('update role permissions', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.permissionCodes).toEqual(['audit.view', 'dashboard.view']);
     const audit = await prisma.auditLog.findFirst({ where: { action: 'UPDATE_ROLE_PERMISSIONS', recordId: id }, orderBy: { createdAt: 'desc' } });
-    expect(JSON.parse(audit!.oldValue!).permissions).toEqual(['dashboard.view', 'employees.view', 'organization.view']);
+    expect(JSON.parse(audit!.oldValue!).permissions).toEqual(rolePerms('EXECUTIVE'));
     expect(JSON.parse(audit!.newValue!).permissions).toEqual(['audit.view', 'dashboard.view']);
   });
 
@@ -104,7 +107,7 @@ describe('update role permissions', () => {
     const res = await authed(sysadmin, 'patch', `/api/v1/roles/${id}/permissions`).send({ permissionCodes: ['dashboard.view'] });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CRITICAL_PERMISSION_REQUIRED');
-    expect((await authed(sysadmin, 'get', `/api/v1/roles/${id}`)).body.data.permissionCodes).toHaveLength(15);
+    expect((await authed(sysadmin, 'get', `/api/v1/roles/${id}`)).body.data.permissionCodes).toHaveLength(ALL_PERMISSIONS);
 
     // keeping the critical set (and dropping something else) is allowed
     const ok = await authed(sysadmin, 'patch', `/api/v1/roles/${id}/permissions`).send({ permissionCodes: [...CRITICAL_PERMISSIONS, 'dashboard.view'] });
