@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { PERMISSIONS, adjustEntitlementSchema, carryForwardSchema, createEntitlementSchema, createLeavePolicySchema, createLeaveTypeSchema, entitlementListQuerySchema, entitlementPreviewQuerySchema, leaveEmployeeOptionsQuerySchema, leavePolicyListQuerySchema, leaveTypeListQuerySchema, ledgerListQuerySchema, resolvePolicyQuerySchema, updateLeavePolicySchema, updateLeaveTypeSchema, workflowOptionsQuerySchema } from '@hr/shared';
+import { PERMISSIONS, adjustEntitlementSchema, balancesMeQuerySchema, leaveRequestBodySchema, leaveRequestListQuerySchema, updateLeaveRequestSchema, carryForwardSchema, createEntitlementSchema, createLeavePolicySchema, createLeaveTypeSchema, entitlementListQuerySchema, entitlementPreviewQuerySchema, leaveEmployeeOptionsQuerySchema, leavePolicyListQuerySchema, leaveTypeListQuerySchema, ledgerListQuerySchema, resolvePolicyQuerySchema, updateLeavePolicySchema, updateLeaveTypeSchema, workflowOptionsQuerySchema } from '@hr/shared';
 import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
@@ -7,10 +7,13 @@ import { requestMeta } from '../../services/audit/audit.service';
 import { leaveTypesService } from './leave-types.service';
 import { leavePoliciesService } from './leave-policies.service';
 import { entitlementsService } from './entitlements.service';
+import { leaveRequestsService } from './leave-requests.service';
 
 const types = requirePermission(PERMISSIONS.LEAVE_MANAGE_TYPES);
 const policies = requirePermission(PERMISSIONS.LEAVE_MANAGE_POLICIES);
 const entitlements = requirePermission(PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS);
+const view = requirePermission(PERMISSIONS.LEAVE_VIEW);
+const request = requirePermission(PERMISSIONS.LEAVE_REQUEST);
 const actor = (req: Request) => ({ auth: req.auth!, ...requestMeta(req) });
 const id = (req: Request) => req.params.id as string;
 
@@ -45,3 +48,14 @@ leaveRouter.post('/entitlements/:id/adjust', entitlements, validate(adjustEntitl
 leaveRouter.post('/entitlements/:id/carry-forward', entitlements, validate(carryForwardSchema), async (req, res) => res.json({ data: await entitlementsService.carryForward(id(req), req.body, actor(req)) }));
 leaveRouter.get('/employee-options', entitlements, validate(leaveEmployeeOptionsQuerySchema, 'query'), async (_req, res: Response) => res.json({ data: await entitlementsService.employeeOptions(res.locals.query) }));
 leaveRouter.get('/type-options', entitlements, async (_req, res: Response) => res.json({ data: await entitlementsService.typeOptions() }));
+
+// leave requests — self-service (leave.request, own employee only) + browse (leave.view + data scope). Approvals stay on
+// POST /workflow/instances/:id/actions (workflow.approve); there is no leave-specific approve endpoint.
+leaveRouter.post('/requests/preview', request, validate(leaveRequestBodySchema), async (req, res) => res.json({ data: await leaveRequestsService.preview(req.auth!, req.body) }));
+leaveRouter.get('/requests', view, validate(leaveRequestListQuerySchema, 'query'), async (req, res: Response) => res.json(await leaveRequestsService.list(req.auth!, res.locals.query)));
+leaveRouter.post('/requests', request, validate(leaveRequestBodySchema), async (req, res) => res.status(201).json({ data: await leaveRequestsService.create(req.auth!, req.body, actor(req)) }));
+leaveRouter.get('/requests/:id', async (req, res) => res.json({ data: await leaveRequestsService.getById(req.auth!, id(req)) })); // leave.view+scope OR workflow.approve+snapshot approver (checked in service)
+leaveRouter.patch('/requests/:id', request, validate(updateLeaveRequestSchema), async (req, res) => res.json({ data: await leaveRequestsService.update(req.auth!, id(req), req.body, actor(req)) }));
+leaveRouter.post('/requests/:id/submit', request, async (req, res) => res.json({ data: await leaveRequestsService.submit(req.auth!, id(req), actor(req)) }));
+leaveRouter.post('/requests/:id/cancel', request, async (req, res) => res.json({ data: await leaveRequestsService.cancel(req.auth!, id(req), actor(req)) }));
+leaveRouter.get('/balances/me', view, validate(balancesMeQuerySchema, 'query'), async (req, res: Response) => res.json(await leaveRequestsService.balancesMe(req.auth!, res.locals.query.asOfDate)));

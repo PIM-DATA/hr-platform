@@ -28,7 +28,7 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only, no HTTP surface yet) |
 | 10.5 PostgreSQL migration + balance concurrency validation | ✅ |
 | 10.6 Request policy vs entitlement policy semantics | ✅ |
-| 11 Leave request + workflow + reservation concurrency | ⏳ |
+| 11 Leave request + workflow + reservation concurrency | ✅ (API + tests; Leave UI is Task 12) |
 | 12 Approval inbox + Leave UI · 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
 | Attendance | Phase 2B |
 
@@ -377,6 +377,59 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
   payload concurrently → one ledger row, both callers succeed; rollback releases the lock; cache == ledger after every scenario;
   0.5-unit sums are exact on `DOUBLE PRECISION`. Removing the `FOR UPDATE` makes 6 of the 10 tests fail (double-spend), so the
   suite detects the race. Full suite 5/5 and concurrency suite 20/20 consecutive green on PostgreSQL 18.6 at Task 10.5 sign-off.
+
+## Leave requests (Task 11)
+
+- **Lifecycle** `DRAFT → PENDING → APPROVED | REJECTED | CANCELLED`, all transitions transactional.
+  API: `POST /leave/requests` (draft), `PATCH /leave/requests/:id` (draft only), `POST /leave/requests/preview` (read-only),
+  `POST /leave/requests/:id/submit`, `POST /leave/requests/:id/cancel`, `GET /leave/requests`, `GET /leave/requests/:id`,
+  `GET /leave/balances/me`. Approval stays on the generic `POST /workflow/instances/:id/actions` (APPROVE/REJECT) — there is
+  no leave-specific approve endpoint and no generic workflow CANCEL.
+- **Three authorization contexts**: *browse* = `leave.view` + `employeeScopeWhere` (SELF/TEAM/ALL); *self-service mutation* =
+  `leave.request` for `auth.employeeId` only (even an ALL-scope user cannot create, edit, submit or cancel for someone else);
+  *approval* = `workflow.approve` + the snapshot approver identity, independent of data scope. A request detail is readable by
+  an in-scope viewer **or** by a snapshot approver (so approvers outside their data scope can decide); anyone else gets 404,
+  never 403, so existence is not leaked. Every filter in the list query is AND-ed with the scope clause.
+- **Request input is strict**: the create/update schemas reject unknown keys, so `employeeId`, `units`, `status`, `policyId`,
+  `entitlementId`, `calendarId`, `organizationId/departmentId/positionId`, `workflowInstanceId` and the timestamps can never be
+  written by a client (400). PATCH carries no defaults — omitted fields keep their stored values.
+- **Submit transaction** (one transaction, lock order **leave_request → employee → entitlement**): lock the request → lock the
+  employee (serialises that employee's submissions even across leave types, which use different entitlement rows) → revalidate
+  leave type/calendar/units, entitlement, request policy, policy rules and overlap → `reserve` (locks the entitlement,
+  `operationKey = leave:<id>:reserve`, `balancePolicyId` = request policy) → write snapshots + `PENDING` → `workflowEngine.submit`
+  → store `workflowInstanceId` → audit. Submitting again is idempotent: a request that is already PENDING/APPROVED with an
+  instance returns its current state — no second reservation, workflow or audit row.
+- **Auto-approval**: when every workflow step is skipped the engine calls `onApproved` *inside* the submit transaction, so the
+  snapshots and `PENDING` are written **before** `workflowEngine.submit`, and afterwards only `workflowInstanceId` is stored —
+  the handler's `APPROVED` is never overwritten back to `PENDING` (regression-tested).
+- **Terminal handlers** (`leave-request.handlers.ts`) run on the engine's transaction, lock order **workflow_instance →
+  leave_request → entitlement**: `onApproved` = release + use (`leave:<id>:release`, `leave:<id>:use`) + `APPROVED`;
+  `onRejected` / `onCancelled` = release + `REJECTED` / `CANCELLED`. Workflow instance/step/action, leave status, ledger rows,
+  entitlement cache and both audit entries commit or roll back together.
+- **Snapshots are frozen at submit**: entitlement, request policy, calendar + units and org/dept/position. Later changes to the
+  organization's default calendar, holidays, the employee's assignment or the policy set never recalculate a submitted request;
+  approval settles the stored units.
+- **Entitlement selection**: exactly one entitlement whose period covers the whole range; a range spanning two periods →
+  `LEAVE_CROSSES_ENTITLEMENT_PERIOD`, none → `LEAVE_ENTITLEMENT_NOT_FOUND` (no splitting in Phase 2).
+- **Overlap** is half-day aware via `leaveSpansOverlap` in `@hr/shared` (day → AM/PM slots): Full∩Full, Full∩AM, Full∩PM, AM∩AM,
+  PM∩PM overlap; AM∩PM of the same day does not. PENDING and APPROVED block; DRAFT, REJECTED and CANCELLED do not. The DB
+  narrows candidates by date range + blocking status first, so no employee's full history is loaded.
+- **Cancellation policy**: the requester may cancel a DRAFT or a PENDING request (even after earlier steps approved, while the
+  workflow is still pending). APPROVED leave cannot be cancelled here — an approved-leave cancellation workflow is backlog.
+- **Concurrency guarantees** (`tests/leave-concurrency.test.ts`, 20/20 consecutive runs): concurrent submit of the same draft →
+  one reservation + one instance; concurrent overlapping submits of different leave types → exactly one succeeds (employee row
+  lock, not the entitlement lock); final approve vs cancel → exactly one terminal outcome with ledger and audit agreeing;
+  duplicate final approve → one transition, one RELEASE + one USE; different employees never block each other. Removing the
+  employee lock fails test 78 and removing the request lock fails test 77, so the suite detects both races.
+- **Error codes** (never raw Prisma/PostgreSQL): `LEAVE_REQUEST_NOT_FOUND/_NOT_DRAFT/_NOT_PENDING/_NOT_CANCELLABLE`,
+  `EMPLOYEE_PROFILE_REQUIRED`, `LEAVE_ASSIGNMENT_REQUIRED`, `LEAVE_TYPE_INACTIVE`, `LEAVE_ENTITLEMENT_NOT_FOUND`,
+  `LEAVE_CROSSES_ENTITLEMENT_PERIOD`, `LEAVE_POLICY_NOT_FOUND`, `LEAVE_CROSSES_POLICY_PERIOD`, `WORK_CALENDAR_NOT_CONFIGURED`,
+  `LEAVE_REASON_REQUIRED`, `LEAVE_ATTACHMENT_REQUIRED`, `LEAVE_HALF_DAY_NOT_ALLOWED`, `LEAVE_HALF_DAY_INVALID`,
+  `LEAVE_BACKDATE_NOT_ALLOWED`, `LEAVE_NOTICE_NOT_MET`, `LEAVE_MAX_CONSECUTIVE_EXCEEDED`, `LEAVE_UNITS_ZERO`,
+  `LEAVE_REQUEST_OVERLAP`, `INSUFFICIENT_LEAVE_BALANCE`, `BALANCE_POLICY_MISMATCH`.
+- **Permissions** `leave.view` + `leave.request` (both granted to EMPLOYEE, MANAGER, HR, HR_ADMIN, EXECUTIVE, SYSTEM_ADMIN);
+  25 permissions total. `attachmentRef` is an opaque string — there is no upload or document service yet, and no notifications
+  (Task 13) or Leave UI (Task 12).
 
 ## Security notes
 

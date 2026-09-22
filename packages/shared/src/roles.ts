@@ -36,14 +36,14 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Employee',
     description: 'Employee self service: own profile and organization view',
     dataScope: DATA_SCOPES.SELF,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST],
   },
   {
     code: ROLES.MANAGER,
     name: 'Manager',
     description: 'Manager self service: own team',
     dataScope: DATA_SCOPES.TEAM,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST],
   },
   {
     code: ROLES.HR,
@@ -59,6 +59,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.WORKFLOW_APPROVE,
       P.CALENDAR_VIEW,
       P.LEAVE_MANAGE_ENTITLEMENTS,
+      P.LEAVE_VIEW,
+      P.LEAVE_REQUEST,
     ],
   },
   {
@@ -88,6 +90,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.LEAVE_MANAGE_TYPES,
       P.LEAVE_MANAGE_POLICIES,
       P.LEAVE_MANAGE_ENTITLEMENTS,
+      P.LEAVE_VIEW,
+      P.LEAVE_REQUEST,
     ],
   },
   {
@@ -95,7 +99,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Executive',
     description: 'Executive: read-only organization-wide view and dashboards',
     dataScope: DATA_SCOPES.ALL,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST],
   },
   {
     code: ROLES.SYSTEM_ADMIN,
