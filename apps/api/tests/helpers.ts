@@ -69,6 +69,8 @@ export async function cleanUsers() {
  * (vitest re-orders files by previous failures/durations, so leftovers from another file must never matter).
  */
 export async function resetDatabase() {
+  await prisma.leaveLedger.deleteMany();
+  await prisma.leaveEntitlement.deleteMany();
   await prisma.leavePolicy.deleteMany();
   await prisma.leaveType.deleteMany();
   await prisma.organization.updateMany({ data: { defaultCalendarId: null } });

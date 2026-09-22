@@ -85,10 +85,23 @@ export const leavePoliciesService = {
     return toDto(row);
   },
 
-  /** Rule edits on an ACTIVE policy are re-validated (overlap/workflow/type/org). Field diff is audited. */
+  /**
+   * Rule edits on an ACTIVE policy are re-validated (overlap/workflow/type/org). Field diff is audited.
+   * Once entitlements reference the policy, rule/selector fields are frozen (LEAVE_POLICY_IN_USE); `name`/`description`
+   * stay editable and `effectiveTo` may only be set on/after the latest policyResolvedDate (to close an open-ended policy).
+   */
   async update(id: string, input: UpdateLeavePolicyInput, actor: Actor) {
     const row = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
+      const refs = await tx.leaveEntitlement.aggregate({ where: { policyId: id }, _count: { _all: true }, _max: { policyResolvedDate: true } });
+      if (refs._count._all > 0) {
+        const changed = (Object.keys(input) as (keyof UpdateLeavePolicyInput)[]).filter((k) => input[k] !== undefined && JSON.stringify(input[k] ?? null) !== JSON.stringify((before as Record<string, unknown>)[k] ?? null));
+        const frozen = changed.filter((k) => !['name', 'effectiveTo'].includes(k));
+        if (frozen.length) throw new AppError(409, 'LEAVE_POLICY_IN_USE', `Policy is referenced by ${refs._count._all} entitlement(s); ${frozen.join(', ')} cannot change. Close this policy (effectiveTo) and create a new one instead.`);
+        if (changed.includes('effectiveTo') && input.effectiveTo && refs._max.policyResolvedDate && compareBusinessDate(input.effectiveTo, refs._max.policyResolvedDate) < 0) {
+          throw new AppError(409, 'LEAVE_POLICY_IN_USE', `effectiveTo cannot be before ${refs._max.policyResolvedDate}, the latest date an entitlement resolved this policy`);
+        }
+      }
       if (input.leaveTypeId && !(await tx.leaveType.findUnique({ where: { id: input.leaveTypeId } }))) throw new AppError(404, 'LEAVE_TYPE_NOT_FOUND', 'Leave type not found');
       if (input.organizationId && !(await tx.organization.findUnique({ where: { id: input.organizationId } }))) throw new AppError(404, 'ORGANIZATION_NOT_FOUND', 'Organization not found');
       const data: Prisma.LeavePolicyUpdateInput = { ...input, updatedBy: actor.auth.userId } as Prisma.LeavePolicyUpdateInput;

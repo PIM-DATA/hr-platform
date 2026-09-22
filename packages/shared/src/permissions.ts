@@ -35,6 +35,7 @@ export const PERMISSIONS = {
   CALENDAR_MANAGE: 'calendar.manage',
   LEAVE_MANAGE_TYPES: 'leave.manage_types',
   LEAVE_MANAGE_POLICIES: 'leave.manage_policies',
+  LEAVE_MANAGE_ENTITLEMENTS: 'leave.manage_entitlements',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -77,6 +78,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.CALENDAR_MANAGE, module: 'calendar', description: 'Manage work calendars, holidays and organization default calendar' },
   { code: PERMISSIONS.LEAVE_MANAGE_TYPES, module: 'leave', description: 'Manage leave types' },
   { code: PERMISSIONS.LEAVE_MANAGE_POLICIES, module: 'leave', description: 'Manage leave policies' },
+  { code: PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, module: 'leave', description: 'Generate and adjust leave entitlements, view ledgers' },
 ];
 
 /**

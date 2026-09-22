@@ -24,6 +24,7 @@ import { LeaveSettingsLayout } from '@/features/leave-settings/LeaveSettingsLayo
 import { LeaveTypesPage } from '@/features/leave-settings/LeaveTypesPage';
 import { PoliciesPage } from '@/features/leave-settings/PoliciesPage';
 import { CalendarsPage } from '@/features/leave-settings/CalendarsPage';
+import { EntitlementsPage } from '@/features/leave-settings/EntitlementsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -86,12 +87,13 @@ export const router = createBrowserRouter([
           { element: <RequirePermission permission={PERMISSIONS.AUDIT_VIEW} />, children: [{ path: 'admin/audit-logs', element: <AuditLogPage /> }] },
           { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS} />, children: [{ path: 'admin/workflows', element: <WorkflowDefinitionsPage /> }] },
           {
-            element: <RequirePermission permission={[PERMISSIONS.LEAVE_MANAGE_TYPES, PERMISSIONS.LEAVE_MANAGE_POLICIES, PERMISSIONS.CALENDAR_VIEW]} />,
+            element: <RequirePermission permission={[PERMISSIONS.LEAVE_MANAGE_TYPES, PERMISSIONS.LEAVE_MANAGE_POLICIES, PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, PERMISSIONS.CALENDAR_VIEW]} />,
             children: [{
               path: 'admin/leave-settings', element: <LeaveSettingsLayout />,
               children: [
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_TYPES} />, children: [{ index: true, element: <LeaveTypesPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_POLICIES} />, children: [{ path: 'policies', element: <PoliciesPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS} />, children: [{ path: 'entitlements', element: <EntitlementsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.CALENDAR_VIEW} />, children: [{ path: 'calendars', element: <CalendarsPage /> }] },
               ],
             }],

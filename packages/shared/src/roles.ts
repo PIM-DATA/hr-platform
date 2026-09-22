@@ -58,6 +58,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.ORGANIZATION_VIEW,
       P.WORKFLOW_APPROVE,
       P.CALENDAR_VIEW,
+      P.LEAVE_MANAGE_ENTITLEMENTS,
     ],
   },
   {
@@ -86,6 +87,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.CALENDAR_MANAGE,
       P.LEAVE_MANAGE_TYPES,
       P.LEAVE_MANAGE_POLICIES,
+      P.LEAVE_MANAGE_ENTITLEMENTS,
     ],
   },
   {

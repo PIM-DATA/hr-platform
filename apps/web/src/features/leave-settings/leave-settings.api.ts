@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { HolidayDto, LeavePolicyDto, LeaveTypeDto, LeaveWorkflowOptionDto, WorkCalendarDto } from '@hr/shared';
+import type { EntitlementDto, EntitlementPreviewDto, HolidayDto, LeaveEmployeeOptionDto, LeavePolicyDto, LeaveTypeDto, LeaveTypeOptionDto, LeaveWorkflowOptionDto, LedgerEntryDto, WorkCalendarDto } from '@hr/shared';
 import { api } from '@/lib/api-client';
 
 const KEY = 'leave-settings';
@@ -29,5 +29,24 @@ export function useCalendarExtras() {
     setDefault: useMutation({ mutationFn: ({ organizationId, calendarId }: { organizationId: string; calendarId: string | null }) => api.patch(`/calendars/organizations/${organizationId}/default`, { calendarId }), onSuccess: invalidate }),
     createHoliday: useMutation({ mutationFn: ({ calendarId, input }: { calendarId: string; input: unknown }) => api.post<HolidayDto>(`/calendars/${calendarId}/holidays`, input).then((r) => r.data), onSuccess: invalidate }),
     holidayActive: useMutation({ mutationFn: ({ id, active }: { id: string; active: boolean }) => api.patch<HolidayDto>(`/holidays/${id}/${active ? 'activate' : 'deactivate'}`).then((r) => r.data), onSuccess: invalidate }),
+  };
+}
+
+// ---------- entitlements (leave.manage_entitlements) ----------
+export const useEntitlements = (q: Record<string, unknown>) => useQuery({ queryKey: [KEY, 'entitlements', q], queryFn: () => api.get<EntitlementDto[]>(`/leave/entitlements?${qs(q)}`), placeholderData: (p) => p });
+export const useEntitlement = (id?: string) => useQuery({ queryKey: [KEY, 'entitlement', id], queryFn: () => api.get<EntitlementDto>(`/leave/entitlements/${id}`).then((r) => r.data), enabled: !!id });
+export const useEntitlementLedger = (id?: string, page = 1) => useQuery({ queryKey: [KEY, 'ledger', id, page], queryFn: () => api.get<LedgerEntryDto[]>(`/leave/entitlements/${id}/ledger?page=${page}&pageSize=25`), enabled: !!id });
+export const useEntitlementPreview = (q: { employeeId: string; leaveTypeId: string; periodStart: string }, enabled: boolean) =>
+  useQuery({ queryKey: [KEY, 'preview', q], queryFn: () => api.get<EntitlementPreviewDto>(`/leave/entitlements/preview?${qs(q)}`).then((r) => r.data), enabled, retry: false });
+export const useLeaveEmployeeOptions = (search: string, organizationId: string | undefined, enabled: boolean) =>
+  useQuery({ queryKey: [KEY, 'employee-options', search, organizationId], queryFn: () => api.get<LeaveEmployeeOptionDto[]>(`/leave/employee-options?${qs({ search, organizationId, limit: 20 })}`).then((r) => r.data), enabled });
+export const useLeaveTypeOptions = () => useQuery({ queryKey: [KEY, 'type-options'], queryFn: () => api.get<LeaveTypeOptionDto[]>('/leave/type-options').then((r) => r.data) });
+export function useEntitlementMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: [KEY] });
+  return {
+    generate: useMutation({ mutationFn: (input: unknown) => api.post<EntitlementDto>('/leave/entitlements', input).then((r) => r.data), onSuccess: invalidate }),
+    adjust: useMutation({ mutationFn: ({ id, input }: { id: string; input: unknown }) => api.post<EntitlementDto>(`/leave/entitlements/${id}/adjust`, input).then((r) => r.data), onSuccess: invalidate }),
+    carryForward: useMutation({ mutationFn: ({ id, input }: { id: string; input: unknown }) => api.post<EntitlementDto>(`/leave/entitlements/${id}/carry-forward`, input).then((r) => r.data), onSuccess: invalidate }),
   };
 }

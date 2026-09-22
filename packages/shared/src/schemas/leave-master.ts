@@ -24,27 +24,46 @@ export type UpdateLeaveTypeInput = z.infer<typeof updateLeaveTypeSchema>;
 export interface LeaveTypeDto { id: string; code: string; name: string; description: string | null; isActive: boolean; activePolicyCount: number; createdAt: string; updatedAt: string }
 
 // ---------- leave policies ----------
+/** Rule fields without defaults (PATCH must never inject defaults for fields the client did not send). */
 const policyFields = {
   name: nameField,
   leaveTypeId: z.string().min(1, 'Leave type is required'),
-  organizationId: z.string().min(1).nullable().optional(),
-  employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
+  organizationId: z.string().min(1).nullable(),
+  employmentType: z.enum(EMPLOYMENT_TYPES).nullable(),
   annualUnits: unitsSchema,
-  isPaid: z.boolean().default(true),
-  requiresReason: z.boolean().default(false),
-  requiresAttachment: z.boolean().default(false),
-  allowHalfDay: z.boolean().default(true),
-  allowNegativeBalance: z.boolean().default(false),
-  maxConsecutiveDays: z.coerce.number().int().min(1).max(365).nullable().optional(),
-  minNoticeDays: z.coerce.number().int().min(0).max(365).nullable().optional(),
-  allowBackdate: z.boolean().default(false),
-  carryForwardMaxUnits: unitsSchema.default(0),
-  carryForwardExpiryMonths: z.coerce.number().int().min(1).max(24).nullable().optional(),
-  workflowDefinitionCode: z.string().trim().toUpperCase().min(1).max(50).nullable().optional(),
+  isPaid: z.boolean(),
+  requiresReason: z.boolean(),
+  requiresAttachment: z.boolean(),
+  allowHalfDay: z.boolean(),
+  allowNegativeBalance: z.boolean(),
+  maxConsecutiveDays: z.coerce.number().int().min(1).max(365).nullable(),
+  minNoticeDays: z.coerce.number().int().min(0).max(365).nullable(),
+  allowBackdate: z.boolean(),
+  carryForwardMaxUnits: unitsSchema,
+  carryForwardExpiryMonths: z.coerce.number().int().min(1).max(24).nullable(),
+  workflowDefinitionCode: z.string().trim().toUpperCase().min(1).max(50).nullable(),
   effectiveFrom: businessDateSchema,
-  effectiveTo: businessDateSchema.nullable().optional(),
+  effectiveTo: businessDateSchema.nullable(),
 };
-export const createLeavePolicySchema = z.object(policyFields);
+/** Create applies defaults for optional rule fields. */
+export const createLeavePolicySchema = z.object({
+  ...policyFields,
+  organizationId: policyFields.organizationId.optional(),
+  employmentType: policyFields.employmentType.optional(),
+  isPaid: policyFields.isPaid.default(true),
+  requiresReason: policyFields.requiresReason.default(false),
+  requiresAttachment: policyFields.requiresAttachment.default(false),
+  allowHalfDay: policyFields.allowHalfDay.default(true),
+  allowNegativeBalance: policyFields.allowNegativeBalance.default(false),
+  maxConsecutiveDays: policyFields.maxConsecutiveDays.optional(),
+  minNoticeDays: policyFields.minNoticeDays.optional(),
+  allowBackdate: policyFields.allowBackdate.default(false),
+  carryForwardMaxUnits: policyFields.carryForwardMaxUnits.default(0),
+  carryForwardExpiryMonths: policyFields.carryForwardExpiryMonths.optional(),
+  workflowDefinitionCode: policyFields.workflowDefinitionCode.optional(),
+  effectiveTo: policyFields.effectiveTo.optional(),
+});
+/** Update: every field optional, NO defaults — only fields the client sends are touched. */
 export const updateLeavePolicySchema = nonEmpty(Object.fromEntries(Object.entries(policyFields).map(([k, v]) => [k, (v as z.ZodTypeAny).optional()])) as { [K in keyof typeof policyFields]: z.ZodOptional<(typeof policyFields)[K]> });
 export const leavePolicyListQuerySchema = paginationQuerySchema.extend({
   leaveTypeId: z.string().min(1).optional(),

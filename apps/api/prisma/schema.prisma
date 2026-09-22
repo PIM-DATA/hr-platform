@@ -43,6 +43,7 @@ model User {
   workflowApproverSteps   WorkflowInstanceStep[] @relation("WorkflowStepApproverUser")
   workflowActedSteps      WorkflowInstanceStep[] @relation("WorkflowStepActedBy")
   workflowActions         WorkflowAction[]
+  leaveLedgerEntries      LeaveLedger[]
 
   @@map("users")
 }
@@ -239,6 +240,7 @@ model Employee {
   managedHistory   EmployeeManager[]   @relation("ManagerHistoryManager")
   workflowRequests      WorkflowInstance[]     @relation("WorkflowRequesterEmployee")
   workflowApproverSteps WorkflowInstanceStep[] @relation("WorkflowStepApproverEmployee")
+  leaveEntitlements     LeaveEntitlement[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -487,7 +489,8 @@ model LeaveType {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  policies LeavePolicy[]
+  policies     LeavePolicy[]
+  entitlements LeaveEntitlement[]
 
   @@map("leave_types")
 }
@@ -522,6 +525,8 @@ model LeavePolicy {
   createdBy                String?       @map("created_by")
   updatedBy                String?       @map("updated_by")
 
+  entitlements LeaveEntitlement[]
+
   @@index([leaveTypeId, isActive])
   @@index([organizationId])
   @@index([employmentType])
@@ -529,5 +534,59 @@ model LeavePolicy {
   @@map("leave_policies")
 }
 
+// =====================================================================
+// LEAVE — ENTITLEMENT + LEDGER (Phase 2, Task 10)
+// =====================================================================
+
+/// TRANSACTION (cached summary). granted/carriedForward/adjustment/reserved/used are DERIVED from leave_ledger and
+/// recomputed inside every ledger-writing transaction — never incremented blindly. policyId = policy used to grant (historical identity).
+model LeaveEntitlement {
+  id                 String      @id @default(cuid())
+  employeeId         String      @map("employee_id")
+  employee           Employee    @relation(fields: [employeeId], references: [id])
+  leaveTypeId        String      @map("leave_type_id")
+  leaveType          LeaveType   @relation(fields: [leaveTypeId], references: [id])
+  policyId           String      @map("policy_id")
+  policy             LeavePolicy @relation(fields: [policyId], references: [id])
+  policyResolvedDate String      @map("policy_resolved_date") // YYYY-MM-DD (= periodStart in Phase 2)
+  periodStart        String      @map("period_start") // YYYY-MM-DD inclusive
+  periodEnd          String      @map("period_end") // YYYY-MM-DD inclusive
+  granted            Float       @default(0)
+  carriedForward     Float       @default(0) @map("carried_forward")
+  adjustment         Float       @default(0)
+  reserved           Float       @default(0)
+  used               Float       @default(0)
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+  createdByUserId    String?     @map("created_by_user_id")
+
+  ledger LeaveLedger[]
+
+  @@unique([employeeId, leaveTypeId, periodStart])
+  @@index([employeeId, leaveTypeId])
+  @@index([periodStart, periodEnd])
+  @@index([policyId])
+  @@map("leave_entitlements")
+}
+
+/// HISTORY, append-only — SOURCE OF TRUTH for balances. Sign convention in @hr/shared leave-ledger.ts.
+model LeaveLedger {
+  id              String           @id @default(cuid())
+  entitlementId   String           @map("entitlement_id")
+  entitlement     LeaveEntitlement @relation(fields: [entitlementId], references: [id])
+  entryType       String           @map("entry_type") // GRANT | CARRY_FORWARD | ADJUSTMENT | RESERVE | RELEASE | USE | REFUND
+  units           Float // signed, multiple of 0.5, never 0
+  referenceType   String?          @map("reference_type") // e.g. LeaveRequest
+  referenceId     String?          @map("reference_id")
+  operationKey    String           @unique @map("operation_key") // idempotency: grant:<id>, leave:<requestId>:reserve, adj:<cuid>
+  note            String?
+  createdByUserId String?          @map("created_by_user_id")
+  createdBy       User?            @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@index([entitlementId, createdAt])
+  @@map("leave_ledger")
+}
+
 // Reserved for later Phase 2 tasks (not created yet):
-//   leave_entitlements, leave_ledger, leave_requests, notifications, notification_deliveries
+//   leave_requests, notifications, notification_deliveries

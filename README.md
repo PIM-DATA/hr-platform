@@ -24,7 +24,7 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 8 Workflow engine foundation | ✅ |
 | 8.1 Approver resolution hardening | ✅ |
 | 9 Leave master data + shared work calendars | ✅ |
-| 10 Leave entitlement + ledger | ⏳ |
+| 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only; concurrency NOT production-validated until 10.5) |
 | 10.5 PostgreSQL migration / integration validation | ⏳ required before 11 |
 | 11 Leave request + workflow + reservation concurrency | ⏳ |
 | 12 Approval inbox + Leave UI · 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
@@ -297,6 +297,39 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - **Units**: whole or half days (`isHalfDayUnit`). `calculateLeaveUnits` = working days in range − 0.5 for a PM start − 0.5 for an AM end;
   same-day PM→AM and half days on non-working days/holidays are rejected.
 - Permissions `leave.manage_types`, `leave.manage_policies`; `GET /leave/workflow-options` gives policy managers the compatible workflows without workflow admin rights.
+
+## Leave entitlements and balance ledger (Task 10)
+
+- **Model**: `leave_entitlements` = one row per `(employee, leaveType, periodStart)` with a **cached summary** (`granted`, `carriedForward`,
+  `adjustment`, `reserved`, `used`); `leave_ledger` = **append-only source of truth** (`entryType`, signed `units`, optional
+  `referenceType/referenceId`, `operationKey @unique`, `note`, `createdByUserId`). The cache is recomputed **from the ledger inside the same
+  transaction** on every write (`summaryFromLedger`), never incremented. `reconcile(id)` reports drift read-only (no auto-repair).
+  Periods for the same employee/type may not overlap (`ENTITLEMENT_PERIOD_OVERLAP`); identical period → `ENTITLEMENT_ALREADY_EXISTS`.
+- **Sign convention** (`packages/shared/src/leave-ledger.ts`, `LEDGER_SIGN`): GRANT +, CARRY_FORWARD +, ADJUSTMENT ±, RESERVE + / RELEASE −
+  (net → `reserved`), USE + / REFUND − (net → `used`). `available = granted + carriedForward + adjustment − reserved − used`. Units are
+  non-zero multiples of 0.5 (`LEDGER_UNIT_INVALID`, `LEDGER_SIGN_INVALID`), validated before rounding.
+- **BalanceService** (`modules/leave/balance.service.ts`) is composable with the caller's transaction (`grant/carryForward/adjust/reserve/
+  release/use/refund(tx, …)`) and loads the entitlement through a single `loadEntitlementForMutation(tx, id)` (the future `SELECT … FOR UPDATE`
+  point). Guards: no negative available balance unless the referenced policy `allowNegativeBalance` (`INSUFFICIENT_LEAVE_BALANCE`),
+  release ≤ reserved, refund ≤ used, cumulative carry-forward ≤ `policy.carryForwardMaxUnits` (`CARRY_FORWARD_EXCEEDS_POLICY`).
+- **Idempotency**: every write carries an `operationKey` — `grant:<entitlementId>`, `leave:<requestId>:reserve|release|use|refund`,
+  `adj:<uuid>`, `cf:<uuid>`. Same key + same payload → replay of the existing row (`idempotentReplay: true`); same key + different payload
+  → 409 `LEDGER_OPERATION_CONFLICT`.
+- **Generation** (`POST /leave/entitlements` — client sends only `employeeId, leaveTypeId, periodStart, periodEnd`): validates active
+  employee/type → overlap → resolves the policy at `periodStart` (`policyId` + `policyResolvedDate` snapshot) → creates the row → GRANT
+  `annualUnits` (no ledger row when `annualUnits = 0`) → audit `GENERATE_LEAVE_ENTITLEMENT`, all in one transaction. `GET /leave/entitlements/preview`
+  shows the resolved policy before generating. No mass generation yet.
+- **Policy reference hardening**: once entitlements reference a policy, `PATCH` may change only `name` and `effectiveTo`
+  (`effectiveTo ≥ MAX(policyResolvedDate)`); anything else → 409 `LEAVE_POLICY_IN_USE`. Deactivating is allowed — existing entitlements keep
+  the historical `policyId` and remain viewable.
+- **API** (permission `leave.manage_entitlements`; HR, HR_ADMIN, SYSTEM_ADMIN): `GET /leave/entitlements` (filters employee/organization/
+  leaveType/year/period), `GET /leave/entitlements/:id`, `GET /leave/entitlements/:id/ledger`, `POST /leave/entitlements/:id/adjust`
+  (signed units + required note), `POST /leave/entitlements/:id/carry-forward`, `GET /leave/employee-options`, `GET /leave/type-options`.
+  Audit actions `GENERATE_/ADJUST_/CARRY_FORWARD_LEAVE_ENTITLEMENT` are written in the same transaction. There are **no employee-facing
+  balance endpoints and no leave requests yet** (Task 11); `reserve/release/use/refund` have no HTTP surface.
+- **Concurrency limitation (read before Task 11)**: correctness is proven only with sequential transaction tests on SQLite
+  (`connection_limit=1` serialises writes as a side effect — it is **not** a production guarantee). Task 10.5 must run the suite on
+  PostgreSQL and add `FOR UPDATE` row locking (or equivalent) in `loadEntitlementForMutation` before any concurrent reservation is trusted.
 
 ## Security notes
 

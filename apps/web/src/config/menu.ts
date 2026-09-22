@@ -65,7 +65,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW },
       { label: 'Audit Logs', path: '/admin/audit-logs', icon: ScrollText, permission: P.AUDIT_VIEW },
       { label: 'Workflows', path: '/admin/workflows', icon: Workflow, permission: P.WORKFLOW_MANAGE_DEFINITIONS },
-      { label: 'Leave Settings', path: '/admin/leave-settings', icon: CalendarDays, permission: [P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.CALENDAR_VIEW] },
+      { label: 'Leave Settings', path: '/admin/leave-settings', icon: CalendarDays, permission: [P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.CALENDAR_VIEW] },
       { label: 'Settings', path: '/admin/settings', icon: Settings, permission: P.SETTINGS_MANAGE, comingSoon: true },
     ],
   },

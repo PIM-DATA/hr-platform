@@ -9,3 +9,4 @@ export * from './dashboard';
 export * from './workflow';
 export * from './calendar';
 export * from './leave-master';
+export * from './leave-entitlement';

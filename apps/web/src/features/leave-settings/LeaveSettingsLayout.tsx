@@ -9,6 +9,7 @@ export function LeaveSettingsLayout() {
   const tabs = [
     hasPermission(PERMISSIONS.LEAVE_MANAGE_TYPES) && { label: 'Leave types', to: '/admin/leave-settings', end: true },
     hasPermission(PERMISSIONS.LEAVE_MANAGE_POLICIES) && { label: 'Policies', to: '/admin/leave-settings/policies' },
+    hasPermission(PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS) && { label: 'Entitlements', to: '/admin/leave-settings/entitlements' },
     hasPermission(PERMISSIONS.CALENDAR_VIEW) && { label: 'Calendars & holidays', to: '/admin/leave-settings/calendars' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];
   return (
