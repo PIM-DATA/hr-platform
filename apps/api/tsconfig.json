@@ -12,5 +12,5 @@
     "noEmit": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "prisma", "tests"]
+  "include": ["src", "prisma", "tests", "scripts"]
 }

@@ -24,8 +24,8 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 8 Workflow engine foundation | ✅ |
 | 8.1 Approver resolution hardening | ✅ |
 | 9 Leave master data + shared work calendars | ✅ |
-| 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only; concurrency NOT production-validated until 10.5) |
-| 10.5 PostgreSQL migration / integration validation | ⏳ required before 11 |
+| 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only, no HTTP surface yet) |
+| 10.5 PostgreSQL migration + balance concurrency validation | ✅ |
 | 11 Leave request + workflow + reservation concurrency | ⏳ |
 | 12 Approval inbox + Leave UI · 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
 | Attendance | Phase 2B |
@@ -36,7 +36,7 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 |---|---|
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS v4, React Router, TanStack Query, react-hook-form |
 | Backend | Node.js, Express 5, TypeScript, Zod, Pino |
-| Database | Prisma 6 — SQLite for local development, PostgreSQL for real data |
+| Database | PostgreSQL (canonical since Task 10.5) via Prisma 6; SQLite history of Tasks 1–10 archived |
 | Shared | `packages/shared` — permission / role codes, enums, zod schemas used by both sides |
 | Tests | Vitest + Supertest |
 
@@ -52,10 +52,14 @@ apps/web/             SPA        (src/features/<domain>, src/components/{ui,layo
 
 ```bash
 npm install
-cp apps/api/.env.example apps/api/.env      # then set SEED_ADMIN_PASSWORD (and SEED_DEMO_PASSWORD for demo role accounts)
-npm run db:migrate                          # creates apps/api/prisma/dev.db and runs the seed
+cp apps/api/.env.example apps/api/.env      # set DATABASE_URL, TEST_DATABASE_URL, SEED_ADMIN_PASSWORD (and SEED_DEMO_PASSWORD for demo accounts)
+createdb hr_enterprise_dev && createdb hr_enterprise_test   # two SEPARATE PostgreSQL databases (see "Database")
+npm run db:migrate                          # applies the PostgreSQL migrations to DATABASE_URL and runs the seed
 npm run dev                                 # api → http://localhost:4000, web → http://localhost:5173
 ```
+
+**Requires PostgreSQL** (developed against PostgreSQL 18; standard SQL only, no version-specific features). `npm run db:migrate`
+targets PostgreSQL — it will not produce a SQLite file.
 
 Run separately with `npm run dev:api` / `npm run dev:web`. The Vite dev server proxies `/api` to the API,
 so the browser talks to one origin (cookies work without CORS).
@@ -73,13 +77,18 @@ so the browser talks to one origin (cookies work without CORS).
 
 ## Testing
 
-- `apps/api/tests/*.test.ts` are integration tests over the real Express app + Prisma + a throwaway SQLite file.
+- `apps/api/tests/*.test.ts` are integration tests over the real Express app + Prisma + the dedicated PostgreSQL **test** database (`TEST_DATABASE_URL`).
   Files run **sequentially in separate processes** (`fileParallelism: false`); every file starts with `resetDatabase()`
   (all tables wiped in FK order, roles re-seeded), so files never depend on execution order. Unit tests without a DB could run in parallel if ever needed.
 - Each file opens **one HTTP server bound to `127.0.0.1`** via `createTestServer()` instead of `request(app)`. supertest's
   per-request `app.listen(0)` binds `[::]:P` while connecting to `127.0.0.1:P`; on macOS that bind succeeds even when another
   process owns `127.0.0.1:P`, so requests occasionally reached a foreign process (garbage or wrong responses ≈ a few % of full runs).
-- SQLite test URL uses `connection_limit=1` (single-writer database). `TEST_LOG_LEVEL=error|debug` prints server-side logs (JSON) into vitest output.
+- `npm test` = `db:test:reset` (drops + recreates the test schema, `prisma migrate deploy` from empty) then `NODE_ENV=test vitest run`.
+  **Test DB safety**: `src/config/env.ts` exits when `NODE_ENV=test` without `TEST_DATABASE_URL` or when it equals `DATABASE_URL`;
+  `resetDatabase()` / `cleanUsers()` re-check the same before deleting; `scripts/reset-test-db.ts` only accepts a PostgreSQL URL.
+  Tests never fall back to the dev database. `TEST_LOG_LEVEL=error|debug` prints server-side logs (JSON) into vitest output.
+- `tests/balance-concurrency.test.ts` opens real concurrent transactions (see "Concurrency" under Task 10.5) and is the acceptance
+  suite for the row lock; it must pass 20/20 consecutive runs after any change to `BalanceService`.
 - `loginAs()` / `explainAuthFailure()` fail with the account/session state (never passwords, hashes, tokens or cookies).
 
 ## API conventions
@@ -104,11 +113,18 @@ Every response carries `x-request-id`; the same id appears in the API log line f
 3. Prisma model(s) referencing `employees.id`; `npm run db:migrate`.
 4. `apps/web/src/features/leave/` pages; add the route in `src/app/router.tsx`; flip `comingSoon` off in `src/config/menu.ts`.
 
-## Moving to PostgreSQL
+## Database (PostgreSQL) and migration boundary
 
-1. `apps/api/prisma/schema.prisma`: `provider = "postgresql"`.
-2. `DATABASE_URL="postgresql://user:password@host:5432/hr_platform?schema=public"`.
-3. Delete `apps/api/prisma/migrations/` (SQLite SQL is not portable) and run `npm run db:migrate -- --name init`.
+- **Canonical database**: PostgreSQL for development, integration tests and production (`provider = "postgresql"`). Runtime support
+  for SQLite was dropped in Task 10.5 — one dialect, one migration history.
+- **Migration boundary**: `apps/api/prisma/migrations/` contains the PostgreSQL history, starting with the baseline
+  `20260922091154_init_postgresql` generated from the Task 10 data model (empty database → `migrate deploy` → `db:seed` → run).
+  `apps/api/prisma/migrations-sqlite-archive/` is the SQLite history of Tasks 1–10, kept as a historical development record only —
+  **never apply it to PostgreSQL** and never add to it. No data was migrated from `dev.db` (demo/seed data only; re-seed instead).
+  A leftover `apps/api/prisma/dev.db` is inert and still git-ignored (`*.db`).
+- **Two databases**: `DATABASE_URL` (dev, seeded) and `TEST_DATABASE_URL` (tests; wiped on every run). Same server, separate databases.
+- Scripts (`apps/api`): `db:generate`, `db:migrate` (dev: create/apply + seed), `db:deploy` (apply only), `db:seed` (idempotent),
+  `db:test:reset` (guarded destructive reset of the test database), `test`.
 
 ## Authentication
 
@@ -248,7 +264,8 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 | Variable | Purpose |
 |---|---|
 | `NODE_ENV`, `PORT`, `LOG_LEVEL` | runtime |
-| `DATABASE_URL` | SQLite `file:./dev.db?connection_limit=1` for development; PostgreSQL URL for real data |
+| `DATABASE_URL` | PostgreSQL URL of the development database |
+| `TEST_DATABASE_URL` | PostgreSQL URL of the **separate** test database (required under `NODE_ENV=test`; must differ from `DATABASE_URL`) |
 | `CORS_ORIGIN` | allowed browser origin (also used by the CSRF origin check) |
 | `SESSION_TTL_HOURS`, `COOKIE_SECURE` | session lifetime; `Secure` cookies are forced on in production |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MINUTES` | login rate limit |
@@ -258,7 +275,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 
 ## Known limitations / backlog
 
-- SQLite is for development only; move to PostgreSQL before real data (see above). Login rate limiter is in-memory (single instance).
+- Login rate limiter is in-memory (single instance).
 - Audit: actor email is the current email (identity = `userId`); no retention/archive/export.
 - No forgot-password / self-service password change; admins reset passwords.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
@@ -327,9 +344,20 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
   (signed units + required note), `POST /leave/entitlements/:id/carry-forward`, `GET /leave/employee-options`, `GET /leave/type-options`.
   Audit actions `GENERATE_/ADJUST_/CARRY_FORWARD_LEAVE_ENTITLEMENT` are written in the same transaction. There are **no employee-facing
   balance endpoints and no leave requests yet** (Task 11); `reserve/release/use/refund` have no HTTP surface.
-- **Concurrency limitation (read before Task 11)**: correctness is proven only with sequential transaction tests on SQLite
-  (`connection_limit=1` serialises writes as a side effect — it is **not** a production guarantee). Task 10.5 must run the suite on
-  PostgreSQL and add `FOR UPDATE` row locking (or equivalent) in `loadEntitlementForMutation` before any concurrent reservation is trusted.
+- **Concurrency (Task 10.5)** — `loadEntitlementForMutation(tx, id)` runs `SELECT "id" FROM "leave_entitlements" WHERE "id" = $1 FOR UPDATE`
+  (parameterised tagged template) before loading the row, so every mutation of an existing entitlement (adjust, carryForward,
+  reserve, release, use, refund) is serialised per entitlement: **lock → operationKey check → balance guard → insert → recompute →
+  cache → commit**. The initial GRANT happens inside the transaction that creates the row, before it is visible. Lock granularity is
+  one entitlement row (no global mutex, proven by the "different entitlements" test); one operation touches one entitlement, so no
+  lock ordering is needed yet — a future multi-entitlement operation must lock in a deterministic (id) order. Isolation stays at
+  PostgreSQL's default READ COMMITTED: after the lock is granted, subsequent statements see what the previous holder committed,
+  which is all the balance guard needs; no SERIALIZABLE, no retry framework. The referenced policy is not locked because its rule
+  fields are immutable once referenced (`LEAVE_POLICY_IN_USE`). A same-`operationKey` race across two different entitlements is caught
+  by the unique index and mapped to 409 `LEDGER_OPERATION_CONFLICT`. **Guarantee validated** (`tests/balance-concurrency.test.ts`):
+  available 2 + concurrent reserve 2/2 → exactly one succeeds; available 5 + 10 concurrent reserve 1 → exactly 5; same key + same
+  payload concurrently → one ledger row, both callers succeed; rollback releases the lock; cache == ledger after every scenario;
+  0.5-unit sums are exact on `DOUBLE PRECISION`. Removing the `FOR UPDATE` makes 6 of the 10 tests fail (double-spend), so the
+  suite detects the race. Full suite 5/5 and concurrency suite 20/20 consecutive green on PostgreSQL 18.6 at Task 10.5 sign-off.
 
 ## Security notes
 

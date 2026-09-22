@@ -47,7 +47,7 @@ const audit = (a: Actor, action: keyof typeof AUDIT_ACTIONS, recordType: string,
 export const calendarsService = {
   async list(q: CalendarListQuery) {
     const where: Prisma.WorkCalendarWhereInput = { organizationId: q.organizationId, isActive: q.status ? q.status === 'active' : undefined };
-    if (q.search) where.OR = [{ code: { contains: q.search } }, { name: { contains: q.search } }];
+    if (q.search) where.OR = [{ code: { contains: q.search, mode: 'insensitive' } }, { name: { contains: q.search, mode: 'insensitive' } }];
     const [total, rows] = await prisma.$transaction([prisma.workCalendar.count({ where }), prisma.workCalendar.findMany({ where, include, orderBy: [{ organizationId: 'asc' }, { code: 'asc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: rows.map(toDto), meta: { page: q.page, pageSize: q.pageSize, total } };
   },

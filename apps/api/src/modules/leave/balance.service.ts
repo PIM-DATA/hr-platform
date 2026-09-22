@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { LEDGER_ENTRY_TYPES, LEDGER_SIGN, availableUnits, computeBalanceSummary, halfRound, isHalfDayUnit, type BalanceSummary, type LedgerEntryType } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -9,9 +9,13 @@ import { AppError } from '../../lib/errors';
  * Every method takes the caller's Prisma transaction client so Leave Request (Task 11) can compose
  * request update + workflow + ledger + cache + audit in ONE transaction. The service never opens its own.
  *
- * Correctness so far is proven with sequential transaction tests on SQLite. Concurrent reservation
- * safety is NOT production-validated: Task 10.5 replaces `loadEntitlementForMutation` with a
- * PostgreSQL row lock (SELECT … FOR UPDATE) without changing any caller.
+ * Concurrency (Task 10.5, PostgreSQL): every mutation of an existing entitlement first takes a row-level lock
+ * on that entitlement (`SELECT … FOR UPDATE` in `loadEntitlementForMutation`), so competing transactions on the
+ * same entitlement run strictly one after another: lock → operationKey check → balance guard → insert → recompute
+ * → cache → commit. Lock granularity is ONE entitlement row (no global mutex); a mutation never touches a second
+ * entitlement, so there is no lock ordering to define yet. READ COMMITTED (PostgreSQL default) is sufficient:
+ * after the lock is acquired, the following statements see the rows committed by the previous holder.
+ * The referenced policy is not locked: its rule fields are immutable once referenced (LEAVE_POLICY_IN_USE).
  */
 export type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof prisma;
@@ -36,9 +40,11 @@ export interface LedgerResult {
 }
 
 /**
- * The single place an entitlement is loaded for mutation. Task 10.5: add `FOR UPDATE` here (PostgreSQL).
+ * The single place an entitlement is loaded for mutation: acquires the PostgreSQL row lock (held until the
+ * caller's transaction ends), then loads the row + policy rules. Parameterised tagged template — no SQL interpolation.
  */
 export async function loadEntitlementForMutation(tx: Tx, entitlementId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "leave_entitlements" WHERE "id" = ${entitlementId} FOR UPDATE`;
   const row = await tx.leaveEntitlement.findUnique({ where: { id: entitlementId }, include: { policy: { select: { id: true, allowNegativeBalance: true, carryForwardMaxUnits: true } } } });
   if (!row) throw new AppError(404, 'LEAVE_ENTITLEMENT_NOT_FOUND', 'Leave entitlement not found');
   return row;
@@ -63,8 +69,10 @@ async function appendEntry(tx: Tx, w: LedgerWrite, guard: (before: BalanceSummar
   if (sign !== 0 && Math.sign(w.units) !== sign) throw new AppError(400, 'LEDGER_SIGN_INVALID', `${w.entryType} entries must be ${sign > 0 ? 'positive' : 'negative'}`);
   w = { ...w, units: halfRound(w.units) };
 
-  const existing = await tx.leaveLedger.findUnique({ where: { operationKey: w.operationKey } });
+  // 1. lock the entitlement row, 2. only then look for a previous run of this operationKey (a concurrent
+  // caller with the same key waits on the lock and then sees the committed row → idempotent replay).
   const ent = await loadEntitlementForMutation(tx, w.entitlementId);
+  const existing = await tx.leaveLedger.findUnique({ where: { operationKey: w.operationKey } });
   if (existing) {
     const same = existing.entitlementId === w.entitlementId && existing.entryType === w.entryType && existing.units === w.units && (existing.referenceType ?? null) === (w.referenceType ?? null) && (existing.referenceId ?? null) === (w.referenceId ?? null);
     if (!same) throw new AppError(409, 'LEDGER_OPERATION_CONFLICT', `Operation ${w.operationKey} was already recorded with a different payload`);
@@ -76,7 +84,13 @@ async function appendEntry(tx: Tx, w: LedgerWrite, guard: (before: BalanceSummar
   const after = computeBalanceSummary([{ entryType: w.entryType, units: w.units }, ...toRows(before)]);
   guard(before, after, ent.policy);
 
-  const entry = await tx.leaveLedger.create({ data: { entitlementId: w.entitlementId, entryType: w.entryType, units: w.units, operationKey: w.operationKey, referenceType: w.referenceType ?? null, referenceId: w.referenceId ?? null, note: w.note ?? null, createdByUserId: w.actorUserId } });
+  const entry = await tx.leaveLedger
+    .create({ data: { entitlementId: w.entitlementId, entryType: w.entryType, units: w.units, operationKey: w.operationKey, referenceType: w.referenceType ?? null, referenceId: w.referenceId ?? null, note: w.note ?? null, createdByUserId: w.actorUserId } })
+    .catch((e: unknown) => {
+      // same operationKey raced in from a transaction holding a DIFFERENT entitlement's lock: the unique index is the backstop
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new AppError(409, 'LEDGER_OPERATION_CONFLICT', `Operation ${w.operationKey} was already recorded with a different payload`);
+      throw e;
+    });
   const summary = await summaryFromLedger(tx, w.entitlementId); // recompute from the ledger, never increment
   await tx.leaveEntitlement.update({ where: { id: w.entitlementId }, data: summary });
   return { entry, summary, available: availableUnits(summary), idempotentReplay: false };

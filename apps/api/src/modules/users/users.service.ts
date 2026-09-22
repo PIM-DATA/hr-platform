@@ -108,10 +108,10 @@ export const usersService = {
     if (query.search) {
       const s = query.search;
       where.OR = [
-        { email: { contains: s } },
-        { employee: { employeeCode: { contains: s } } },
-        { employee: { firstName: { contains: s } } },
-        { employee: { lastName: { contains: s } } },
+        { email: { contains: s, mode: 'insensitive' } },
+        { employee: { employeeCode: { contains: s, mode: 'insensitive' } } },
+        { employee: { firstName: { contains: s, mode: 'insensitive' } } },
+        { employee: { lastName: { contains: s, mode: 'insensitive' } } },
       ];
     }
     const [total, rows] = await prisma.$transaction([
@@ -275,7 +275,7 @@ export const usersService = {
         employmentStatus: 'ACTIVE',
         OR: [{ user: null }, ...(includeUserId ? [{ user: { id: includeUserId } }] : [])],
         ...(search
-          ? { AND: [{ OR: [{ employeeCode: { contains: search } }, { firstName: { contains: search } }, { lastName: { contains: search } }, { email: { contains: search } }] }] }
+          ? { AND: [{ OR: [{ employeeCode: { contains: search, mode: 'insensitive' } }, { firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] }] }
           : {}),
       },
       select: { id: true, employeeCode: true, firstName: true, lastName: true, user: { select: { id: true } } },

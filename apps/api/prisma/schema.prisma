@@ -3,18 +3,19 @@
 // Conventions
 //  - Table / column names are snake_case via @@map / @map (portable to PostgreSQL).
 //  - ids are cuid strings (no guessable sequential ids).
-//  - Enum-like values are TEXT columns; the allowed values live in @hr/shared (SQLite has no enums).
+//  - Enum-like values are TEXT columns; the allowed values live in @hr/shared (kept portable across providers).
 //  - No hard deletes for master data: is_active / employment_status flags instead.
 //
-// Switching to PostgreSQL: change `provider` below, set DATABASE_URL, delete prisma/migrations
-// (SQLite SQL is not portable) and run `prisma migrate dev --name init` again.
+// Database: PostgreSQL is the canonical development + integration database since Task 10.5.
+// prisma/migrations holds the PostgreSQL history (baseline generated from this model); the SQLite history of
+// Tasks 1–10 is archived in prisma/migrations-sqlite-archive and must never be applied to PostgreSQL.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

@@ -33,7 +33,7 @@ export const organizationsService = {
   async list(q: OrganizationListQuery) {
     const where: Prisma.OrganizationWhereInput = {};
     if (q.status) where.isActive = q.status === 'active';
-    if (q.search) where.OR = [{ code: { contains: q.search } }, { name: { contains: q.search } }];
+    if (q.search) where.OR = [{ code: { contains: q.search, mode: 'insensitive' } }, { name: { contains: q.search, mode: 'insensitive' } }];
     const [total, rows] = await prisma.$transaction([
       prisma.organization.count({ where }),
       prisma.organization.findMany({ where, include, orderBy: { [q.sortBy]: q.sortDir }, ...paging(q) }),

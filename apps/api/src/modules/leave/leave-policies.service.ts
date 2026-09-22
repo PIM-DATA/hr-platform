@@ -61,7 +61,7 @@ async function validateForActivation(db: Db, p: Row, exceptId: string) {
 export const leavePoliciesService = {
   async list(q: LeavePolicyListQuery) {
     const where: Prisma.LeavePolicyWhereInput = { leaveTypeId: q.leaveTypeId, organizationId: q.organizationId, isActive: q.status ? q.status === 'active' : undefined };
-    if (q.search) where.name = { contains: q.search };
+    if (q.search) where.name = { contains: q.search, mode: 'insensitive' };
     const [total, rows] = await prisma.$transaction([prisma.leavePolicy.count({ where }), prisma.leavePolicy.findMany({ where, include, orderBy: [{ leaveTypeId: 'asc' }, { effectiveFrom: 'desc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: rows.map(toDto), meta: { page: q.page, pageSize: q.pageSize, total } };
   },
@@ -169,7 +169,7 @@ export const leavePoliciesService = {
   /** Active, compatible workflow definitions for the policy picker (leave.manage_policies — no workflow admin needed). */
   async workflowOptions(search?: string): Promise<LeaveWorkflowOptionDto[]> {
     const rows = await prisma.workflowDefinition.findMany({
-      where: { isActive: true, module: LEAVE_WORKFLOW.module, entityType: LEAVE_WORKFLOW.entityType, ...(search ? { OR: [{ code: { contains: search.toUpperCase() } }, { name: { contains: search } }] } : {}) },
+      where: { isActive: true, module: LEAVE_WORKFLOW.module, entityType: LEAVE_WORKFLOW.entityType, ...(search ? { OR: [{ code: { contains: search.toUpperCase() } }, { name: { contains: search, mode: 'insensitive' } }] } : {}) },
       select: { code: true, name: true, version: true, steps: { orderBy: { stepOrder: 'asc' }, select: { stepOrder: true, name: true, approverType: true } } },
       orderBy: { code: 'asc' },
     });

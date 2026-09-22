@@ -52,7 +52,7 @@ async function resolveForPeriod(db: Db, input: { employeeId: string; leaveTypeId
 export const entitlementsService = {
   async list(q: EntitlementListQuery) {
     const where: Prisma.LeaveEntitlementWhereInput = { employeeId: q.employeeId, leaveTypeId: q.leaveTypeId, periodStart: q.periodStart ?? (q.year ? { startsWith: `${q.year}-` } : undefined), employee: q.organizationId ? { organizationId: q.organizationId } : undefined };
-    if (q.search) where.employee = { ...(where.employee as object), OR: [{ employeeCode: { contains: q.search } }, { firstName: { contains: q.search } }, { lastName: { contains: q.search } }] };
+    if (q.search) where.employee = { ...(where.employee as object), OR: [{ employeeCode: { contains: q.search, mode: 'insensitive' } }, { firstName: { contains: q.search, mode: 'insensitive' } }, { lastName: { contains: q.search, mode: 'insensitive' } }] };
     const [total, rows] = await prisma.$transaction([prisma.leaveEntitlement.count({ where }), prisma.leaveEntitlement.findMany({ where, include, orderBy: [{ periodStart: 'desc' }, { employeeId: 'asc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: rows.map(toDto), meta: { page: q.page, pageSize: q.pageSize, total } };
   },
@@ -119,7 +119,7 @@ export const entitlementsService = {
   async employeeOptions(q: { search?: string; organizationId?: string; limit: number }): Promise<LeaveEmployeeOptionDto[]> {
     const terms = (q.search ?? '').split(/\s+/).filter(Boolean);
     return prisma.employee.findMany({
-      where: { employmentStatus: 'ACTIVE', organizationId: q.organizationId, AND: terms.map((t) => ({ OR: [{ employeeCode: { contains: t } }, { firstName: { contains: t } }, { lastName: { contains: t } }] })) },
+      where: { employmentStatus: 'ACTIVE', organizationId: q.organizationId, AND: terms.map((t) => ({ OR: [{ employeeCode: { contains: t, mode: 'insensitive' } }, { firstName: { contains: t, mode: 'insensitive' } }, { lastName: { contains: t, mode: 'insensitive' } }] })) },
       select: { id: true, employeeCode: true, firstName: true, lastName: true, employmentType: true, organization: { select: { id: true, code: true, name: true } }, department: { select: { id: true, code: true, name: true } } },
       orderBy: { employeeCode: 'asc' }, take: q.limit,
     });

@@ -3,6 +3,7 @@ import type { Response } from 'supertest';
 import { afterAll } from 'vitest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
+import { env } from '../src/config/env';
 import { hashPassword } from '../src/lib/password';
 import { seedRolesAndPermissions } from '../prisma/seeders/roles';
 
@@ -57,7 +58,15 @@ export async function createUser(opts: { email: string; password: string; role?:
   });
 }
 
+/** Destructive helpers may only run under NODE_ENV=test against TEST_DATABASE_URL (never the dev database). */
+export function assertTestDatabase() {
+  if (process.env.NODE_ENV !== 'test' || !env.isTest) throw new Error('Destructive test helper called outside NODE_ENV=test');
+  if (!env.TEST_DATABASE_URL || env.databaseUrl !== env.TEST_DATABASE_URL) throw new Error('Destructive test helper requires the TEST_DATABASE_URL connection');
+  if (env.TEST_DATABASE_URL === env.DATABASE_URL) throw new Error('TEST_DATABASE_URL must not equal DATABASE_URL');
+}
+
 export async function cleanUsers() {
+  assertTestDatabase();
   await prisma.session.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.user.deleteMany();
@@ -69,6 +78,7 @@ export async function cleanUsers() {
  * (vitest re-orders files by previous failures/durations, so leftovers from another file must never matter).
  */
 export async function resetDatabase() {
+  assertTestDatabase();
   await prisma.leaveLedger.deleteMany();
   await prisma.leaveEntitlement.deleteMany();
   await prisma.leavePolicy.deleteMany();

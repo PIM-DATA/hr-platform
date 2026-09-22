@@ -116,7 +116,7 @@ export const employeesService = {
     if (q.search) {
       const terms = q.search.split(/\s+/).filter(Boolean);
       // every term must match some field → "Somchai Prasert" finds by full name
-      filters.AND = terms.map((t) => ({ OR: [{ employeeCode: { contains: t } }, { firstName: { contains: t } }, { lastName: { contains: t } }, { nickname: { contains: t } }, { email: { contains: t } }] }));
+      filters.AND = terms.map((t) => ({ OR: [{ employeeCode: { contains: t, mode: 'insensitive' } }, { firstName: { contains: t, mode: 'insensitive' } }, { lastName: { contains: t, mode: 'insensitive' } }, { nickname: { contains: t, mode: 'insensitive' } }, { email: { contains: t, mode: 'insensitive' } }] }));
     }
     const where: Prisma.EmployeeWhereInput = { AND: [employeeScopeWhere(auth), filters] };
     const [total, rows] = await prisma.$transaction([
@@ -164,7 +164,7 @@ export const employeesService = {
     if (q.excludeId) filters.id = { not: q.excludeId };
     if (q.search) {
       const terms = q.search.split(/\s+/).filter(Boolean);
-      filters.AND = terms.map((t) => ({ OR: [{ employeeCode: { contains: t } }, { firstName: { contains: t } }, { lastName: { contains: t } }, { email: { contains: t } }] }));
+      filters.AND = terms.map((t) => ({ OR: [{ employeeCode: { contains: t, mode: 'insensitive' } }, { firstName: { contains: t, mode: 'insensitive' } }, { lastName: { contains: t, mode: 'insensitive' } }, { email: { contains: t, mode: 'insensitive' } }] }));
     }
     const rows = await prisma.employee.findMany({
       where: { AND: [employeeScopeWhere(auth), filters] },

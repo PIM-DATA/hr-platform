@@ -66,7 +66,7 @@ export const departmentsService = {
     if (q.organizationId) where.organizationId = q.organizationId;
     if (q.parentId) where.parentId = q.parentId;
     if (q.status) where.isActive = q.status === 'active';
-    if (q.search) where.OR = [{ code: { contains: q.search } }, { name: { contains: q.search } }];
+    if (q.search) where.OR = [{ code: { contains: q.search, mode: 'insensitive' } }, { name: { contains: q.search, mode: 'insensitive' } }];
     const [total, rows] = await prisma.$transaction([
       prisma.department.count({ where }),
       prisma.department.findMany({ where, include, orderBy: { [q.sortBy]: q.sortDir }, ...paging(q) }),

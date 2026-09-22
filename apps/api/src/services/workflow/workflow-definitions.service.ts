@@ -53,7 +53,7 @@ export const workflowDefinitionsService = {
     const rows = await prisma.user.findMany({
       where: {
         isActive: true,
-        AND: terms.map((t) => ({ OR: [{ email: { contains: t } }, { employee: { employeeCode: { contains: t } } }, { employee: { firstName: { contains: t } } }, { employee: { lastName: { contains: t } } }] })),
+        AND: terms.map((t) => ({ OR: [{ email: { contains: t, mode: 'insensitive' } }, { employee: { employeeCode: { contains: t, mode: 'insensitive' } } }, { employee: { firstName: { contains: t, mode: 'insensitive' } } }, { employee: { lastName: { contains: t, mode: 'insensitive' } } }] })),
       },
       select: { id: true, email: true, employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, employmentStatus: true } } },
       orderBy: { email: 'asc' },

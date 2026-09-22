@@ -25,7 +25,7 @@ async function assertCodeFree(db: Db, code: string, exceptId?: string) {
 export const leaveTypesService = {
   async list(q: { page: number; pageSize: number; search?: string; status?: 'active' | 'inactive' }) {
     const where: Prisma.LeaveTypeWhereInput = { isActive: q.status ? q.status === 'active' : undefined };
-    if (q.search) where.OR = [{ code: { contains: q.search } }, { name: { contains: q.search } }];
+    if (q.search) where.OR = [{ code: { contains: q.search, mode: 'insensitive' } }, { name: { contains: q.search, mode: 'insensitive' } }];
     const [total, rows] = await prisma.$transaction([prisma.leaveType.count({ where }), prisma.leaveType.findMany({ where, include, orderBy: { code: 'asc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: rows.map(toDto), meta: { page: q.page, pageSize: q.pageSize, total } };
   },

@@ -32,7 +32,7 @@ export const jobsService = {
   async list(q: JobListQuery) {
     const where: Prisma.JobWhereInput = {};
     if (q.status) where.isActive = q.status === 'active';
-    if (q.search) where.OR = [{ code: { contains: q.search } }, { title: { contains: q.search } }];
+    if (q.search) where.OR = [{ code: { contains: q.search, mode: 'insensitive' } }, { title: { contains: q.search, mode: 'insensitive' } }];
     const [total, rows] = await prisma.$transaction([
       prisma.job.count({ where }),
       prisma.job.findMany({ where, include, orderBy: { [q.sortBy]: q.sortDir }, ...paging(q) }),
