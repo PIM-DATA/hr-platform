@@ -7,3 +7,5 @@ export * from './employee';
 export * from './audit';
 export * from './dashboard';
 export * from './workflow';
+export * from './calendar';
+export * from './leave-master';

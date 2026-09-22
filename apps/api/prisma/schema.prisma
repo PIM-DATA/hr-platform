@@ -121,12 +121,19 @@ model Organization {
   id        String   @id @default(cuid())
   code      String   @unique
   name      String
+  /// IANA timezone (e.g. Asia/Bangkok) — source of truth for business "today" in this organization
+  timezone  String   @default("Asia/Bangkok")
+  /// Work calendar used for leave/attendance calculations unless an employee-level assignment exists (Phase 2B)
+  defaultCalendarId String?       @map("default_calendar_id")
+  defaultCalendar   WorkCalendar? @relation("OrganizationDefaultCalendar", fields: [defaultCalendarId], references: [id])
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  departments Department[]
-  employees   Employee[]
+  departments   Department[]
+  employees     Employee[]
+  workCalendars WorkCalendar[] @relation("OrganizationCalendars")
+  leavePolicies LeavePolicy[]
 
   @@map("organizations")
 }
@@ -423,5 +430,104 @@ model WorkflowAction {
   @@map("workflow_actions")
 }
 
+// =====================================================================
+// WORK CALENDAR (shared HRM master — reused by Leave and, later, Attendance)
+// =====================================================================
+
+/// MASTER. Working weekdays of an organization calendar; working_days is a JSON array of MON..SUN (validated + normalized by the service).
+model WorkCalendar {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation("OrganizationCalendars", fields: [organizationId], references: [id])
+  code           String
+  name           String
+  workingDays    String       @map("working_days") // JSON text, e.g. ["MON","TUE","WED","THU","FRI"]
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  createdBy      String?      @map("created_by")
+  updatedBy      String?      @map("updated_by")
+
+  holidays          Holiday[]
+  defaultForOrgs    Organization[] @relation("OrganizationDefaultCalendar")
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+  @@map("work_calendars")
+}
+
+/// MASTER. Holiday dates (YYYY-MM-DD) of a calendar; may fall on non-working days.
+model Holiday {
+  id         String       @id @default(cuid())
+  calendarId String       @map("calendar_id")
+  calendar   WorkCalendar @relation(fields: [calendarId], references: [id])
+  date       String // business date YYYY-MM-DD
+  name       String
+  isActive   Boolean      @default(true) @map("is_active")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  createdBy  String?      @map("created_by")
+  updatedBy  String?      @map("updated_by")
+
+  @@unique([calendarId, date])
+  @@map("holidays")
+}
+
+// =====================================================================
+// LEAVE — MASTER DATA (Phase 2, Task 9)
+// =====================================================================
+
+/// MASTER (semantic only). Business rules live on leave_policies.
+model LeaveType {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  policies LeavePolicy[]
+
+  @@map("leave_types")
+}
+
+/// MASTER. Rules for a leave type in an (organization, employmentType) context; null selectors = ANY.
+/// policyId is a historical identity: entitlements/requests will reference it (guard against silent rule edits comes with those tables).
+model LeavePolicy {
+  id                       String        @id @default(cuid())
+  name                     String
+  leaveTypeId              String        @map("leave_type_id")
+  leaveType                LeaveType     @relation(fields: [leaveTypeId], references: [id])
+  organizationId           String?       @map("organization_id")
+  organization             Organization? @relation(fields: [organizationId], references: [id])
+  employmentType           String?       @map("employment_type") // FULL_TIME | PART_TIME | CONTRACT | INTERN | null = any
+  annualUnits              Float         @map("annual_units") // days, multiples of 0.5
+  isPaid                   Boolean       @default(true) @map("is_paid")
+  requiresReason           Boolean       @default(false) @map("requires_reason")
+  requiresAttachment       Boolean       @default(false) @map("requires_attachment")
+  allowHalfDay             Boolean       @default(true) @map("allow_half_day")
+  allowNegativeBalance     Boolean       @default(false) @map("allow_negative_balance")
+  maxConsecutiveDays       Int?          @map("max_consecutive_days")
+  minNoticeDays            Int?          @map("min_notice_days")
+  allowBackdate            Boolean       @default(false) @map("allow_backdate")
+  carryForwardMaxUnits     Float         @default(0) @map("carry_forward_max_units")
+  carryForwardExpiryMonths Int?          @map("carry_forward_expiry_months")
+  workflowDefinitionCode   String?       @map("workflow_definition_code") // must be an active workflow for leave/LEAVE_REQUEST when the policy is active
+  effectiveFrom            String        @map("effective_from") // YYYY-MM-DD inclusive
+  effectiveTo              String?       @map("effective_to") // YYYY-MM-DD inclusive, null = open-ended
+  isActive                 Boolean       @default(false) @map("is_active")
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
+  createdBy                String?       @map("created_by")
+  updatedBy                String?       @map("updated_by")
+
+  @@index([leaveTypeId, isActive])
+  @@index([organizationId])
+  @@index([employmentType])
+  @@index([effectiveFrom])
+  @@map("leave_policies")
+}
+
 // Reserved for later Phase 2 tasks (not created yet):
-//   leave_*, work_calendars, holidays, notifications, notification_deliveries
+//   leave_entitlements, leave_ledger, leave_requests, notifications, notification_deliveries

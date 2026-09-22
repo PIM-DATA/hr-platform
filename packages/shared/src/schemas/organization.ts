@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './common';
+import { timezoneSchema } from './calendar';
 
 /** Codes are trimmed + upper-cased; letters, digits, dash, underscore, dot. */
 const codeField = z.string().trim().toUpperCase().min(1, 'Code is required').max(30).regex(/^[A-Z0-9][A-Z0-9._-]*$/, 'Use letters, numbers, dot, dash or underscore');
@@ -10,7 +11,7 @@ const nonEmpty = <T extends z.ZodRawShape>(shape: T) => z.object(shape).refine((
 
 // ---------- Organizations ----------
 export const createOrganizationSchema = z.object({ code: codeField, name: nameField });
-export const updateOrganizationSchema = nonEmpty({ code: codeField.optional(), name: nameField.optional() });
+export const updateOrganizationSchema = nonEmpty({ code: codeField.optional(), name: nameField.optional(), timezone: timezoneSchema.optional() });
 export const organizationListQuerySchema = paginationQuerySchema.extend({
   status: statusFilter,
   sortBy: z.enum(['code', 'name', 'createdAt']).default('code'),
@@ -24,6 +25,9 @@ export interface OrganizationDto {
   id: string;
   code: string;
   name: string;
+  /** IANA timezone — the source of truth for "today" in this organization (Phase 2 calendars). */
+  timezone: string;
+  defaultCalendar: { id: string; code: string; name: string } | null;
   isActive: boolean;
   departmentCount: number;
   employeeCount: number;

@@ -57,6 +57,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.EMPLOYEES_UPDATE,
       P.ORGANIZATION_VIEW,
       P.WORKFLOW_APPROVE,
+      P.CALENDAR_VIEW,
     ],
   },
   {
@@ -81,6 +82,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.WORKFLOW_APPROVE,
       P.WORKFLOW_VIEW_ALL,
       P.WORKFLOW_MANAGE_DEFINITIONS,
+      P.CALENDAR_VIEW,
+      P.CALENDAR_MANAGE,
+      P.LEAVE_MANAGE_TYPES,
+      P.LEAVE_MANAGE_POLICIES,
     ],
   },
   {

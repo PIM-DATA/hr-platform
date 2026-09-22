@@ -1,15 +1,15 @@
 import type { Prisma } from '@prisma/client';
-import { AUDIT_ACTIONS, type CreateOrganizationInput, type OrganizationDto, type OrganizationListQuery, type UpdateOrganizationInput } from '@hr/shared';
+import { AUDIT_ACTIONS, isValidTimezone, type CreateOrganizationInput, type OrganizationDto, type OrganizationListQuery, type UpdateOrganizationInput } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService, diffFields } from '../../services/audit/audit.service';
 import { MODULE, actorMeta, inUse, notFound, paging, type Actor, type Db } from './organization.shared';
 
-const include = { _count: { select: { departments: true, employees: true } } } satisfies Prisma.OrganizationInclude;
+const include = { _count: { select: { departments: true, employees: true } }, defaultCalendar: { select: { id: true, code: true, name: true } } } satisfies Prisma.OrganizationInclude;
 type Row = Prisma.OrganizationGetPayload<{ include: typeof include }>;
 
 const toDto = (o: Row): OrganizationDto => ({
-  id: o.id, code: o.code, name: o.name, isActive: o.isActive,
+  id: o.id, code: o.code, name: o.name, timezone: o.timezone, defaultCalendar: o.defaultCalendar, isActive: o.isActive,
   departmentCount: o._count.departments, employeeCount: o._count.employees,
   createdAt: o.createdAt.toISOString(), updatedAt: o.updatedAt.toISOString(),
 });
@@ -59,8 +59,9 @@ export const organizationsService = {
     const row = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
       if (input.code) await assertCodeFree(tx, input.code, id);
-      const after = await tx.organization.update({ where: { id }, data: { code: input.code, name: input.name }, include });
-      const diff = diffFields({ code: before.code, name: before.name }, { code: after.code, name: after.name });
+      if (input.timezone !== undefined && !isValidTimezone(input.timezone)) throw new AppError(400, 'ORGANIZATION_TIMEZONE_INVALID', 'Timezone must be an IANA name such as Asia/Bangkok');
+      const after = await tx.organization.update({ where: { id }, data: { code: input.code, name: input.name, timezone: input.timezone }, include });
+      const diff = diffFields({ code: before.code, name: before.name, timezone: before.timezone }, { code: after.code, name: after.name, timezone: after.timezone });
       if (Object.keys(diff.new).length) await auditService.log(audit(actor, 'UPDATE_ORGANIZATION', id, diff.old, diff.new), tx);
       return after;
     });

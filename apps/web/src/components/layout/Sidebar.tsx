@@ -13,7 +13,8 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   // Items with a `permission` are shown only when the user has it; groups without visible items disappear.
   // (UX only — every API endpoint enforces permissions itself.)
   const { hasPermission } = useAuth();
-  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => !i.permission || hasPermission(i.permission)) })).filter((g) => g.items.length > 0);
+  const allowed = (p: MenuItem['permission']) => !p || (Array.isArray(p) ? p.some(hasPermission) : hasPermission(p));
+  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.permission)) })).filter((g) => g.items.length > 0);
 
   return (
     <>

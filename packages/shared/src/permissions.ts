@@ -30,6 +30,11 @@ export const PERMISSIONS = {
   WORKFLOW_APPROVE: 'workflow.approve',
   WORKFLOW_VIEW_ALL: 'workflow.view_all',
   WORKFLOW_MANAGE_DEFINITIONS: 'workflow.manage_definitions',
+
+  CALENDAR_VIEW: 'calendar.view',
+  CALENDAR_MANAGE: 'calendar.manage',
+  LEAVE_MANAGE_TYPES: 'leave.manage_types',
+  LEAVE_MANAGE_POLICIES: 'leave.manage_policies',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -67,6 +72,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.WORKFLOW_APPROVE, module: 'workflow', description: 'Act on approval steps assigned to me' },
   { code: PERMISSIONS.WORKFLOW_VIEW_ALL, module: 'workflow', description: 'View every workflow instance' },
   { code: PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS, module: 'workflow', description: 'Create and activate workflow definition versions' },
+
+  { code: PERMISSIONS.CALENDAR_VIEW, module: 'calendar', description: 'View work calendars and holidays' },
+  { code: PERMISSIONS.CALENDAR_MANAGE, module: 'calendar', description: 'Manage work calendars, holidays and organization default calendar' },
+  { code: PERMISSIONS.LEAVE_MANAGE_TYPES, module: 'leave', description: 'Manage leave types' },
+  { code: PERMISSIONS.LEAVE_MANAGE_POLICIES, module: 'leave', description: 'Manage leave policies' },
 ];
 
 /**

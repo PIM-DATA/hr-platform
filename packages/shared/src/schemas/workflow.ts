@@ -30,7 +30,7 @@ export const createWorkflowDefinitionSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(500).nullable().optional(),
   module: z.string().trim().min(1).max(40).regex(/^[a-z][a-z0-9_]*$/, 'lowercase module key'),
-  entityType: z.string().trim().min(1).max(60).regex(/^[A-Za-z][A-Za-z0-9]*$/, 'PascalCase entity type'),
+  entityType: z.string().trim().min(1).max(60).regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Entity type: letters, digits, underscore'),
   /** Order is the array order (1..n). */
   steps: z.array(workflowStepInputSchema).min(1, 'At least one step is required').max(20),
 });

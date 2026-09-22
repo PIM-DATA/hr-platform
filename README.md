@@ -22,7 +22,8 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | Task | Status |
 |---|---|
 | 8 Workflow engine foundation | ✅ |
-| 9 Leave master data (calendar, holidays, types, policies) | ⏳ |
+| 8.1 Approver resolution hardening | ✅ |
+| 9 Leave master data + shared work calendars | ✅ |
 | 10 Leave entitlement + ledger | ⏳ |
 | 10.5 PostgreSQL migration / integration validation | ⏳ required before 11 |
 | 11 Leave request + workflow + reservation concurrency | ⏳ |
@@ -275,6 +276,27 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - **Inbox** (`GET /workflow/inbox`) = steps where I am the snapshot approver — an authorization context independent of employee data scope. Instance reads: requester, snapshot approvers or `workflow.view_all`; others get 404.
 - **Handlers**: `workflowEngine.registerHandler(module, { onApproved, onRejected })` run inside the engine's transaction; a failing handler rolls back the transition.
 - **History**: `workflow_actions` (append-only) + `audit_logs` (`WORKFLOW_SUBMIT/APPROVE/REJECT/CANCEL`, `CREATE/ACTIVATE/DEACTIVATE_WORKFLOW_DEFINITION`) in the same transaction.
+
+## Work calendars, leave types and policies (Task 9)
+
+- **Business dates** are `YYYY-MM-DD` strings validated as real calendar dates (`isBusinessDate`); timestamps stay UTC. `organizations.timezone`
+  (IANA, default `Asia/Bangkok`, validated by `isValidTimezone` — offsets like `+07:00` are rejected) is the source of truth for
+  `businessToday(timezone)`. All date/working-day/leave-unit arithmetic lives in `packages/shared/src/business-date.ts`.
+- **Work calendars** (`modules/calendar`, shared with Attendance later): `work_calendars` (code unique per organization, `workingDays`
+  = validated, ordered subset of MON..SUN) + `holidays` (unique per calendar/date, may fall on non-working days) +
+  `organizations.defaultCalendarId` (must be an active calendar of that organization; `CALENDAR_IN_USE` blocks deactivating the default).
+  Permissions `calendar.view` / `calendar.manage`; API `/calendars`, `/calendars/:id/holidays`, `/holidays/:id`, `PATCH /calendars/organizations/:organizationId/default`.
+- **Leave types** are semantic only (`code`, `name`, `description`); `LEAVE_TYPE_IN_USE` blocks deactivation while an active policy references them.
+- **Leave policies** hold the rules (annual units, half-day, negative balance, notice, carry-forward, workflow code, effective range) for a
+  `(leaveType, organization|ANY, employmentType|ANY)` selector. New policies are inactive; **activation** validates dates, active leave type /
+  organization, `LEAVE_POLICY_OVERLAP` (same selector, inclusive ranges overlap; global and specific coexist), and a workflow code that is
+  active and compatible with `leave/LEAVE_REQUEST` (`WORKFLOW_DEFINITION_NOT_FOUND` / `_INCOMPATIBLE`). Re-activation and edits of active
+  policies re-run the same validation. `policyId` is a historical identity for entitlements/requests (reference guard arrives with those tables).
+- **Resolver** `leavePoliciesService.resolve({ leaveTypeId, organizationId, employmentType, asOfDate })` loads only active, effective
+  candidates and ranks: org+type → org+any → any+type → global (`LEAVE_POLICY_NOT_FOUND` otherwise). Clients never choose a policy.
+- **Units**: whole or half days (`isHalfDayUnit`). `calculateLeaveUnits` = working days in range − 0.5 for a PM start − 0.5 for an AM end;
+  same-day PM→AM and half days on non-working days/holidays are rejected.
+- Permissions `leave.manage_types`, `leave.manage_policies`; `GET /leave/workflow-options` gives policy managers the compatible workflows without workflow admin rights.
 
 ## Security notes
 

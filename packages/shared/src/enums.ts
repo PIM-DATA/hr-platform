@@ -9,7 +9,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -55,6 +55,23 @@ export const AUDIT_ACTIONS = {
   WORKFLOW_APPROVE: 'WORKFLOW_APPROVE',
   WORKFLOW_REJECT: 'WORKFLOW_REJECT',
   WORKFLOW_CANCEL: 'WORKFLOW_CANCEL',
+  CREATE_CALENDAR: 'CREATE_CALENDAR',
+  UPDATE_CALENDAR: 'UPDATE_CALENDAR',
+  ACTIVATE_CALENDAR: 'ACTIVATE_CALENDAR',
+  DEACTIVATE_CALENDAR: 'DEACTIVATE_CALENDAR',
+  SET_DEFAULT_CALENDAR: 'SET_DEFAULT_CALENDAR',
+  CREATE_HOLIDAY: 'CREATE_HOLIDAY',
+  UPDATE_HOLIDAY: 'UPDATE_HOLIDAY',
+  ACTIVATE_HOLIDAY: 'ACTIVATE_HOLIDAY',
+  DEACTIVATE_HOLIDAY: 'DEACTIVATE_HOLIDAY',
+  CREATE_LEAVE_TYPE: 'CREATE_LEAVE_TYPE',
+  UPDATE_LEAVE_TYPE: 'UPDATE_LEAVE_TYPE',
+  ACTIVATE_LEAVE_TYPE: 'ACTIVATE_LEAVE_TYPE',
+  DEACTIVATE_LEAVE_TYPE: 'DEACTIVATE_LEAVE_TYPE',
+  CREATE_LEAVE_POLICY: 'CREATE_LEAVE_POLICY',
+  UPDATE_LEAVE_POLICY: 'UPDATE_LEAVE_POLICY',
+  ACTIVATE_LEAVE_POLICY: 'ACTIVATE_LEAVE_POLICY',
+  DEACTIVATE_LEAVE_POLICY: 'DEACTIVATE_LEAVE_POLICY',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -90,4 +107,6 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   organization: 'Organization',
   employees: 'Employees',
   workflow: 'Workflow',
+  calendar: 'Calendar',
+  leave: 'Leave',
 };
