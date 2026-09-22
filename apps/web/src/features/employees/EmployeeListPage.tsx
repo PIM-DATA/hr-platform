@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, EMPLOYMENT_TYPES, PERMISSIONS, type EmployeeListItem, type EmploymentStatus, type EmploymentType } from '@hr/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -31,7 +31,10 @@ export function EmployeeListPage() {
   const [employmentType, setEmploymentType] = useState('');
   const [employmentStatus, setEmploymentStatus] = useState('');
   const [page, setPage] = useState(1);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  // /employees?new=1 (dashboard quick action) opens the create modal directly
+  const [createOpen, setCreateOpen] = useState(params.get('new') === '1');
+  const closeCreate = () => { setCreateOpen(false); if (params.has('new')) { const p = new URLSearchParams(params); p.delete('new'); setParams(p, { replace: true }); } };
 
   const organizations = useOrganizationOptions();
   const departments = useDepartmentOptions(organizationId || undefined);
@@ -73,7 +76,7 @@ export function EmployeeListPage() {
         <DataTable columns={columns} rows={list.data?.data ?? []} rowKey={(e) => e.id} loading={list.isLoading} onRowClick={(e) => navigate(`/employees/${e.id}`)} emptyTitle="No employees found" emptyDescription="You only see employees within your data scope. Adjust the filters or add an employee." />
         {list.data?.meta && <Pagination {...list.data.meta} onPageChange={setPage} />}
       </Card>
-      {canCreate && <EmployeeFormModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => navigate(`/employees/${id}`)} />}
+      {canCreate && <EmployeeFormModal open={createOpen} onClose={closeCreate} onCreated={(id) => navigate(`/employees/${id}`)} />}
     </>
   );
 }

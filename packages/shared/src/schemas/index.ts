@@ -5,3 +5,4 @@ export * from './role';
 export * from './organization';
 export * from './employee';
 export * from './audit';
+export * from './dashboard';

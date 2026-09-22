@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { buildAuthContext } from '../../services/authorization/authorization.service';
+import { logger } from '../../lib/logger';
 import type { AuthContext } from './auth.types';
 
 /**
@@ -51,12 +52,19 @@ export const sessionService = {
         },
       },
     });
-    if (!session) return null;
+    if (!session) {
+      logger.debug('session rejected: not found');
+      return null;
+    }
     if (session.expiresAt <= new Date()) {
+      logger.debug({ sessionId: session.id, expiresAt: session.expiresAt }, 'session rejected: expired');
       await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
       return null;
     }
-    if (!session.user.isActive) return null;
+    if (!session.user.isActive) {
+      logger.debug({ sessionId: session.id, userId: session.userId }, 'session rejected: user inactive');
+      return null;
+    }
 
     return buildAuthContext({
       user: session.user,

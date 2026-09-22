@@ -41,7 +41,7 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-          { path: 'dashboard', element: <DashboardPage /> },
+          { element: <RequirePermission permission={PERMISSIONS.DASHBOARD_VIEW} />, children: [{ path: 'dashboard', element: <DashboardPage /> }] },
 
           // Administration — route guards show a 403 page; the API enforces the same permissions.
           { element: <RequirePermission permission={PERMISSIONS.USERS_VIEW} />, children: [{ path: 'admin/users', element: <UserListPage /> }] },

@@ -14,5 +14,6 @@ export const logger = pino({
     paths: ['password', 'passwordHash', 'password_hash', 'token', 'tokenHash', 'cookie', 'req.headers.cookie', 'req.headers.authorization'],
     censor: '[REDACTED]',
   },
-  transport: env.isProduction ? undefined : { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } },
+  // pretty transport only in development; production and tests write JSON lines in-process (tests: so vitest can capture them)
+  transport: env.isProduction || env.isTest ? undefined : { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } },
 });

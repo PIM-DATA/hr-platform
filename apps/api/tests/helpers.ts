@@ -1,9 +1,29 @@
+import type { Server } from 'node:http';
 import type { Response } from 'supertest';
+import { afterAll } from 'vitest';
+import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { hashPassword } from '../src/lib/password';
 import { seedRolesAndPermissions } from '../prisma/seeders/roles';
 
 export const SESSION_COOKIE = 'hr_session';
+
+/**
+ * One HTTP server per test file, bound explicitly to 127.0.0.1 and closed in afterAll.
+ *
+ * Why not `request(app)`: supertest then calls `app.listen(0)` for EVERY request, which binds the IPv6
+ * wildcard `[::]:P` while the client connects to `127.0.0.1:P`. macOS lets that bind succeed even when
+ * another process already owns `127.0.0.1:P` (IPv4-only listeners such as VS Code helpers or chat apps
+ * in the ephemeral range), so the client occasionally reaches a foreign process → garbage responses
+ * ("Parse Error: Expected HTTP/", wrong status, no cookie). Binding to 127.0.0.1 makes client and
+ * server agree on the address family, so the kernel only hands out ports that are free for exactly
+ * that address.
+ */
+export function createTestServer(): Server {
+  const server = createApp().listen(0, '127.0.0.1');
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  return server;
+}
 
 /** Returns the `hr_session=<value>` pair from a response's Set-Cookie, or undefined when cleared. */
 export function sessionCookie(res: Response): string | undefined {
@@ -73,10 +93,27 @@ export async function resetRolePermissions() {
   await seedRolesAndPermissions(prisma);
 }
 
-/** Logs in and returns { cookie, csrf, user } ready for authenticated requests. */
-export async function loginAs(app: import('express').Express, email: string, password: string) {
+/**
+ * Deterministic diagnostic for an unexpected auth failure: which path produced it and the account/session state
+ * at that moment. Never includes passwords, hashes, tokens or cookies.
+ */
+export async function explainAuthFailure(email: string, res: { status: number; body: unknown }, cookie?: string) {
+  const user = await prisma.user.findUnique({ where: { email }, include: { _count: { select: { sessions: true } }, userRoles: { include: { role: true } } } });
+  const failed = await prisma.auditLog.findMany({ where: { action: 'LOGIN_FAILED' }, orderBy: { createdAt: 'desc' }, take: 3, select: { userId: true, newValue: true, createdAt: true } });
+  const cookieSession = cookie ? await prisma.session.findUnique({ where: { tokenHash: (await import('../src/modules/auth/session.service')).hashToken(cookie.split('=')[1] ?? '') }, select: { id: true, userId: true, expiresAt: true } }) : undefined;
+  return JSON.stringify({
+    email, status: res.status, body: res.body,
+    user: user ? { id: user.id, isActive: user.isActive, passwordHashLength: user.passwordHash.length, sessions: user._count.sessions, roles: user.userRoles.map((r) => r.role.code), lastLoginAt: user.lastLoginAt } : null,
+    cookiePresent: !!cookie, cookieSession, recentLoginFailedAudits: failed, now: new Date().toISOString(),
+  });
+}
+
+/** Logs in and returns { cookie, csrf, user } ready for authenticated requests. Fails loudly with full diagnostics. */
+export async function loginAs(app: Server, email: string, password: string) {
   const request = (await import('supertest')).default;
   const res = await request(app).post('/api/v1/auth/login').send({ email, password });
-  if (res.status !== 200) throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
-  return { cookie: sessionCookie(res)!, csrf: res.body.data.csrfToken as string, user: res.body.data };
+  if (res.status !== 200) throw new Error(`login failed: ${await explainAuthFailure(email, res)}`);
+  const cookie = sessionCookie(res);
+  if (!cookie) throw new Error(`login 200 but no session cookie: ${await explainAuthFailure(email, res)} set-cookie=${JSON.stringify(res.headers['set-cookie'])}`);
+  return { cookie, csrf: res.body.data.csrfToken as string, user: res.body.data };
 }

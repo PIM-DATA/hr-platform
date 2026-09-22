@@ -2,8 +2,20 @@
 
 One employee data · One organization structure · One permission system · One workflow · One platform.
 
-Phase 1 (Foundation): Authentication, Users, RBAC, Employee Master, Organization, Audit Log, Dashboard.
-Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same core.
+## Foundation Phase — Complete
+
+| Area | Status | Notes |
+|---|---|---|
+| Authentication | ✅ | DB-backed sessions, httpOnly cookie, CSRF, login rate limit |
+| RBAC + data scope | ✅ | permission codes, SELF/TEAM/ALL, admin-safety and escalation guards |
+| User management | ✅ | users, roles, permission matrix |
+| Organization structure | ✅ | organizations → departments (tree) → positions → jobs, department head |
+| Employee master | ✅ | single source of truth, position/manager history, assignment rules |
+| Audit log | ✅ | append-only, transactional for admin mutations, redacted, filterable UI |
+| Dashboard | ✅ | scope-aware KPIs + permission-based quick actions |
+| Attendance · Leave · Performance · Competency · Training · IDP · Workforce · Talent · Succession · Analytics · Settings | ⏳ Coming soon | menu placeholders only; Phase 2 is designed before implementation |
+
+Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same core without changing it.
 
 ## Stack
 
@@ -43,8 +55,19 @@ so the browser talks to one origin (cookies work without CORS).
 | `npm run db:migrate` | `prisma migrate dev` (creates a migration from schema changes + seeds) |
 | `npm run db:seed` | re-run the seed (idempotent) |
 | `npm run db:studio` | Prisma Studio (DB browser) |
-| `npm test` | API tests against a throwaway `apps/api/prisma/test.db` (single SQLite connection; set `TEST_LOG_LEVEL=error` to see server-side 5xx causes) |
+| `npm test` | API integration tests against a throwaway `apps/api/prisma/test.db` (see *Testing* below) |
 | `npm run typecheck` | `tsc --noEmit` in every workspace |
+
+## Testing
+
+- `apps/api/tests/*.test.ts` are integration tests over the real Express app + Prisma + a throwaway SQLite file.
+  Files run **sequentially in separate processes** (`fileParallelism: false`); every file starts with `resetDatabase()`
+  (all tables wiped in FK order, roles re-seeded), so files never depend on execution order. Unit tests without a DB could run in parallel if ever needed.
+- Each file opens **one HTTP server bound to `127.0.0.1`** via `createTestServer()` instead of `request(app)`. supertest's
+  per-request `app.listen(0)` binds `[::]:P` while connecting to `127.0.0.1:P`; on macOS that bind succeeds even when another
+  process owns `127.0.0.1:P`, so requests occasionally reached a foreign process (garbage or wrong responses ≈ a few % of full runs).
+- SQLite test URL uses `connection_limit=1` (single-writer database). `TEST_LOG_LEVEL=error|debug` prints server-side logs (JSON) into vitest output.
+- `loginAs()` / `explainAuthFailure()` fail with the account/session state (never passwords, hashes, tokens or cookies).
 
 ## API conventions
 
@@ -192,6 +215,41 @@ Audit matrix (every mutation endpoint → action; all admin actions are written 
 
 Known limitations: `actor.email` is the user's *current* email (the immutable identity is `actor.userId`); no retention/archive or export yet;
 validation failures (duplicates, cycles, in-use) are not audited by design.
+
+## Dashboard
+
+`GET /dashboard/summary` (`dashboard.view`, not audited). Every number uses the **same** population as the employee list —
+`employeeScopeWhere(auth)` — so a manager's "Total employees" equals their unfiltered Employees list.
+
+| KPI | Definition |
+|---|---|
+| Total employees | employees visible in the caller's data scope, any employment status |
+| Active employees | …with `employmentStatus = ACTIVE` |
+| Departments (represented) | distinct `departmentId` across the visible employees — **not** the department master count |
+| New employees — last 30 days | visible employees with `hireDate ≥ startOfUtcDay(today − 29)` (i.e. the last 30 calendar days including today; hire date, not `createdAt`) |
+
+Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no employee DTOs loaded.
+
+## Environment variables (`apps/api/.env`, never committed)
+
+| Variable | Purpose |
+|---|---|
+| `NODE_ENV`, `PORT`, `LOG_LEVEL` | runtime |
+| `DATABASE_URL` | SQLite `file:./dev.db?connection_limit=1` for development; PostgreSQL URL for real data |
+| `CORS_ORIGIN` | allowed browser origin (also used by the CSRF origin check) |
+| `SESSION_TTL_HOURS`, `COOKIE_SECURE` | session lifetime; `Secure` cookies are forced on in production |
+| `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MINUTES` | login rate limit |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | first System Admin (seed, dev only) |
+| `SEED_DEMO_PASSWORD` | optional demo accounts per role (seed, dev only) |
+| `TEST_LOG_LEVEL` | tests only: set `error` to print server-side 5xx causes |
+
+## Known limitations / backlog
+
+- SQLite is for development only; move to PostgreSQL before real data (see above). Login rate limiter is in-memory (single instance).
+- Audit: actor email is the current email (identity = `userId`); no retention/archive/export.
+- No forgot-password / self-service password change; admins reset passwords.
+- Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
+- No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
 ## Security notes
 

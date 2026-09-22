@@ -1,10 +1,9 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
-import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase } from './helpers';
+import { cleanUsers, createTestServer, createUser, ensureRoles, loginAs, resetDatabase } from './helpers';
 
-const app = createApp();
+const app = createTestServer();
 const PW = 'Correct-Horse-1';
 type Session = { cookie: string; csrf: string };
 let admin: Session; // organization.manage

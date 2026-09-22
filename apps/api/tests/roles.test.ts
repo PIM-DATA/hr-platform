@@ -1,11 +1,10 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CRITICAL_PERMISSIONS } from '@hr/shared';
-import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
-import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
+import { cleanUsers, createTestServer, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
 
-const app = createApp();
+const app = createTestServer();
 const PW = 'Correct-Horse-1';
 let sysadmin: { cookie: string; csrf: string };
 let hrAdmin: { cookie: string; csrf: string }; // roles.view only

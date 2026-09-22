@@ -5,6 +5,7 @@ import { usersRouter } from './modules/users/users.routes';
 import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
 import { employeesRouter } from './modules/employees/employees.routes';
 import { auditRouter } from './modules/audit/audit.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
 /**
@@ -29,4 +30,4 @@ apiRouter.use('/positions', positionsRouter);
 apiRouter.use('/organization', organizationTreeRouter); // GET /organization/tree
 apiRouter.use('/employees', employeesRouter);
 apiRouter.use('/audit-logs', auditRouter);
-// Task 7: apiRouter.use('/dashboard', dashboardRouter)
+apiRouter.use('/dashboard', dashboardRouter);

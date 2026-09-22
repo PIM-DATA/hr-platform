@@ -3,12 +3,11 @@ import path from 'node:path';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AUDIT_ACTIONS } from '@hr/shared';
-import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { auditService } from '../src/services/audit/audit.service';
-import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase } from './helpers';
+import { cleanUsers, createTestServer, createUser, ensureRoles, loginAs, resetDatabase } from './helpers';
 
-const app = createApp();
+const app = createTestServer();
 const PW = 'Correct-Horse-1';
 type Session = { cookie: string; csrf: string; user: { id: string } };
 let admin: Session; // SYSTEM_ADMIN: audit.view + everything

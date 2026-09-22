@@ -1,13 +1,12 @@
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { hashToken } from '../src/modules/auth/session.service';
 import { loginRateLimiter } from '../src/middleware/login-rate-limit';
 import { env } from '../src/config/env';
-import { cleanUsers, createUser, ensureRoles, rawSetCookie, resetDatabase, sessionCookie } from './helpers';
+import { cleanUsers, createTestServer, createUser, ensureRoles, rawSetCookie, resetDatabase, sessionCookie } from './helpers';
 
-const app = createApp();
+const app = createTestServer();
 const PASSWORD = 'Correct-Horse-1';
 const ADMIN = 'admin@test.local';
 const INACTIVE = 'inactive@test.local';

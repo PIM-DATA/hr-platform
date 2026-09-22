@@ -1,11 +1,10 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app';
 import { prisma } from '../src/lib/prisma';
 import { computeEffectivePermissions, resolveDataScope } from '../src/services/authorization/authorization.service';
-import { cleanUsers, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
+import { cleanUsers, createTestServer, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
 
-const app = createApp();
+const app = createTestServer();
 const PW = 'Correct-Horse-1';
 
 beforeAll(async () => {
