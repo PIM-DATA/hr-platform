@@ -53,6 +53,17 @@ export const workflowInstanceListQuerySchema = workflowInboxQuerySchema.extend({
   requesterEmployeeId: z.string().min(1).optional(),
 });
 
+export const approverOptionsQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+/** Minimal picker row for SPECIFIC_USER steps — never roles/permissions or account internals. */
+export interface ApproverOptionDto {
+  id: string;
+  email: string;
+  employee: { id: string; employeeCode: string; firstName: string; lastName: string; employmentStatus: string } | null;
+}
+
 // ---------- DTOs ----------
 export interface WorkflowDefinitionStepDto {
   id: string;

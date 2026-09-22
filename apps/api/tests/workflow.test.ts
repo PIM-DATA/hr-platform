@@ -216,6 +216,57 @@ describe('submit: approver resolution + snapshot', () => {
   });
 });
 
+describe('SPECIFIC_USER resolution policy (Task 8.1)', () => {
+  it('1. active user + active linked employee → resolved with employee snapshot; 2. active user without employee → resolved, approverEmployeeId null', async () => {
+    await createDefinition(admin, 'SU_LINKED', [steps('SPECIFIC_USER', { approverUserId: mgrS.user.id })]);
+    const a = await submit('SU_LINKED', EMP, empS);
+    expect(a.steps[0]).toMatchObject({ status: 'PENDING', approverUser: { email: 'mgr@wf.local' }, approverEmployee: { employeeCode: 'MGR' } });
+    await createDefinition(admin, 'SU_SYSTEM', [steps('SPECIFIC_USER', { approverUserId: hrS.user.id })]);
+    const b = await submit('SU_SYSTEM', EMP, empS);
+    expect(b.steps[0].approverUser?.email).toBe('hr@wf.local');
+    expect(b.steps[0].approverEmployee).toBeNull();
+    expect((await prisma.workflowInstanceStep.findFirstOrThrow({ where: { instanceId: b.id } })).approverEmployeeId).toBeNull(); // 5. stored null
+    expect((await act(hrS, b.id, 'APPROVE')).status).toBe(200); // a system user can still act
+  });
+  it('3. inactive user → unresolved USER_INACTIVE; 4. linked inactive employee → unresolved EMPLOYEE_INACTIVE', async () => {
+    await prisma.user.update({ where: { email: 'hr@wf.local' }, data: { isActive: false } });
+    const inactive = await submit('SU_SYSTEM', EMP, empS).catch((e) => e);
+    expect(inactive.code).toBe('APPROVER_UNRESOLVED');
+    expect(inactive.details[0].message).toBe('SPECIFIC_USER: USER_INACTIVE');
+    await prisma.user.update({ where: { email: 'hr@wf.local' }, data: { isActive: true } });
+
+    await prisma.employee.update({ where: { id: MGR }, data: { employmentStatus: 'INACTIVE' } });
+    const empInactive = await submit('SU_LINKED', EMP, empS).catch((e) => e);
+    expect(empInactive.code).toBe('APPROVER_UNRESOLVED');
+    expect(empInactive.details[0].message).toBe('SPECIFIC_USER: EMPLOYEE_INACTIVE');
+    await prisma.employee.update({ where: { id: MGR }, data: { employmentStatus: 'ACTIVE' } });
+  });
+});
+
+describe('approver options endpoint (Task 8.1)', () => {
+  it('workflow admin without users.view can search; normal user → 403; only active users; no sensitive fields', async () => {
+    await createUser({ email: 'inactive-approver@wf.local', password: PW, role: 'HR', isActive: false });
+    // viewerS = HR_ADMIN (has users.view) — build a manage_definitions-only user to prove no users.view coupling
+    const perm = await prisma.permission.findUniqueOrThrow({ where: { code: 'workflow.manage_definitions' } });
+    await prisma.role.create({ data: { code: 'WF_ADMIN_ONLY', name: 'wf admin only', dataScope: 'SELF', rolePermissions: { create: [{ permissionId: perm.id }] } } });
+    await createUser({ email: 'wfadmin@wf.local', password: PW, role: 'WF_ADMIN_ONLY' });
+    const wfAdmin = await loginAs(app, 'wfadmin@wf.local', PW);
+    expect((await as(wfAdmin, 'get', '/api/v1/users')).status).toBe(403); // really has no users.view
+    const res = await as(wfAdmin, 'get', '/api/v1/workflow/approver-options?search=wf.local&limit=50');
+    expect(res.status).toBe(200);
+    const emails = res.body.data.map((u: { email: string }) => u.email);
+    expect(emails).toContain('mgr@wf.local');
+    expect(emails).not.toContain('inactive-approver@wf.local');
+    const mgrRow = res.body.data.find((u: { email: string }) => u.email === 'mgr@wf.local');
+    expect(Object.keys(mgrRow).sort()).toEqual(['email', 'employee', 'id']);
+    expect(mgrRow.employee).toMatchObject({ employeeCode: 'MGR', employmentStatus: 'ACTIVE' });
+    expect(JSON.stringify(res.body)).not.toMatch(/password|roles|permissions|session|lastLogin|isActive/i);
+    expect((await as(empS, 'get', '/api/v1/workflow/approver-options')).status).toBe(403);
+    expect((await as(mgrS, 'get', '/api/v1/workflow/approver-options')).status).toBe(403);
+    expect((await as(wfAdmin, 'get', '/api/v1/workflow/approver-options?search=mgr')).body.data).toHaveLength(1);
+  });
+});
+
 // ------------------------------------------------------------------ sequential flow
 describe('sequential flow', () => {
   it('only the current PENDING step can act; WAITING approver and wrong users get 403; approve advances; final approve completes; handler runs', async () => {

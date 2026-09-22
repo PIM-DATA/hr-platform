@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PERMISSIONS, createWorkflowDefinitionSchema, workflowActionSchema, workflowInboxQuerySchema, workflowInstanceListQuerySchema } from '@hr/shared';
+import { PERMISSIONS, approverOptionsQuerySchema, createWorkflowDefinitionSchema, workflowActionSchema, workflowInboxQuerySchema, workflowInstanceListQuerySchema } from '@hr/shared';
 import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
@@ -18,6 +18,7 @@ workflowRouter.post('/instances/:id/actions', requirePermission(P.WORKFLOW_APPRO
 
 // definitions (admin)
 const definitionListQuery = z.object({ code: z.string().trim().max(50).optional(), module: z.string().trim().max(40).optional() });
+workflowRouter.get('/approver-options', requirePermission(P.WORKFLOW_MANAGE_DEFINITIONS), validate(approverOptionsQuerySchema, 'query'), c.approverOptions);
 workflowRouter.get('/definitions', requirePermission(P.WORKFLOW_MANAGE_DEFINITIONS), validate(definitionListQuery, 'query'), c.listDefinitions);
 workflowRouter.get('/definitions/:id', requirePermission(P.WORKFLOW_MANAGE_DEFINITIONS), c.getDefinition);
 workflowRouter.post('/definitions', requirePermission(P.WORKFLOW_MANAGE_DEFINITIONS), validate(createWorkflowDefinitionSchema), c.createDefinition);

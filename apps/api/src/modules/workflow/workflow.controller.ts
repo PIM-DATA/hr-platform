@@ -17,6 +17,7 @@ export const workflowController = {
     res.json({ data: result });
   },
 
+  approverOptions: async (_req: Request, res: Response) => res.json({ data: await workflowDefinitionsService.approverOptions(res.locals.query) }),
   listDefinitions: async (_req: Request, res: Response) => res.json({ data: await workflowDefinitionsService.list(res.locals.query ?? {}) }),
   getDefinition: async (req: Request, res: Response) => res.json({ data: await workflowDefinitionsService.getById(id(req)) }),
   createDefinition: async (req: Request, res: Response) => res.status(201).json({ data: await workflowDefinitionsService.createVersion(req.body, actor(req)) }),

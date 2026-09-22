@@ -41,11 +41,14 @@ export async function resolveApprover(
       if (!requester.departmentHeadEmployeeId) return { ok: false, reason: UNRESOLVED_REASONS.NO_DEPARTMENT_HEAD };
       return approverFromEmployee(tx, requester.departmentHeadEmployeeId);
     case APPROVER_TYPES.SPECIFIC_USER: {
+      // explicit configuration: the user must exist and be active; a linked employee (if any) must be ACTIVE,
+      // but system users without an employee record are allowed (approverEmployeeId stays null)
       if (!step.approverUserId) return { ok: false, reason: UNRESOLVED_REASONS.USER_NOT_FOUND };
-      const user = await tx.user.findUnique({ where: { id: step.approverUserId }, select: { id: true, isActive: true, employeeId: true } });
+      const user = await tx.user.findUnique({ where: { id: step.approverUserId }, select: { id: true, isActive: true, employee: { select: { id: true, employmentStatus: true } } } });
       if (!user) return { ok: false, reason: UNRESOLVED_REASONS.USER_NOT_FOUND };
       if (!user.isActive) return { ok: false, reason: UNRESOLVED_REASONS.USER_INACTIVE };
-      return { ok: true, approver: { approverEmployeeId: user.employeeId, approverUserId: user.id } };
+      if (user.employee && user.employee.employmentStatus !== 'ACTIVE') return { ok: false, reason: UNRESOLVED_REASONS.EMPLOYEE_INACTIVE };
+      return { ok: true, approver: { approverEmployeeId: user.employee?.id ?? null, approverUserId: user.id } };
     }
     default:
       // ROLE / approver groups are not supported yet (definitions with them cannot be activated)

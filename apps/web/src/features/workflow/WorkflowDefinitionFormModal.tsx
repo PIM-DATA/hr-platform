@@ -9,8 +9,7 @@ import { Alert } from '@/components/ui/Alert';
 import { useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { errorMessage } from '@/features/organization/shared';
-import { useUserSearch } from '@/features/audit/audit.api';
-import { useWorkflowDefinitionMutations } from './workflow.api';
+import { useApproverOptions, useWorkflowDefinitionMutations } from './workflow.api';
 
 interface StepDraft { name: string; approverType: string; approverUserId: string | null; approverEmail: string; onSelf: 'FAIL' | 'SKIP'; onUnresolved: 'FAIL' | 'SKIP' }
 const blankStep = (): StepDraft => ({ name: '', approverType: APPROVER_TYPES.DIRECT_MANAGER, approverUserId: null, approverEmail: '', onSelf: 'FAIL', onUnresolved: 'FAIL' });
@@ -93,14 +92,14 @@ export function WorkflowDefinitionFormModal({ open, onClose, base }: { open: boo
 function UserPicker({ value, onPick, onClear }: { value: string; onPick: (id: string, email: string) => void; onClear: () => void }) {
   const [term, setTerm] = useState('');
   const debounced = useDebounce(term, 250);
-  const users = useUserSearch(debounced, debounced.length > 0);
+  const users = useApproverOptions(debounced, debounced.length > 0);
   if (value) return <div className="flex h-9 items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-3 text-sm"><span>{value}</span><button onClick={onClear} className="text-xs text-slate-500 hover:text-slate-800">change</button></div>;
   return (
     <div className="relative">
       <Input label="Approver user" placeholder="Search user email…" value={term} onChange={(e) => setTerm(e.target.value)} />
       {debounced && (users.data?.length ?? 0) > 0 && (
         <ul className="absolute z-20 mt-1 w-full rounded-md border border-slate-200 bg-white py-1 shadow-lg">
-          {users.data!.map((u) => <li key={u.id}><button type="button" onClick={() => { onPick(u.id, u.email); setTerm(''); }} className="w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50">{u.email}</button></li>)}
+          {users.data!.map((u) => <li key={u.id}><button type="button" onClick={() => { onPick(u.id, u.email); setTerm(''); }} className="w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50">{u.email}{u.employee && <span className="ml-2 text-xs text-slate-500">{u.employee.employeeCode} · {u.employee.firstName} {u.employee.lastName}</span>}</button></li>)}
         </ul>
       )}
     </div>

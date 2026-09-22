@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { APPROVER_TYPES, AUDIT_ACTIONS, ON_SELF, ON_UNRESOLVED, SUPPORTED_APPROVER_TYPES, type CreateWorkflowDefinitionInput, type WorkflowDefinitionDto } from '@hr/shared';
+import { APPROVER_TYPES, AUDIT_ACTIONS, ON_SELF, ON_UNRESOLVED, SUPPORTED_APPROVER_TYPES, type ApproverOptionDto, type CreateWorkflowDefinitionInput, type WorkflowDefinitionDto } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../audit/audit.service';
@@ -47,6 +47,21 @@ export async function validateDefinitionSteps(tx: Tx, steps: { stepOrder: number
 }
 
 export const workflowDefinitionsService = {
+  /** Candidates for SPECIFIC_USER steps: active users only, minimal fields (workflow.manage_definitions, no users.view needed). */
+  async approverOptions(q: { search?: string; limit: number }): Promise<ApproverOptionDto[]> {
+    const terms = (q.search ?? '').split(/\s+/).filter(Boolean);
+    const rows = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        AND: terms.map((t) => ({ OR: [{ email: { contains: t } }, { employee: { employeeCode: { contains: t } } }, { employee: { firstName: { contains: t } } }, { employee: { lastName: { contains: t } } }] })),
+      },
+      select: { id: true, email: true, employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, employmentStatus: true } } },
+      orderBy: { email: 'asc' },
+      take: q.limit,
+    });
+    return rows;
+  },
+
   async list(filter: { code?: string; module?: string } = {}): Promise<WorkflowDefinitionDto[]> {
     const rows = await prisma.workflowDefinition.findMany({ where: { code: filter.code, module: filter.module }, include, orderBy: [{ code: 'asc' }, { version: 'desc' }] });
     return rows.map(toDto);

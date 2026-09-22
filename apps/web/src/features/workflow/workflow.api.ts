@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateWorkflowDefinitionInput, WorkflowDefinitionDto } from '@hr/shared';
+import type { ApproverOptionDto, CreateWorkflowDefinitionInput, WorkflowDefinitionDto } from '@hr/shared';
 import { api } from '@/lib/api-client';
 
 const KEY = 'workflow';
@@ -16,3 +16,7 @@ export function useWorkflowDefinitionMutations() {
     deactivate: useMutation({ mutationFn: (id: string) => api.post<WorkflowDefinitionDto>(`/workflow/definitions/${id}/deactivate`).then((r) => r.data), onSuccess: invalidate }),
   };
 }
+
+/** SPECIFIC_USER picker — purpose-built endpoint, no users.view required. */
+export const useApproverOptions = (search: string, enabled: boolean) =>
+  useQuery({ queryKey: [KEY, 'approver-options', search], queryFn: () => api.get<ApproverOptionDto[]>(`/workflow/approver-options?search=${encodeURIComponent(search)}&limit=20`).then((r) => r.data), enabled });
