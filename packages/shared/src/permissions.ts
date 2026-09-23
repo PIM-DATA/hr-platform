@@ -52,6 +52,11 @@ export const PERMISSIONS = {
   OT_VIEW: 'ot.view',
   OT_REQUEST: 'ot.request',
   OT_MANAGE_POLICY: 'ot.manage_policy',
+
+  PAYROLL_VIEW_OWN: 'payroll.view_own',
+  PAYROLL_MANAGE: 'payroll.manage',
+  PAYROLL_RUN: 'payroll.run',
+  PAYROLL_APPROVE: 'payroll.approve',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -111,6 +116,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.OT_VIEW, module: 'ot', description: 'View overtime requests (scope depends on role data scope)' },
   { code: PERMISSIONS.OT_REQUEST, module: 'ot', description: 'Claim overtime for yourself' },
   { code: PERMISSIONS.OT_MANAGE_POLICY, module: 'ot', description: 'Manage overtime policies' },
+
+  { code: PERMISSIONS.PAYROLL_VIEW_OWN, module: 'payroll', description: 'View your own payslips' },
+  { code: PERMISSIONS.PAYROLL_MANAGE, module: 'payroll', description: 'Manage compensation, pay components and payroll configuration' },
+  { code: PERMISSIONS.PAYROLL_RUN, module: 'payroll', description: 'Calculate and close payroll runs' },
+  { code: PERMISSIONS.PAYROLL_APPROVE, module: 'payroll', description: 'Decide payroll runs' },
 ];
 
 /**
@@ -136,6 +146,9 @@ export const PERMISSION_ACTION_LABELS: Record<string, string> = {
   clock: 'Clock in / out',
   request: 'Request',
   manage_policy: 'Manage policies',
+  view_own: 'View own',
+  run: 'Run',
+  approve: 'Approve',
   correct: 'Correct',
   schedule_manage: 'Manage schedules',
 };

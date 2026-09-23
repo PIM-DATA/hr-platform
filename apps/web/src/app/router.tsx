@@ -47,6 +47,13 @@ import { CorrectionsPage } from '@/features/attendance/CorrectionsPage';
 import { AttendanceReportsPage } from '@/features/attendance/AttendanceReportsPage';
 import { OvertimePage } from '@/features/attendance/OvertimePage';
 import { OvertimePoliciesPage } from '@/features/attendance/OvertimePoliciesPage';
+import { PayrollLayout } from '@/features/payroll/payroll-ui';
+import { MyPayslipsPage } from '@/features/payroll/MyPayslipsPage';
+import { PeriodsPage } from '@/features/payroll/PeriodsPage';
+import { CompensationPage } from '@/features/payroll/CompensationPage';
+import { PayComponentsPage } from '@/features/payroll/PayComponentsPage';
+import { RecurringItemsPage } from '@/features/payroll/RecurringItemsPage';
+import { PayrollPoliciesPage } from '@/features/payroll/PayrollPoliciesPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -159,6 +166,32 @@ export const router = createBrowserRouter([
                   children: [
                     { path: 'overtime', element: <OvertimePage /> },
                     { path: 'overtime-policies', element: <OvertimePoliciesPage /> },
+                  ],
+                },
+              ],
+            }],
+          },
+          {
+            // Payroll (Task 22). Payroll permissions are their own — never derived from a data scope, because a
+            // manager who can see a report's attendance has no business seeing their salary.
+            element: <RequirePermission permission={[PERMISSIONS.PAYROLL_VIEW_OWN, PERMISSIONS.PAYROLL_MANAGE, PERMISSIONS.PAYROLL_RUN, PERMISSIONS.PAYROLL_APPROVE]} />,
+            children: [{
+              path: 'hrm/payroll', element: <PayrollLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.PAYROLL_VIEW_OWN} />, children: [{ index: true, element: <MyPayslipsPage /> }] },
+                {
+                  element: <RequirePermission permission={[PERMISSIONS.PAYROLL_MANAGE, PERMISSIONS.PAYROLL_RUN, PERMISSIONS.PAYROLL_APPROVE]} />,
+                  children: [
+                    { path: 'periods', element: <PeriodsPage /> },
+                    { path: 'components', element: <PayComponentsPage /> },
+                    { path: 'policies', element: <PayrollPoliciesPage /> },
+                  ],
+                },
+                {
+                  element: <RequirePermission permission={PERMISSIONS.PAYROLL_MANAGE} />,
+                  children: [
+                    { path: 'compensation', element: <CompensationPage /> },
+                    { path: 'recurring', element: <RecurringItemsPage /> },
                   ],
                 },
               ],

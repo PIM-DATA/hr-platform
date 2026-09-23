@@ -53,6 +53,10 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Overtime rejected',
     body: `Your overtime claim${v.date ? ` for ${v.date}` : ''} was rejected. Open it to see the details.`,
   }),
+  [NOTIFICATION_TYPES.PAYSLIP_AVAILABLE]: (v) => ({
+    title: 'Payslip available',
+    body: `Your payslip${v.date ? ` for ${v.date}` : ''} is available. Amounts are never included in a notification — open the payslip to see it.`,
+  }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',
     body: `The ${v.leaveType ?? 'leave'} request${v.dateRange ? ` for ${v.dateRange}` : ''} was cancelled.`,

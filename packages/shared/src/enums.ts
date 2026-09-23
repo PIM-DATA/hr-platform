@@ -62,6 +62,52 @@ export const OVERTIME_SETTLED: readonly OvertimeStatus[] = ['REJECTED', 'CANCELL
 
 export const OVERTIME_WORKFLOW = { module: 'attendance', entityType: 'OVERTIME_REQUEST' } as const;
 
+// ---------- payroll (Task 22) ----------
+/** Monthly only in this release; the enum exists so adding a frequency later is a data change, not a schema change. */
+export const PAY_FREQUENCIES = ['MONTHLY'] as const;
+export type PayFrequency = (typeof PAY_FREQUENCIES)[number];
+
+export const PAY_COMPONENT_TYPES = ['EARNING', 'DEDUCTION'] as const;
+export type PayComponentType = (typeof PAY_COMPONENT_TYPES)[number];
+
+/**
+ * How a component gets its amount.
+ *   FIXED  — a configured amount (recurring allowances, fixed deductions)
+ *   MANUAL — typed in by a payroll administrator during review
+ *   SYSTEM — produced by the engine from attendance, leave, overtime or compensation
+ */
+export const PAY_COMPONENT_CALCULATION_TYPES = ['FIXED', 'MANUAL', 'SYSTEM'] as const;
+export type PayComponentCalculationType = (typeof PAY_COMPONENT_CALCULATION_TYPES)[number];
+
+/** Where a payslip line came from — the answer to "why am I being paid this?". */
+export const PAYROLL_ITEM_SOURCES = ['BASE', 'RECURRING', 'OT', 'ATTENDANCE', 'LEAVE', 'MANUAL', 'STATUTORY'] as const;
+export type PayrollItemSource = (typeof PAYROLL_ITEM_SOURCES)[number];
+
+/** The system components the engine writes. Codes are stable: payslip history refers to them. */
+export const SYSTEM_PAY_COMPONENTS = {
+  BASE_SALARY: 'BASE_SALARY',
+  OT_PAY: 'OT_PAY',
+  UNPAID_LEAVE_DEDUCTION: 'UNPAID_LEAVE_DEDUCTION',
+  ABSENCE_DEDUCTION: 'ABSENCE_DEDUCTION',
+  LATE_DEDUCTION: 'LATE_DEDUCTION',
+  MANUAL_EARNING: 'MANUAL_EARNING',
+  MANUAL_DEDUCTION: 'MANUAL_DEDUCTION',
+} as const;
+
+export const PAYROLL_PERIOD_STATUSES = ['OPEN', 'PROCESSING', 'REVIEW', 'APPROVED', 'CLOSED'] as const;
+export type PayrollPeriodStatus = (typeof PAYROLL_PERIOD_STATUSES)[number];
+/** From REVIEW onwards the period's boundaries are frozen; CLOSED is immutable and cannot be reopened. */
+export const PAYROLL_PERIOD_FROZEN: readonly PayrollPeriodStatus[] = ['REVIEW', 'APPROVED', 'CLOSED'];
+
+export const PAYROLL_RUN_STATUSES = ['REVIEW', 'APPROVED', 'CLOSED'] as const;
+export type PayrollRunStatus = (typeof PAYROLL_RUN_STATUSES)[number];
+
+/** How a part-month is prorated for somebody who joined or left inside the period. */
+export const PRORATION_BASES = ['CALENDAR_DAYS', 'WORKING_DAYS'] as const;
+export type ProrationBasis = (typeof PRORATION_BASES)[number];
+
+export const PAYROLL_WORKFLOW = { module: 'payroll', entityType: 'PAYROLL_RUN' } as const;
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -73,6 +119,7 @@ export const NOTIFICATION_TYPES = {
   ATTENDANCE_CORRECTION_REJECTED: 'ATTENDANCE_CORRECTION_REJECTED',
   OVERTIME_APPROVED: 'OVERTIME_APPROVED',
   OVERTIME_REJECTED: 'OVERTIME_REJECTED',
+  PAYSLIP_AVAILABLE: 'PAYSLIP_AVAILABLE',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -90,7 +137,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -170,6 +217,23 @@ export const AUDIT_ACTIONS = {
   CLOCK_IN: 'CLOCK_IN',
   CLOCK_OUT: 'CLOCK_OUT',
   RECALCULATE_ATTENDANCE: 'RECALCULATE_ATTENDANCE',
+  CREATE_COMPENSATION: 'CREATE_COMPENSATION',
+  UPDATE_COMPENSATION: 'UPDATE_COMPENSATION',
+  CREATE_PAY_COMPONENT: 'CREATE_PAY_COMPONENT',
+  UPDATE_PAY_COMPONENT: 'UPDATE_PAY_COMPONENT',
+  ASSIGN_PAY_ITEM: 'ASSIGN_PAY_ITEM',
+  UPDATE_PAY_ITEM: 'UPDATE_PAY_ITEM',
+  CREATE_PAYROLL_POLICY: 'CREATE_PAYROLL_POLICY',
+  UPDATE_PAYROLL_POLICY: 'UPDATE_PAYROLL_POLICY',
+  CREATE_PAYROLL_PERIOD: 'CREATE_PAYROLL_PERIOD',
+  UPDATE_PAYROLL_PERIOD: 'UPDATE_PAYROLL_PERIOD',
+  CALCULATE_PAYROLL: 'CALCULATE_PAYROLL',
+  ADD_PAYROLL_ADJUSTMENT: 'ADD_PAYROLL_ADJUSTMENT',
+  REMOVE_PAYROLL_ADJUSTMENT: 'REMOVE_PAYROLL_ADJUSTMENT',
+  SUBMIT_PAYROLL_RUN: 'SUBMIT_PAYROLL_RUN',
+  APPROVE_PAYROLL_RUN: 'APPROVE_PAYROLL_RUN',
+  REJECT_PAYROLL_RUN: 'REJECT_PAYROLL_RUN',
+  CLOSE_PAYROLL_RUN: 'CLOSE_PAYROLL_RUN',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -228,6 +292,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   leave: 'Leave',
   attendance: 'Attendance',
   ot: 'Overtime',
+  payroll: 'Payroll',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

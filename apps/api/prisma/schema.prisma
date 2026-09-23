@@ -56,6 +56,10 @@ model User {
   attendanceClockEvents   AttendanceClockEvent[] @relation("AttendanceClockCreator")
   attendanceCorrections   AttendanceCorrection[] @relation("AttendanceCorrectionCreator")
   overtimeRequestsCreated OvertimeRequest[]      @relation("OvertimeRequestCreator")
+  compensationsCreated    EmployeeCompensation[] @relation("CompensationCreator")
+  payItemsCreated         EmployeePayItem[]      @relation("PayItemCreator")
+  payrollRunsStarted      PayrollRun[]           @relation("PayrollRunStarter")
+  payrollRunsClosed       PayrollRun[]           @relation("PayrollRunCloser")
   notifications           Notification[]
 
   @@map("users")
@@ -151,6 +155,8 @@ model Organization {
   attendanceShifts AttendanceShift[]
   overtimePolicies OvertimePolicy[]
   overtimeRequests OvertimeRequest[]
+  payrollPolicies  PayrollPolicy[]
+  payrollPeriods   PayrollPeriod[]
 
   @@map("organizations")
 }
@@ -264,6 +270,9 @@ model Employee {
   attendanceRecords     AttendanceRecord[]
   attendanceCorrections AttendanceCorrection[]
   overtimeRequests      OvertimeRequest[]
+  compensations         EmployeeCompensation[]
+  payItems              EmployeePayItem[]
+  payrollResults        PayrollResult[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -967,4 +976,233 @@ model OvertimeRequest {
   @@index([organizationId, attendanceDate])
   @@index([policyId])
   @@map("overtime_requests")
+}
+
+
+// ---------------------------------------------------------------------------
+// Payroll (Task 22)
+// ---------------------------------------------------------------------------
+// Money is `Decimal` (PostgreSQL NUMERIC) everywhere — never Float. Amounts carry two decimal places; derived rates
+// carry six, because a minute rate divided three ways and multiplied back must not drift. Nothing in this schema
+// stores a statutory amount: withholding tax, social security and provident fund are absent, not approximated.
+
+/// Salary history. A change closes the current row with an end date and opens a new one, so a payroll run that has
+/// already used a salary can never be re-priced by editing it.
+model EmployeeCompensation {
+  id              String    @id @default(cuid())
+  employeeId      String    @map("employee_id")
+  employee        Employee  @relation(fields: [employeeId], references: [id])
+  effectiveFrom   String    @map("effective_from") // YYYY-MM-DD
+  effectiveTo     String?   @map("effective_to")
+  salaryType      String    @default("MONTHLY") @map("salary_type")
+  baseSalary      Decimal   @map("base_salary") @db.Decimal(18, 2)
+  currencyCode    String    @default("THB") @map("currency_code")
+  note            String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdByUserId String    @map("created_by_user_id")
+  createdBy       User      @relation("CompensationCreator", fields: [createdByUserId], references: [id])
+
+  payrollResults PayrollResult[]
+
+  @@index([employeeId, effectiveFrom])
+  @@map("employee_compensations")
+}
+
+/// What can appear on a payslip. System components are written by the engine and cannot be deleted or redefined.
+model PayComponent {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  type             String // EARNING | DEDUCTION
+  calculationType  String   @default("FIXED") @map("calculation_type") // FIXED | MANUAL | SYSTEM
+  /// Metadata for a future statutory engine; nothing in this release calculates from it.
+  taxable          Boolean  @default(true)
+  recurringAllowed Boolean  @default(true) @map("recurring_allowed")
+  description      String?
+  isSystem         Boolean  @default(false) @map("is_system")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  payItems    EmployeePayItem[]
+  resultItems PayrollResultItem[]
+
+  @@index([type, isActive])
+  @@map("pay_components")
+}
+
+/// A fixed monthly amount attached to one employee — an allowance, or a standing deduction.
+model EmployeePayItem {
+  id              String       @id @default(cuid())
+  employeeId      String       @map("employee_id")
+  employee        Employee     @relation(fields: [employeeId], references: [id])
+  componentId     String       @map("component_id")
+  component       PayComponent @relation(fields: [componentId], references: [id])
+  amount          Decimal      @db.Decimal(18, 2)
+  effectiveFrom   String       @map("effective_from")
+  effectiveTo     String?      @map("effective_to")
+  note            String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  createdByUserId String       @map("created_by_user_id")
+  createdBy       User         @relation("PayItemCreator", fields: [createdByUserId], references: [id])
+
+  @@index([employeeId, componentId, effectiveFrom])
+  @@map("employee_pay_items")
+}
+
+/// How an organization turns a monthly salary into a daily and minute rate, and which deductions it applies.
+/// Every number here is configuration: nothing assumes 30 days, 26 days or 8 hours.
+model PayrollPolicy {
+  id                      String       @id @default(cuid())
+  organizationId          String       @map("organization_id")
+  organization            Organization @relation(fields: [organizationId], references: [id])
+  name                    String
+  monthlyDivisorDays      Decimal      @map("monthly_divisor_days") @db.Decimal(8, 4)
+  dailyWorkHours          Decimal      @map("daily_work_hours") @db.Decimal(8, 4)
+  newHireProration        String       @default("CALENDAR_DAYS") @map("new_hire_proration")
+  terminationProration    String       @default("CALENDAR_DAYS") @map("termination_proration")
+  absenceDeductionEnabled Boolean      @default(true) @map("absence_deduction_enabled")
+  lateDeductionEnabled    Boolean      @default(false) @map("late_deduction_enabled")
+  workflowDefinitionCode  String       @map("workflow_definition_code")
+  effectiveFrom           String       @map("effective_from")
+  effectiveTo             String?      @map("effective_to")
+  currencyCode            String       @default("THB") @map("currency_code")
+  isActive                Boolean      @default(true) @map("is_active")
+  createdAt               DateTime     @default(now()) @map("created_at")
+  updatedAt               DateTime     @updatedAt @map("updated_at")
+
+  periods PayrollPeriod[]
+
+  @@index([organizationId, isActive, effectiveFrom])
+  @@map("payroll_policies")
+}
+
+/// One month of payroll for one organization. The attendance window is separate from the salary window, because a
+/// cut-off on the 20th is normal and assuming otherwise would silently pay the wrong days.
+model PayrollPeriod {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  year           Int
+  month          Int
+  periodStart    String        @map("period_start")
+  periodEnd      String        @map("period_end")
+  attendanceFrom String        @map("attendance_from")
+  attendanceTo   String        @map("attendance_to")
+  paymentDate    String?       @map("payment_date")
+  status         String        @default("OPEN") // OPEN | PROCESSING | REVIEW | APPROVED | CLOSED
+  currencyCode   String        @default("THB") @map("currency_code")
+  policyId       String?       @map("policy_id")
+  policy         PayrollPolicy? @relation(fields: [policyId], references: [id])
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  runs PayrollRun[]
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId, status])
+  @@map("payroll_periods")
+}
+
+/// A calculation of a period. Rebuilt in place while it is in review; frozen on approval; immutable once closed.
+model PayrollRun {
+  id                 String        @id @default(cuid())
+  periodId           String        @unique @map("period_id")
+  period             PayrollPeriod @relation(fields: [periodId], references: [id])
+  version            Int           @default(1)
+  status             String        @default("REVIEW") // REVIEW | APPROVED | CLOSED
+  employeeCount      Int           @default(0) @map("employee_count")
+  grossTotal         Decimal       @default(0) @map("gross_total") @db.Decimal(18, 2)
+  deductionTotal     Decimal       @default(0) @map("deduction_total") @db.Decimal(18, 2)
+  netTotal           Decimal       @default(0) @map("net_total") @db.Decimal(18, 2)
+  currencyCode       String        @default("THB") @map("currency_code")
+  /// Hash of every input the calculation read. Compared before approval so stale payroll cannot be approved quietly.
+  inputFingerprint   String?       @map("input_fingerprint")
+  workflowInstanceId String?       @unique @map("workflow_instance_id")
+  startedByUserId    String        @map("started_by_user_id")
+  startedBy          User          @relation("PayrollRunStarter", fields: [startedByUserId], references: [id])
+  startedAt          DateTime      @default(now()) @map("started_at")
+  calculatedAt       DateTime?     @map("calculated_at")
+  approvedAt         DateTime?     @map("approved_at")
+  closedAt           DateTime?     @map("closed_at")
+  closedByUserId     String?       @map("closed_by_user_id")
+  closedBy           User?         @relation("PayrollRunCloser", fields: [closedByUserId], references: [id])
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  results PayrollResult[]
+
+  @@index([status])
+  @@map("payroll_runs")
+}
+
+/// One employee's payroll for one run, with the identity and inputs snapshotted so a payslip never changes meaning.
+model PayrollResult {
+  id                 String                @id @default(cuid())
+  runId              String                @map("run_id")
+  run                PayrollRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeId         String                @map("employee_id")
+  employee           Employee              @relation(fields: [employeeId], references: [id])
+  employeeCode       String                @map("employee_code")
+  employeeName       String                @map("employee_name")
+  organizationId     String?               @map("organization_id")
+  departmentId       String?               @map("department_id")
+  departmentName     String?               @map("department_name")
+  positionId         String?               @map("position_id")
+  positionTitle      String?               @map("position_title")
+  compensationId     String?               @map("compensation_id")
+  compensation       EmployeeCompensation? @relation(fields: [compensationId], references: [id])
+  baseSalary         Decimal               @map("base_salary") @db.Decimal(18, 2)
+  /// Derived rates, kept at six places so a minute rate multiplied back does not drift.
+  dailyRate          Decimal               @map("daily_rate") @db.Decimal(18, 6)
+  minuteRate         Decimal               @map("minute_rate") @db.Decimal(18, 6)
+  grossPay           Decimal               @map("gross_pay") @db.Decimal(18, 2)
+  totalDeductions    Decimal               @map("total_deductions") @db.Decimal(18, 2)
+  netPay             Decimal               @map("net_pay") @db.Decimal(18, 2)
+  currencyCode       String                @default("THB") @map("currency_code")
+  // the inputs this money was derived from, frozen at calculation
+  absentDays         Decimal               @default(0) @map("absent_days") @db.Decimal(8, 2)
+  lateMinutes        Int                   @default(0) @map("late_minutes")
+  unpaidLeaveUnits   Decimal               @default(0) @map("unpaid_leave_units") @db.Decimal(8, 2)
+  approvedOtMinutes  Int                   @default(0) @map("approved_ot_minutes")
+  proratedDays       Decimal?              @map("prorated_days") @db.Decimal(8, 2)
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  items PayrollResultItem[]
+
+  @@unique([runId, employeeId])
+  @@index([employeeId])
+  @@map("payroll_results")
+}
+
+/// A payslip line. The component's code and name are snapshotted: renaming a component never rewrites history.
+model PayrollResultItem {
+  id                    String        @id @default(cuid())
+  payrollResultId       String        @map("payroll_result_id")
+  payrollResult         PayrollResult @relation(fields: [payrollResultId], references: [id], onDelete: Cascade)
+  componentId           String?       @map("component_id")
+  component             PayComponent? @relation(fields: [componentId], references: [id])
+  componentCodeSnapshot String        @map("component_code_snapshot")
+  componentNameSnapshot String        @map("component_name_snapshot")
+  type                  String // EARNING | DEDUCTION
+  source                String // BASE | RECURRING | OT | ATTENDANCE | LEAVE | MANUAL | STATUTORY
+  quantity              Decimal?      @db.Decimal(18, 4)
+  rate                  Decimal?      @db.Decimal(18, 6)
+  multiplier            Decimal?      @db.Decimal(8, 4)
+  amount                Decimal       @db.Decimal(18, 2)
+  description           String?
+  /// What produced this line — an overtime request, a leave request, an attendance date, a recurring item.
+  referenceType         String?       @map("reference_type")
+  referenceId           String?       @map("reference_id")
+  /// Manual adjustments survive a recalculation; generated lines are rebuilt.
+  isManual              Boolean       @default(false) @map("is_manual")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  createdByUserId       String?       @map("created_by_user_id")
+
+  @@index([payrollResultId])
+  @@index([referenceType, referenceId])
+  @@map("payroll_result_items")
 }

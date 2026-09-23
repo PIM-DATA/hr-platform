@@ -22,3 +22,22 @@
 
 html, body, #root { height: 100%; }
 body { @apply bg-slate-50 text-slate-800 antialiased; }
+
+/*
+ * Printing a payslip. The browser's own print dialog is the whole feature — no PDF library was added for it. When a
+ * payslip is open, everything is hidden except that panel, which is lifted out of the scrolling dialog so it prints
+ * in full rather than clipped to the modal's height.
+ */
+@media print {
+  body:has(#payslip-print) * { visibility: hidden; }
+  body:has(#payslip-print) #payslip-print,
+  body:has(#payslip-print) #payslip-print * { visibility: visible; }
+  body:has(#payslip-print) #payslip-print {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+  }
+  body:has(#payslip-print) { background: #fff; }
+}

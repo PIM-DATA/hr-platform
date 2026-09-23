@@ -289,7 +289,8 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Account recovery is admin-assisted (one-time link); no email/SMS delivery, so no self-service forgot-password.
 - Privacy: request register + personal-data export exist; retention/erasure policy and automated deletion do not.
 - Attendance: web clock only — no GPS, biometric devices, multiple punches or payroll posting.
-- Overtime: claim-based after the fact, minutes and multipliers only — no monetary calculation, rounding rule or approved-claim reversal.
+- Overtime: claim-based after the fact, minutes and multipliers only — no rounding rule or approved-claim reversal.
+- Payroll: no tax, social security, provident fund, bank file or GL posting; monthly only, one currency, one run per period, no off-cycle or retroactive run, no reopen after closing.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -708,6 +709,30 @@ Full guide: [docs/overtime.md](docs/overtime.md). HRM → Time & attendance → 
   approved is refused (`ATTENDANCE_CORRECTION_CONFLICTS_WITH_APPROVED_OT`) and nothing moves.
 - **Payroll handoff**: `overtimeService.getApprovedOvertimeForPayroll({ employeeId, from, to })` returns requestId,
   date, approved minutes, day type, multiplier and policy — nothing else.
+
+## Payroll (Task 22)
+
+Full guide: [docs/payroll.md](docs/payroll.md). HRM → Payroll.
+
+- **No statutory amounts are calculated.** No withholding tax, no social security, no provident fund, no bank file, no
+  GL posting — absent, not approximated, and stated on every payslip. Nothing this module produces may be filed with
+  an authority as if it had been.
+- **Money is exact**: `NUMERIC` in the database, `Prisma.Decimal` in the service, decimal **strings** on the wire.
+  Amounts 2 places, derived rates 6, half-up, rounded once at the line. 120 overtime minutes at ×1.5 on a 30,000
+  salary is `375.00`, not the `374.40` a prematurely rounded minute rate would pay.
+- **Nothing is hardcoded**: the monthly divisor days and hours per day come from the payroll policy, so a customer who
+  divides by 26 changes one field and every rate follows.
+- **A salary is history, not a field.** A raise closes the old compensation record and opens a new one; a record a run
+  has used can never be re-priced. A salary change inside a period is refused rather than prorated by an unagreed rule.
+- **Inputs come from the modules that own them**: approved overtime from Task 21 (minutes and the multiplier
+  snapshotted at approval), unpaid leave from Task 12, absence and lateness from Task 20. A day covered by approved
+  leave is never also charged as an absence.
+- **Stale runs cannot be approved.** Every source is fingerprinted at calculation; if anything moved since, submission
+  fails with `PAYROLL_INPUT_CHANGED` until somebody recalculates. A run waiting for its approver is frozen.
+- **Approval** is the shared workflow engine (`module = payroll`, `entityType = PAYROLL_RUN`) — no payroll-specific
+  approval endpoint, no self-approval. Closing is final: no recalculation, no adjustment, **no reopen**.
+- **Confidentiality**: `payroll.view_own` shows your own payslips for closed runs only; everything else needs a
+  payroll permission. A manager's data scope grants nothing, and EXECUTIVE has no payroll permission at all.
 
 ## Pilot release
 

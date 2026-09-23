@@ -36,14 +36,14 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Employee',
     description: 'Employee self service: own profile and organization view',
     dataScope: DATA_SCOPES.SELF,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST, P.PAYROLL_VIEW_OWN],
   },
   {
     code: ROLES.MANAGER,
     name: 'Manager',
     description: 'Manager self service: own team',
     dataScope: DATA_SCOPES.TEAM,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST, P.PAYROLL_VIEW_OWN],
   },
   {
     code: ROLES.HR,
@@ -65,6 +65,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.ATTENDANCE_CLOCK,
       P.ATTENDANCE_CORRECT,
       P.OT_VIEW,
+      P.PAYROLL_VIEW_OWN,
+      P.PAYROLL_MANAGE,
     ],
   },
   {
@@ -108,6 +110,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.OT_VIEW,
       P.OT_REQUEST,
       P.OT_MANAGE_POLICY,
+      P.PAYROLL_VIEW_OWN,
+      P.PAYROLL_MANAGE,
+      P.PAYROLL_RUN,
+      P.PAYROLL_APPROVE,
     ],
   },
   {
