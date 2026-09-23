@@ -47,6 +47,11 @@ model User {
   leaveLedgerEntries      LeaveLedger[]
   leaveRequestsCreated    LeaveRequest[]
   onboardingImports       OnboardingImportRun[]
+  passwordResetTokens     PasswordResetToken[]   @relation("PasswordResetSubject")
+  passwordResetsIssued    PasswordResetToken[]   @relation("PasswordResetIssuer")
+  privacyRequestsSubject  PrivacyRequest[]       @relation("PrivacySubjectUser")
+  privacyRequestsCreated  PrivacyRequest[]       @relation("PrivacyRequestCreator")
+  privacyRequestsAssigned PrivacyRequest[]       @relation("PrivacyRequestAssignee")
   notifications           Notification[]
 
   @@map("users")
@@ -246,6 +251,7 @@ model Employee {
   workflowApproverSteps WorkflowInstanceStep[] @relation("WorkflowStepApproverEmployee")
   leaveEntitlements     LeaveEntitlement[]
   leaveRequests         LeaveRequest[]
+  privacyRequests       PrivacyRequest[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -706,4 +712,49 @@ model OnboardingImportRun {
 
   @@index([createdAt])
   @@map("onboarding_import_runs")
+}
+
+/// One-time password reset. Only the SHA-256 hash is stored, exactly like session tokens: the raw token is shown to
+/// the issuing administrator once and never again, so a database copy cannot be turned back into a working link.
+model PasswordResetToken {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  user            User      @relation("PasswordResetSubject", fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash       String    @unique @map("token_hash")
+  expiresAt       DateTime  @map("expires_at")
+  usedAt          DateTime? @map("used_at")
+  revokedAt       DateTime? @map("revoked_at")
+  createdByUserId String?   @map("created_by_user_id")
+  createdBy       User?     @relation("PasswordResetIssuer", fields: [createdByUserId], references: [id])
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+/// Register of privacy requests from data subjects. A record of what was asked and what the organization decided —
+/// the system performs no erasure and makes no legal judgement; retention and legal basis are customer policy.
+model PrivacyRequest {
+  id               String    @id @default(cuid())
+  requestType      String    @map("request_type") // ACCESS | EXPORT | CORRECTION | DELETION | RESTRICTION | OTHER
+  status           String    @default("OPEN") // OPEN | IN_PROGRESS | COMPLETED | REJECTED
+  employeeId       String?   @map("employee_id")
+  employee         Employee? @relation(fields: [employeeId], references: [id])
+  userId           String?   @map("user_id")
+  user             User?     @relation("PrivacySubjectUser", fields: [userId], references: [id])
+  requestedAt      DateTime  @default(now()) @map("requested_at")
+  dueAt            DateTime? @map("due_at")
+  completedAt      DateTime? @map("completed_at")
+  notes            String? // may contain sensitive free text: never logged, never in the list response
+  assignedToUserId String?   @map("assigned_to_user_id")
+  assignedTo       User?     @relation("PrivacyRequestAssignee", fields: [assignedToUserId], references: [id])
+  createdByUserId  String    @map("created_by_user_id")
+  createdBy        User      @relation("PrivacyRequestCreator", fields: [createdByUserId], references: [id])
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, requestedAt])
+  @@index([employeeId])
+  @@map("privacy_requests")
 }

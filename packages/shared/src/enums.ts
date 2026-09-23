@@ -5,6 +5,13 @@
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
+export const PRIVACY_REQUEST_TYPES = ['ACCESS', 'EXPORT', 'CORRECTION', 'DELETION', 'RESTRICTION', 'OTHER'] as const;
+export type PrivacyRequestType = (typeof PRIVACY_REQUEST_TYPES)[number];
+export const PRIVACY_REQUEST_STATUSES = ['OPEN', 'IN_PROGRESS', 'COMPLETED', 'REJECTED'] as const;
+export type PrivacyRequestStatus = (typeof PRIVACY_REQUEST_STATUSES)[number];
+/** Terminal states are not reopened: a new request is recorded instead, so the history of each decision stays intact. */
+export const PRIVACY_REQUEST_TERMINAL: readonly PrivacyRequestStatus[] = ['COMPLETED', 'REJECTED'];
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -29,7 +36,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'onboarding'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -102,6 +109,13 @@ export const AUDIT_ACTIONS = {
   REJECT_LEAVE_REQUEST: 'REJECT_LEAVE_REQUEST',
   CANCEL_LEAVE_REQUEST: 'CANCEL_LEAVE_REQUEST',
   IMPORT_CUSTOMER_ONBOARDING: 'IMPORT_CUSTOMER_ONBOARDING',
+  CHANGE_OWN_PASSWORD: 'CHANGE_OWN_PASSWORD',
+  ISSUE_PASSWORD_RESET: 'ISSUE_PASSWORD_RESET',
+  REVOKE_OTHER_SESSIONS: 'REVOKE_OTHER_SESSIONS',
+  ADMIN_REVOKE_USER_SESSIONS: 'ADMIN_REVOKE_USER_SESSIONS',
+  CREATE_PRIVACY_REQUEST: 'CREATE_PRIVACY_REQUEST',
+  UPDATE_PRIVACY_REQUEST: 'UPDATE_PRIVACY_REQUEST',
+  EXPORT_EMPLOYEE_PERSONAL_DATA: 'EXPORT_EMPLOYEE_PERSONAL_DATA',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -139,4 +153,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   workflow: 'Workflow',
   calendar: 'Calendar',
   leave: 'Leave',
+  onboarding: 'Onboarding',
+  account: 'Account security',
+  privacy: 'Privacy',
 };

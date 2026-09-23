@@ -93,6 +93,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.LEAVE_VIEW,
       P.LEAVE_REQUEST,
       P.ONBOARDING_MANAGE,
+      P.ACCOUNT_MANAGE_RECOVERY,
+      P.PRIVACY_MANAGE_REQUESTS,
+      P.PRIVACY_EXPORT_DATA,
     ],
   },
   {

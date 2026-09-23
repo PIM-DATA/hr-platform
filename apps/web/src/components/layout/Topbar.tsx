@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Menu } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ChevronDown, LogOut, Menu, ShieldCheck } from 'lucide-react';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { displayName, useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -85,6 +85,14 @@ function UserMenu() {
             <div className="truncate text-xs text-slate-500">{roleLabel}</div>
           </div>
           <div className="truncate px-3 py-2 text-xs text-slate-500">{user?.email}</div>
+          <Link
+            role="menuitem"
+            to="/account/security"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <ShieldCheck className="h-4 w-4" /> Account security
+          </Link>
           <button
             role="menuitem"
             onClick={onLogout}

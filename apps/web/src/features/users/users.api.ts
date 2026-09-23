@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateUserInput, EmployeeOption, ResetPasswordInput, UpdateUserInput, UpdateUserRolesInput, UserDto, UserListQuery } from '@hr/shared';
+import type { CreateUserInput, EmployeeOption, UpdateUserInput, UpdateUserRolesInput, UserDto, UserListQuery } from '@hr/shared';
 import { api } from '@/lib/api-client';
 
 const KEY = 'users';
@@ -39,6 +39,6 @@ export function useUserMutations() {
     setRoles: useMutation({ mutationFn: ({ id, input }: { id: string; input: UpdateUserRolesInput }) => api.patch<UserDto>(`/users/${id}/roles`, input).then((r) => r.data), onSuccess: invalidate }),
     activate: useMutation({ mutationFn: (id: string) => api.patch<UserDto>(`/users/${id}/activate`).then((r) => r.data), onSuccess: invalidate }),
     deactivate: useMutation({ mutationFn: (id: string) => api.patch<UserDto>(`/users/${id}/deactivate`).then((r) => r.data), onSuccess: invalidate }),
-    resetPassword: useMutation({ mutationFn: ({ id, input }: { id: string; input: ResetPasswordInput }) => api.post<void>(`/users/${id}/reset-password`, input) }),
+    // Password recovery lives in features/account: an administrator issues a one-time link and never sets a password.
   };
 }

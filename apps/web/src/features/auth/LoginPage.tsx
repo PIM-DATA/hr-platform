@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Building2, AlertCircle } from 'lucide-react';
+import { Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { loginSchema, type LoginInput } from '@hr/shared';
 import { useAuth } from '@/hooks/useAuth';
+import { takeLoginNotice } from './login-notice';
 import { ApiClientError } from '@/lib/api-client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -17,6 +18,8 @@ export function LoginPage() {
   const [serverError, setServerError] = useState<string | null>(null);
 
   const form = useForm<LoginInput>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } });
+  // Set after a password change, so the redirect explains itself. Read once, then cleared.
+  const [notice] = useState(takeLoginNotice);
 
   if (status === 'loading') return <LoadingBlock />;
   if (status === 'authenticated') return <Navigate to="/dashboard" replace />;
@@ -54,6 +57,12 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={onSubmit} noValidate className="space-y-5 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          {notice && !serverError && (
+            <div role="status" className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{notice}</span>
+            </div>
+          )}
           {serverError && (
             <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -82,6 +91,11 @@ export function LoginPage() {
           <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>
             Sign in
           </Button>
+
+          {/* No email is sent by this system, so recovery is deliberately described as what it is. */}
+          <p className="text-center text-xs text-slate-500">
+            Forgot your password? Ask your HR administrator for a one-time reset link.
+          </p>
         </form>
 
         <p className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} HR Enterprise Platform</p>

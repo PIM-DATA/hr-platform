@@ -39,6 +39,9 @@ export const PERMISSIONS = {
   LEAVE_VIEW: 'leave.view',
   LEAVE_REQUEST: 'leave.request',
   ONBOARDING_MANAGE: 'onboarding.manage',
+  ACCOUNT_MANAGE_RECOVERY: 'account.manage_recovery',
+  PRIVACY_MANAGE_REQUESTS: 'privacy.manage_requests',
+  PRIVACY_EXPORT_DATA: 'privacy.export_data',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -85,6 +88,9 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.LEAVE_VIEW, module: 'leave', description: 'View leave requests and balances within my data scope' },
   { code: PERMISSIONS.LEAVE_REQUEST, module: 'leave', description: 'Create, submit and cancel my own leave requests' },
   { code: PERMISSIONS.ONBOARDING_MANAGE, module: 'onboarding', description: 'Import a customer onboarding workbook (creates organizations, departments, jobs, positions and employees)' },
+  { code: PERMISSIONS.ACCOUNT_MANAGE_RECOVERY, module: 'account', description: 'Issue one-time password reset links and revoke other users\' sessions' },
+  { code: PERMISSIONS.PRIVACY_MANAGE_REQUESTS, module: 'privacy', description: 'Record and track privacy requests from data subjects' },
+  { code: PERMISSIONS.PRIVACY_EXPORT_DATA, module: 'privacy', description: 'Export an employee\'s personal data' },
 ];
 
 /**

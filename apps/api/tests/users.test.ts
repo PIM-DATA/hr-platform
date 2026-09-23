@@ -291,15 +291,29 @@ describe('data scope escalation guard', () => {
   });
 });
 
-describe('reset password', () => {
-  it('sets a new password, revokes sessions, audits without the password', async () => {
+describe('password recovery (Task 18 requirement change)', () => {
+  // An administrator may no longer choose a user's password: POST /users/:id/reset-password was removed and replaced
+  // by a one-time reset link (POST /admin/users/:id/password-reset). The link flow itself is covered in
+  // account-privacy.test.ts; here we only assert that the old, stronger capability is really gone.
+  it('the old "set this user\'s password" endpoint no longer exists', async () => {
     const victim = await loginAs(app, 'employee@users.local', PW);
     const res = await authed('post', `/api/v1/users/${victim.user.id}/reset-password`).send({ password: 'Temporary-Pass-7' });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(404);
+    // nothing changed: the session still works and the original password still signs in
+    expect((await request(app).get('/api/v1/auth/me').set('Cookie', victim.cookie)).status).toBe(200);
+    expect((await request(app).post('/api/v1/auth/login').send({ email: 'employee@users.local', password: 'Temporary-Pass-7' })).status).toBe(401);
+    expect((await request(app).post('/api/v1/auth/login').send({ email: 'employee@users.local', password: PW })).status).toBe(200);
+  });
+
+  it('a one-time reset link is issued instead, and signs the user out everywhere', async () => {
+    const victim = await loginAs(app, 'employee@users.local', PW);
+    const issued = await authed('post', `/api/v1/admin/users/${victim.user.id}/password-reset`);
+    expect(issued.status).toBe(201);
+    expect((await request(app).post('/api/v1/account/reset-password').send({ token: issued.body.data.token, newPassword: 'Link-Chosen-Pass-8' })).status).toBe(204);
     expect((await request(app).get('/api/v1/auth/me').set('Cookie', victim.cookie)).status).toBe(401);
-    expect((await request(app).post('/api/v1/auth/login').send({ email: 'employee@users.local', password: PW })).status).toBe(401);
-    expect((await request(app).post('/api/v1/auth/login').send({ email: 'employee@users.local', password: 'Temporary-Pass-7' })).status).toBe(200);
-    const audit = await prisma.auditLog.findFirst({ where: { action: 'RESET_USER_PASSWORD', recordId: victim.user.id } });
-    expect(`${audit!.oldValue}${audit!.newValue}`).not.toMatch(/Temporary|\$2[aby]\$/);
+    expect((await request(app).post('/api/v1/auth/login').send({ email: 'employee@users.local', password: 'Link-Chosen-Pass-8' })).status).toBe(200);
+    const audit = await prisma.auditLog.findFirst({ where: { action: 'RESET_USER_PASSWORD', recordId: victim.user.id }, orderBy: { createdAt: 'desc' } });
+    expect(`${audit!.oldValue}${audit!.newValue}`).not.toMatch(/Link-Chosen|\$2[aby]\$/);
+    expect(audit!.newValue).not.toMatch(issued.body.data.token);
   });
 });

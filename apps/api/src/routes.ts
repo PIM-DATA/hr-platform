@@ -10,6 +10,8 @@ import { calendarsRouter, holidaysRouter } from './modules/calendar/calendar.rou
 import { leaveRouter } from './modules/leave/leave.routes';
 import { notificationsRouter } from './modules/notification/notification.routes';
 import { onboardingRouter } from './modules/onboarding/onboarding.routes';
+import { accountAdminRouter, accountRouter } from './modules/account/account.routes';
+import { privacyRouter } from './modules/privacy/privacy.routes';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
@@ -37,4 +39,7 @@ apiRouter.use('/holidays', holidaysRouter);
 apiRouter.use('/leave', leaveRouter);
 apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/onboarding', onboardingRouter);
+apiRouter.use('/account', accountRouter);
+apiRouter.use('/admin/users', accountAdminRouter);
+apiRouter.use('/privacy', privacyRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)

@@ -25,8 +25,7 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export const updateUserRolesSchema = z.object({ roleCodes: roleCodesField });
 export type UpdateUserRolesInput = z.infer<typeof updateUserRolesSchema>;
 
-export const resetPasswordSchema = z.object({ password: passwordField });
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+// There is no admin "set this user's password" schema: recovery goes through a one-time reset link (schemas/account.ts).
 
 export const USER_SORT_FIELDS = ['email', 'createdAt', 'lastLoginAt'] as const;
 export const userListQuerySchema = paginationQuerySchema.extend({

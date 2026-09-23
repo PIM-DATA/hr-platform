@@ -33,6 +33,11 @@ import { AllRequestsPage } from '@/features/leave/AllRequestsPage';
 import { ReportsPage } from '@/features/leave/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { OnboardingPage } from '@/features/onboarding/OnboardingPage';
+import { AccountSecurityPage } from '@/features/account/AccountSecurityPage';
+import { ResetPasswordPage } from '@/features/account/ResetPasswordPage';
+import { PrivacyLayout } from '@/features/privacy/PrivacyLayout';
+import { PrivacyRequestsPage } from '@/features/privacy/PrivacyRequestsPage';
+import { DataExportPage } from '@/features/privacy/DataExportPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -47,6 +52,8 @@ const comingSoonRoutes = MENU.flatMap((group) => group.items)
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  // Public: whoever follows a reset link cannot sign in yet, so this page must live outside RequireAuth.
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     element: <RequireAuth />, // everything below requires a valid session
     children: [
@@ -119,6 +126,18 @@ export const router = createBrowserRouter([
             }],
           },
           { element: <RequirePermission permission={PERMISSIONS.ONBOARDING_MANAGE} />, children: [{ path: 'admin/onboarding', element: <OnboardingPage /> }] },
+          {
+            // Privacy operations (Task 18). Each tab is guarded on its own permission, as the API is.
+            element: <RequirePermission permission={[PERMISSIONS.PRIVACY_MANAGE_REQUESTS, PERMISSIONS.PRIVACY_EXPORT_DATA]} />,
+            children: [{
+              path: 'admin/privacy', element: <PrivacyLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.PRIVACY_MANAGE_REQUESTS} />, children: [{ index: true, element: <PrivacyRequestsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.PRIVACY_EXPORT_DATA} />, children: [{ path: 'export', element: <DataExportPage /> }] },
+              ],
+            }],
+          },
+          { path: 'account/security', element: <AccountSecurityPage /> }, // your own account: authentication only
           { path: 'notifications', element: <NotificationsPage /> }, // the caller's own inbox: authentication only, no permission
           ...comingSoonRoutes,
           { path: '*', element: <ComingSoonPage title="Page not found" description="The page you are looking for does not exist." /> },

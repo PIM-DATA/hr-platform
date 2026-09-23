@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   Route, BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet,
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -67,6 +67,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Workflows', path: '/admin/workflows', icon: Workflow, permission: P.WORKFLOW_MANAGE_DEFINITIONS },
       { label: 'Leave Settings', path: '/admin/leave-settings', icon: CalendarDays, permission: [P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.CALENDAR_VIEW] },
       { label: 'Onboarding', path: '/admin/onboarding', icon: FileSpreadsheet, permission: P.ONBOARDING_MANAGE },
+      { label: 'Privacy', path: '/admin/privacy', icon: FileLock2, permission: [P.PRIVACY_MANAGE_REQUESTS, P.PRIVACY_EXPORT_DATA] },
       { label: 'Settings', path: '/admin/settings', icon: Settings, permission: P.SETTINGS_MANAGE, comingSoon: true },
     ],
   },

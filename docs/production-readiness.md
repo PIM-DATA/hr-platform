@@ -46,7 +46,7 @@ win over file values.
 
 `NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`, `TEST_DATABASE_URL`, `CORS_ORIGIN`, `TRUST_PROXY`,
 `API_RATE_LIMIT_PER_MINUTE`, `JSON_BODY_LIMIT`, `SESSION_TTL_HOURS`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MINUTES`,
-`COOKIE_SECURE`, `APP_VERSION`, `ENV_FILE`; bootstrap-only: `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`;
+`COOKIE_SECURE`, `APP_VERSION`, `ENV_FILE`, `PUBLIC_APP_URL`, `PASSWORD_RESET_TTL_MINUTES`; bootstrap-only: `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`;
 development-only: `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_PASSWORD`; frontend build-only:
 `VITE_API_BASE_URL`.
 
@@ -127,8 +127,9 @@ shared store (Redis or equivalent) and is listed as a gap rather than built spec
 - Headers on every response: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
   `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, `Permissions-Policy`, a strict API CSP
   (`default-src 'none'`), and `Strict-Transport-Security` in production.
-- Passwords: bcrypt cost 12, minimum 8 characters (12 for the production bootstrap admin), never logged. There is no
-  breached-password check and no password reset flow yet (§9).
+- Passwords: bcrypt cost 12, minimum 8 characters (12 for the production bootstrap admin), never logged. Recovery is
+  admin-assisted through a one-time reset link (`docs/account-recovery.md`); no administrator can read or set another
+  person's password. There is no breached-password check and no email-delivered self-service reset (§9).
 - Authorization: permission codes + data scope, verified per request; see `docs/phase-2-leave-review.md`.
 
 **Frontend CSP is not configured.** The API's own CSP is strict, but the static frontend needs a policy written against
@@ -140,6 +141,7 @@ false comfort, so it is an explicit gap.
 **Pre-deploy**
 - [ ] `NODE_ENV=production` and every required variable set (the process refuses to start otherwise)
 - [ ] `CORS_ORIGIN` = the public https origin(s); `TRUST_PROXY` = real number of proxy hops
+- [ ] `PUBLIC_APP_URL` = the https origin users open (reset links are built from it, never from the request host)
 - [ ] PostgreSQL reachable, credentials stored in the platform's secret store (never in the repository)
 - [ ] `npm ci && npm run build` succeeds; `npm run typecheck` and `npm test` green
 - [ ] TLS certificate valid at the edge; HTTP redirected to HTTPS
@@ -154,6 +156,7 @@ false comfort, so it is an explicit gap.
 - [ ] Sign in as an administrator; the session cookie shows `Secure`, `HttpOnly`, `SameSite=Lax`
 - [ ] Dashboard loads; create → submit → approve one leave request; balance and notification update
 - [ ] `/api/v1/leave/reports/overview` returns figures
+- [ ] Issue a reset link for a test account, use it in a private window, confirm the link is refused the second time
 - [ ] Logs show JSON lines with request ids and no secrets
 
 **First install only**
@@ -171,10 +174,15 @@ false comfort, so it is an explicit gap.
   automated scheduling/retention, backup-failure alerting and point-in-time recovery (WAL archiving).
 - **Monitoring**: `npm run ops:check` plus structured events give a monitor something to consume, but no metrics,
   alerting, uptime checks or external error tracking (Sentry/Datadog) are wired up; logs go to stdout only.
-- **Account recovery**: no password reset / forgot-password flow; an administrator must reset credentials.
+- **Account recovery**: admin-assisted recovery is available (self-service password change, one-time reset links,
+  session revocation — `docs/account-recovery.md`). Self-service email delivery is **not implemented**: there is no
+  email/SMS provider, so an administrator must hand the link over. No MFA and no SSO.
 - **Frontend CSP** and other static-hosting headers are not defined.
 - **Horizontal scaling**: rate limiting (and any future in-process state) assumes a single instance.
-- **PDPA/retention**: no data export, erasure workflow or audit-log retention policy.
+- **Privacy/retention**: a privacy operations foundation exists — request register and personal-data export
+  (`docs/privacy-operations.md`). Still required from the customer: a legal/retention policy, audit-log and
+  employee-record retention rules, and any automated erasure or anonymisation, none of which this system performs.
+  Nothing here constitutes a compliance certification.
 - **Onboarding**: the Excel import (docs/customer-onboarding.md) covers the initial structure and employees.
   Still missing: bulk update/correction tooling, user-account provisioning and invitations, historical leave/payroll
   data migration, and per-customer configuration management.

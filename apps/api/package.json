@@ -22,7 +22,8 @@
     "db:backup": "tsx scripts/backup-db.ts",
     "db:restore:verify": "tsx scripts/restore-verify.ts",
     "ops:check": "tsx scripts/ops-check.ts",
-    "ops:revoke-sessions": "tsx scripts/revoke-sessions.ts"
+    "ops:revoke-sessions": "tsx scripts/revoke-sessions.ts",
+    "ops:cleanup-reset-tokens": "tsx scripts/cleanup-reset-tokens.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

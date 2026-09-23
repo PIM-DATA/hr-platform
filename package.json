@@ -27,7 +27,8 @@
     "db:backup": "npm run db:backup -w apps/api",
     "db:restore:verify": "npm run db:restore:verify -w apps/api",
     "ops:check": "npm run ops:check -w apps/api",
-    "ops:revoke-sessions": "npm run ops:revoke-sessions -w apps/api"
+    "ops:revoke-sessions": "npm run ops:revoke-sessions -w apps/api",
+    "ops:cleanup-reset-tokens": "npm run ops:cleanup-reset-tokens -w apps/api"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,

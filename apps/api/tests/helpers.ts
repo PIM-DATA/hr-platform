@@ -67,6 +67,7 @@ export function assertTestDatabase() {
 
 export async function cleanUsers() {
   assertTestDatabase();
+  await prisma.passwordResetToken.deleteMany();
   await prisma.session.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.user.deleteMany();
@@ -97,6 +98,8 @@ export async function resetDatabase() {
   await prisma.workflowDefinition.deleteMany();
   await prisma.employeeManager.deleteMany();
   await prisma.employeePosition.deleteMany();
+  await prisma.privacyRequest.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
   await prisma.session.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.userRole.deleteMany();

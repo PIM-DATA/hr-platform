@@ -26,10 +26,6 @@ export const usersController = {
   async deactivate(req: Request, res: Response) {
     res.json({ data: await usersService.deactivate(req.params.id as string, actor(req)) });
   },
-  async resetPassword(req: Request, res: Response) {
-    await usersService.resetPassword(req.params.id as string, req.body, actor(req));
-    res.status(204).end();
-  },
   async employeeOptions(req: Request, res: Response) {
     const q = res.locals.query as { search?: string; includeUserId?: string };
     res.json({ data: await usersService.employeeOptions(q.search, q.includeUserId) });

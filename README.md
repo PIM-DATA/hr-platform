@@ -80,6 +80,7 @@ so the browser talks to one origin (cookies work without CORS).
 | `npm run db:studio` | Prisma Studio (DB browser) |
 | `npm test` | API integration tests against a throwaway `apps/api/prisma/test.db` (see *Testing* below) |
 | `npm run typecheck` | `tsc --noEmit` in every workspace |
+| `npm run ops:cleanup-reset-tokens -- --days 30` | deletes spent (expired/used/revoked) password reset tokens |
 
 ## Testing
 
@@ -277,13 +278,16 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MINUTES` | login rate limit |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | first System Admin (seed, dev only) |
 | `SEED_DEMO_PASSWORD` | optional demo accounts per role (seed, dev only) |
+| `PUBLIC_APP_URL` | base URL the server puts in generated links (password resets). Falls back to the first `CORS_ORIGIN`; never derived from the request `Host` header. Must be https and non-local in production |
+| `PASSWORD_RESET_TTL_MINUTES` | lifetime of a one-time reset link (5–1440, default 60) |
 | `TEST_LOG_LEVEL` | tests only: set `error` to print server-side 5xx causes |
 
 ## Known limitations / backlog
 
 - Login rate limiter is in-memory (single instance).
 - Audit: actor email is the current email (identity = `userId`); no retention/archive/export.
-- No forgot-password / self-service password change; admins reset passwords.
+- Account recovery is admin-assisted (one-time link); no email/SMS delivery, so no self-service forgot-password.
+- Privacy: request register + personal-data export exist; retention/erasure policy and automated deletion do not.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -626,6 +630,33 @@ Administration → Onboarding loads a new customer's structure and people from o
   workbook is never stored. Import history keeps metadata only (counts, file hash, who, when). Logs never contain row
   content.
 
+## Account recovery and privacy operations (Task 18)
+
+Full guides: [docs/account-recovery.md](docs/account-recovery.md), [docs/privacy-operations.md](docs/privacy-operations.md).
+
+- **Change your own password** — user menu → Account security (`POST /account/change-password`). The current password
+  must be proven; on success **every** session is revoked, including the one making the change.
+- **Admin-issued one-time link** — Administration → Users → key icon (`POST /admin/users/:userId/password-reset`,
+  `account.manage_recovery`). 256-bit token, **only its SHA-256 hash stored**, shown once, at most one live link per
+  account, default 60 minutes. Built from `PUBLIC_APP_URL`, never the request `Host` header. There is no endpoint for
+  an administrator to set a password: the old `POST /users/:id/reset-password` was **removed**, because an
+  administrator who can set a password can impersonate the user.
+- **Consuming a link** — public `/reset-password?token=…` page (token moved to memory, URL replaced immediately) →
+  `POST /account/reset-password`, rate limited 10/15 min per IP. Unknown, expired, used and deactivated all return one
+  generic error (no account enumeration). The token row is locked `FOR UPDATE`, so concurrent attempts cannot both
+  succeed; success revokes all sessions and all other reset tokens.
+- **Sessions** — `GET /account/sessions` (own sessions, no token hashes), `POST /account/sessions/revoke-others`,
+  and `POST /admin/users/:userId/revoke-sessions` for a lost device. Passwords are unchanged by a revoke.
+- **Privacy** — Administration → Privacy. Request register (`privacy.manage_requests`): types ACCESS / EXPORT /
+  CORRECTION / DELETION / RESTRICTION / OTHER, status OPEN → IN_PROGRESS → COMPLETED | REJECTED, terminal states are
+  never reopened, **no delete endpoint**, notes only on the detail view and never in the audit. Personal-data export
+  (`privacy.export_data`): one `RepeatableRead` snapshot, JSON attachment with `no-store`, nothing stored server-side,
+  credentials and other people's data excluded and the file lists what it leaves out. Audited as an event with counts.
+- **Deletion is never automatic.** A DELETION request is recorded for policy review; retention and legal basis are the
+  customer's decision. This is a privacy operations foundation, not a compliance certification.
+- **Logs**: query strings are stripped before logging (request logger and error handler), so a token in a URL cannot
+  reach a log file. `npm run ops:cleanup-reset-tokens -- --days 30` removes spent tokens.
+
 ## Security notes
 
 - Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.
@@ -633,3 +664,5 @@ Administration → Onboarding loads a new customer's structure and people from o
 - Audit logs never contain passwords, hashes, tokens or cookies (`services/audit/redact.ts` runs before every write).
 - Seed admin credentials come from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` and are skipped in production.
 - The frontend keeps the current user in memory only; nothing auth-related is stored in localStorage/sessionStorage.
+- Password reset tokens follow the session model: 256-bit random, only the SHA-256 hash stored, shown once, one-time use,
+  revoked on any password change. Nobody — including a System Admin — can read or set another person's password.

@@ -41,7 +41,30 @@ export function apiRateLimiter(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
+/**
+ * Consuming a password reset link is unauthenticated and guessing a token is the obvious attack, so this endpoint gets
+ * a far tighter budget than the general API — enough for a person who mistypes a password, useless for a script.
+ */
+const resetWindows = new Map<string, Window>();
+const RESET_LIMIT = 10;
+const RESET_WINDOW_MS = 15 * 60_000;
+
+export function passwordResetRateLimiter(req: Request, res: Response, next: NextFunction) {
+  const now = Date.now();
+  const key = req.ip ?? 'unknown';
+  const current = resetWindows.get(key);
+  const window = current && current.resetAt > now ? current : { count: 0, resetAt: now + RESET_WINDOW_MS };
+  window.count += 1;
+  resetWindows.set(key, window);
+  if (window.count > RESET_LIMIT) {
+    res.setHeader('Retry-After', String(Math.ceil((window.resetAt - now) / 1000)));
+    throw new AppError(429, 'TOO_MANY_REQUESTS', 'Too many password reset attempts. Please try again later.');
+  }
+  next();
+}
+
 /** Tests only: clears the counters so one test cannot exhaust another's budget. */
 export function resetApiRateLimiter() {
   windows.clear();
+  resetWindows.clear();
 }

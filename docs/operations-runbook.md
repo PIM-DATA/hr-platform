@@ -138,7 +138,18 @@ Measured locally during the Task 16 drill (development dataset, Postgres.app on 
 revocation). These are development measurements on a tiny dataset — they are **not** production figures and must not
 be quoted as an SLA. Re-measure with real data volumes before agreeing RPO/RTO with a customer.
 
-## 10. Operational safety rules
+## 10. Routine cleanup
+
+| Job | Command | When |
+|---|---|---|
+| Spent password reset tokens | `npm run ops:cleanup-reset-tokens -- --days 30` | monthly, or on a scheduler |
+
+Removes only expired, used and revoked tokens older than the given number of days; live links are never touched.
+It prints one JSON line (`reset_tokens_cleaned`) with the count — no token values, ever. Nothing else in the system
+deletes business data on a schedule: retention policy is the customer's decision
+(see `docs/privacy-operations.md`).
+
+## 11. Operational safety rules
 
 - `prisma migrate reset`, `db:test:reset` and the demo seed **never** run against production; the scripts refuse
   (`NODE_ENV=production`) but the habit matters more than the guard.

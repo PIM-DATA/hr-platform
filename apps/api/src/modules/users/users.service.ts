@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import {
   AUDIT_ACTIONS, ROLES,
-  type CreateUserInput, type EmployeeOption, type ResetPasswordInput, type UpdateUserInput, type UpdateUserRolesInput,
+  type CreateUserInput, type EmployeeOption, type UpdateUserInput, type UpdateUserRolesInput,
   type UserDto, type UserListQuery,
 } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
@@ -252,20 +252,6 @@ export const usersService = {
       return after;
     });
     return toDto(user);
-  },
-
-  /** Admin sets a new password. All sessions of the user are revoked so the new password is required everywhere. */
-  async resetPassword(id: string, input: ResetPasswordInput, actor: Actor): Promise<void> {
-    const passwordHash = await hashPassword(input.password);
-    await prisma.$transaction(async (tx) => {
-      await findOrThrow(tx, id);
-      await tx.user.update({ where: { id }, data: { passwordHash } });
-      const revoked = await tx.session.deleteMany({ where: { userId: id } });
-      await auditService.log(
-        { ...actorMeta(actor), action: AUDIT_ACTIONS.RESET_USER_PASSWORD, module: 'users', recordType: 'User', recordId: id, newValue: { sessionsRevoked: revoked.count } },
-        tx,
-      );
-    });
   },
 
   /** Employees available for linking to a user account (for the user form). */

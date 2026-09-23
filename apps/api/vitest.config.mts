@@ -12,7 +12,7 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
-    // Tests share one SQLite file, so run files sequentially to avoid write locks.
+    // Every file resets the same PostgreSQL test database, so files must run one at a time.
     fileParallelism: false,
     testTimeout: 15000,
   },

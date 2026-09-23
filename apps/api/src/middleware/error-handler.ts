@@ -7,7 +7,8 @@ import { env } from '../config/env';
 
 /** 404 for unknown API routes (must be mounted after all routers). */
 export function notFoundHandler(req: Request, res: Response) {
-  res.status(404).json({ error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl} not found` } });
+  // Path only: a query string can carry a token, and this message is copied into bug reports and screenshots.
+  res.status(404).json({ error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl.split('?')[0]} not found` } });
 }
 
 /** Converts every thrown error into the standard { error: { code, message, details } } envelope. */
@@ -51,7 +52,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     }
   }
 
-  logger.error({ err, requestId, url: req.originalUrl }, 'unhandled error');
+  // Path only, like the request logger: a query string can carry a token, and log files outlive the request.
+  logger.error({ err, requestId, url: req.originalUrl.split('?')[0] }, 'unhandled error');
   return res.status(500).json({
     error: {
       code: 'INTERNAL_ERROR',

@@ -25,7 +25,8 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     const line = {
       requestId,
       method: req.method,
-      url: req.originalUrl,
+      // Path only: a query string can carry a token or a search term, and log files outlive the request.
+      url: req.originalUrl.split('?')[0],
       status: res.statusCode,
       durationMs: Math.round(durationMs * 10) / 10,
       userId: res.locals.user?.id,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, KeyRound, Pencil, UserCheck, UserX } from 'lucide-react';
+import { Plus, KeyRound, LogOut, Pencil, UserCheck, UserX } from 'lucide-react';
 import { PERMISSIONS, type UserDto } from '@hr/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -18,9 +18,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { ApiClientError } from '@/lib/api-client';
 import { formatDateTime } from '@/lib/format';
 import { useRoles } from '@/features/roles/roles.api';
+import { useToast } from '@/components/ui/Toast';
+import { useRecoveryMutations } from '@/features/account/account.api';
 import { useUserMutations, useUsers } from './users.api';
 import { UserFormModal } from './UserFormModal';
-import { ResetPasswordModal } from './ResetPasswordModal';
+import { IssueResetLinkModal } from './IssueResetLinkModal';
 
 const PAGE_SIZE = 20;
 
@@ -29,6 +31,8 @@ export function UserListPage() {
   const canCreate = usePermission(PERMISSIONS.USERS_CREATE);
   const canUpdate = usePermission(PERMISSIONS.USERS_UPDATE);
   const canActivate = usePermission(PERMISSIONS.USERS_ACTIVATE);
+  const canRecover = usePermission(PERMISSIONS.ACCOUNT_MANAGE_RECOVERY);
+  const toast = useToast();
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -39,17 +43,23 @@ export function UserListPage() {
   const users = useUsers({ search: debouncedSearch, status: (status || undefined) as 'active' | 'inactive' | undefined, role: role || undefined, page, pageSize: PAGE_SIZE });
   const roles = useRoles();
   const { activate, deactivate } = useUserMutations();
+  const { revokeUserSessions } = useRecoveryMutations();
 
   const [form, setForm] = useState<{ open: boolean; user: UserDto | null }>({ open: false, user: null });
   const [reset, setReset] = useState<UserDto | null>(null);
-  const [confirm, setConfirm] = useState<{ user: UserDto; action: 'activate' | 'deactivate' } | null>(null);
+  const [confirm, setConfirm] = useState<{ user: UserDto; action: 'activate' | 'deactivate' | 'revoke-sessions' } | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const onConfirm = async () => {
     if (!confirm) return;
     setConfirmError(null);
     try {
-      await (confirm.action === 'activate' ? activate : deactivate).mutateAsync(confirm.user.id);
+      if (confirm.action === 'revoke-sessions') {
+        const { revoked } = await revokeUserSessions.mutateAsync(confirm.user.id);
+        toast.success(revoked === 1 ? '1 session signed out' : `${revoked} sessions signed out`);
+      } else {
+        await (confirm.action === 'activate' ? activate : deactivate).mutateAsync(confirm.user.id);
+      }
       setConfirm(null);
     } catch (err) {
       setConfirmError(err instanceof ApiClientError ? err.error.message : 'Something went wrong.');
@@ -93,10 +103,11 @@ export function UserListPage() {
       className: 'text-right',
       render: (u) => (
         <div className="flex justify-end gap-1">
-          {canUpdate && (
+          {canUpdate && <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, user: u })} aria-label="Edit"><Pencil className="h-4 w-4" /></Button>}
+          {canRecover && u.id !== me?.id && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, user: u })} aria-label="Edit"><Pencil className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="sm" onClick={() => setReset(u)} aria-label="Reset password"><KeyRound className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="sm" onClick={() => setReset(u)} aria-label="Issue password reset link" title="Issue password reset link"><KeyRound className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirm({ user: u, action: 'revoke-sessions' })} aria-label="Sign out all sessions" title="Sign out all sessions"><LogOut className="h-4 w-4" /></Button>
             </>
           )}
           {canActivate && u.id !== me?.id && (
@@ -138,18 +149,20 @@ export function UserListPage() {
       </Card>
 
       {(canCreate || canUpdate) && <UserFormModal open={form.open} onClose={() => setForm({ open: false, user: null })} roles={roles.data ?? []} user={form.user} />}
-      {canUpdate && <ResetPasswordModal open={!!reset} onClose={() => setReset(null)} user={reset} />}
+      {canRecover && <IssueResetLinkModal open={!!reset} onClose={() => setReset(null)} user={reset} />}
       <ConfirmDialog
         open={!!confirm}
-        title={confirm?.action === 'deactivate' ? 'Deactivate user' : 'Activate user'}
+        title={confirm?.action === 'deactivate' ? 'Deactivate user' : confirm?.action === 'revoke-sessions' ? 'Sign out all sessions' : 'Activate user'}
         message={
           confirm?.action === 'deactivate'
             ? `${confirm.user.email} will be signed out everywhere and can no longer log in.`
-            : `${confirm?.user.email} will be able to log in again.`
+            : confirm?.action === 'revoke-sessions'
+              ? `${confirm.user.email} will be signed out on every device. Their password is unchanged, so they can sign in again.`
+              : `${confirm?.user.email} will be able to log in again.`
         }
-        confirmLabel={confirm?.action === 'deactivate' ? 'Deactivate' : 'Activate'}
-        variant={confirm?.action === 'deactivate' ? 'danger' : 'primary'}
-        loading={activate.isPending || deactivate.isPending}
+        confirmLabel={confirm?.action === 'deactivate' ? 'Deactivate' : confirm?.action === 'revoke-sessions' ? 'Sign out' : 'Activate'}
+        variant={confirm?.action === 'activate' ? 'primary' : 'danger'}
+        loading={activate.isPending || deactivate.isPending || revokeUserSessions.isPending}
         error={confirmError}
         onConfirm={onConfirm}
         onCancel={() => { setConfirm(null); setConfirmError(null); }}

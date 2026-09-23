@@ -34,6 +34,13 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
   /** Optional build marker (commit SHA or release tag) surfaced on /health. Never required. */
   APP_VERSION: z.string().optional(),
+  /**
+   * Public URL of the web application, used to build password-reset links. Never derived from the Host header:
+   * a forged Host would otherwise send a working reset link to an attacker's domain.
+   */
+  PUBLIC_APP_URL: z.string().url().optional(),
+  /** How long an admin-issued password reset link stays valid. */
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
   SEED_DEMO_PASSWORD: z.string().min(8).optional(),
@@ -68,6 +75,10 @@ export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: z.infer<
       if (secret && DEV_PLACEHOLDER_SECRETS.includes(secret.toLowerCase())) errors.push(`${name} is a development placeholder and cannot be used in production`);
     }
     if (source.COOKIE_SECURE === 'false') errors.push('COOKIE_SECURE cannot be false in production (session cookies must be Secure)');
+    if (value.PUBLIC_APP_URL) {
+      if (!value.PUBLIC_APP_URL.startsWith('https://')) errors.push('PUBLIC_APP_URL must use https:// in production');
+      if (isLocalOrigin(new URL(value.PUBLIC_APP_URL).origin)) errors.push('PUBLIC_APP_URL must not point at localhost in production');
+    }
   }
 
   // The test suite wipes every table, so it may only ever point at TEST_DATABASE_URL — never at the dev database.
@@ -102,5 +113,10 @@ export const env = {
   cookieSecure: data.NODE_ENV === 'production' || data.COOKIE_SECURE,
   /** Allowed browser origins (comma-separated in CORS_ORIGIN). */
   allowedOrigins: data.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean),
+  /**
+   * Base URL for links the server generates (password resets). PUBLIC_APP_URL when set, otherwise the first allowed
+   * origin — never the request's Host header.
+   */
+  publicAppUrl: (data.PUBLIC_APP_URL ?? data.CORS_ORIGIN.split(',')[0] ?? '').trim().replace(/\/$/, ''),
 };
 export type Env = typeof env;

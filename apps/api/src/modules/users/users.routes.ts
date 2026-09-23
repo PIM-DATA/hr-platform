@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  PERMISSIONS, createUserSchema, employeeOptionsQuerySchema, resetPasswordSchema, updateUserRolesSchema, updateUserSchema, userListQuerySchema,
+  PERMISSIONS, createUserSchema, employeeOptionsQuerySchema, updateUserRolesSchema, updateUserSchema, userListQuerySchema,
 } from '@hr/shared';
 import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
@@ -20,4 +20,3 @@ usersRouter.patch('/:id', requirePermission(P.USERS_UPDATE), validate(updateUser
 usersRouter.patch('/:id/roles', requirePermission(P.USERS_UPDATE), validate(updateUserRolesSchema), usersController.setRoles);
 usersRouter.patch('/:id/activate', requirePermission(P.USERS_ACTIVATE), usersController.activate);
 usersRouter.patch('/:id/deactivate', requirePermission(P.USERS_ACTIVATE), usersController.deactivate);
-usersRouter.post('/:id/reset-password', requirePermission(P.USERS_UPDATE), validate(resetPasswordSchema), usersController.resetPassword);
