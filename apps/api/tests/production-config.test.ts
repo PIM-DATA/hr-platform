@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PASSWORD_MIN_LENGTH, changeOwnPasswordSchema, consumePasswordResetSchema, createUserSchema } from '@hr/shared';
 import { parseEnv } from '../src/config/env';
 import { createTestServer } from './helpers';
 import { resetApiRateLimiter } from '../src/middleware/rate-limit';
@@ -15,6 +16,7 @@ const PROD_BASE = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgresql://app:pw@db.internal:5432/hr?schema=public',
   CORS_ORIGIN: 'https://hr.example.com',
+  PUBLIC_APP_URL: 'https://hr.example.com',
 } as NodeJS.ProcessEnv;
 const parse = (extra: NodeJS.ProcessEnv = {}) => parseEnv({ ...PROD_BASE, ...extra });
 const errorsOf = (r: ReturnType<typeof parseEnv>) => (r.ok ? [] : r.errors).join(' | ');
@@ -31,6 +33,7 @@ describe('production environment validation', () => {
   it('missing required values fail fast (no development fallback)', () => {
     expect(errorsOf(parseEnv({ NODE_ENV: 'production', CORS_ORIGIN: 'https://hr.example.com' }))).toMatch(/DATABASE_URL/);
     expect(errorsOf(parseEnv({ NODE_ENV: 'production', DATABASE_URL: PROD_BASE.DATABASE_URL }))).toMatch(/CORS_ORIGIN is required/);
+    expect(errorsOf(parseEnv({ NODE_ENV: 'production', DATABASE_URL: PROD_BASE.DATABASE_URL, CORS_ORIGIN: 'https://hr.example.com' }))).toMatch(/PUBLIC_APP_URL is required/);
   });
   it('a localhost origin is never auto-allowed in production', () => {
     expect(errorsOf(parse({ CORS_ORIGIN: 'http://localhost:5173' }))).toMatch(/must not include localhost/);
@@ -58,6 +61,93 @@ describe('production environment validation', () => {
     expect(errorsOf(parseEnv({ ...base, TEST_DATABASE_URL: 'postgresql://a@h/dev' }))).toMatch(/must not equal DATABASE_URL/);
     expect(errorsOf(parseEnv({ ...base, TEST_DATABASE_URL: 'postgresql://a@h/test' }))).toBe('');
   });
+});
+
+/** Task 18.1 — the reset-link origin is configuration, never a guess and never anything the caller can influence. */
+describe('PUBLIC_APP_URL (reset link origin)', () => {
+  it('production refuses to start without it — the first CORS origin is not a substitute', () => {
+    const withoutIt = { ...PROD_BASE };
+    delete withoutIt.PUBLIC_APP_URL;
+    expect(errorsOf(parseEnv(withoutIt))).toMatch(/PUBLIC_APP_URL is required in production/);
+  });
+
+  it('production rejects a URL that is not safe to put in a reset link', () => {
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'http://hr.example.com' }))).toMatch(/must use https/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'https://localhost:5173' }))).toMatch(/must not point at localhost/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'https://127.0.0.1' }))).toMatch(/must not point at localhost/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'https://user:secret@hr.example.com' }))).toMatch(/must not contain credentials/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'https://hr.example.com/?next=/x' }))).toMatch(/query string or fragment/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'https://hr.example.com/#/app' }))).toMatch(/query string or fragment/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'not-a-url' }))).toMatch(/PUBLIC_APP_URL/);
+    expect(errorsOf(parse({ PUBLIC_APP_URL: 'https://hr.example.com/hr' }))).toBe(''); // a base path is fine
+  });
+
+  it('several allowed origins never influence it, and trailing slashes are normalized', () => {
+    const r = parse({ CORS_ORIGIN: 'https://admin.example.com,https://hr.example.com', PUBLIC_APP_URL: 'https://hr.example.com///' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // publicAppUrl is derived the same way the running server derives it (env.ts), so assert that derivation here
+    expect(r.value.PUBLIC_APP_URL?.replace(/\/+$/, '')).toBe('https://hr.example.com');
+    expect(r.value.CORS_ORIGIN.split(',')[0]).toBe('https://admin.example.com'); // deliberately NOT the reset origin
+  });
+
+  it('development may fall back to the first allowed origin (no extra configuration for `npm run dev`)', () => {
+    const r = parseEnv({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://a@localhost/dev', CORS_ORIGIN: 'http://localhost:5173' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.PUBLIC_APP_URL).toBeUndefined();
+  });
+});
+
+/** Task 18.1 — one password policy. The bootstrap command must not be able to create an account the app would refuse. */
+describe('password policy is one rule', () => {
+  const runBootstrap = (password: string) => {
+    const script = path.resolve(__dirname, '../scripts/bootstrap-admin.ts');
+    try {
+      const stdout = execFileSync('npx', ['tsx', script], {
+        cwd: path.resolve(__dirname, '..'),
+        env: {
+          ...process.env,
+          NODE_ENV: 'production',
+          DATABASE_URL: process.env.TEST_DATABASE_URL, // never the developer database
+          CORS_ORIGIN: 'https://hr.example.com',
+          PUBLIC_APP_URL: 'https://hr.example.com',
+          SEED_ADMIN_PASSWORD: '', // an empty value means "not set" (see env.ts), which is what a production host looks like
+          SEED_DEMO_PASSWORD: '',
+          COOKIE_SECURE: 'true', // the developer .env sets false; production refuses that
+          BOOTSTRAP_ADMIN_EMAIL: 'bootstrap-policy@example.com',
+          BOOTSTRAP_ADMIN_PASSWORD: password,
+        },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return { failed: false, output: stdout };
+    } catch (e) {
+      const err = e as { stdout?: string; stderr?: string };
+      return { failed: true, output: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+    }
+  };
+
+  it('the shared minimum is the production baseline, and every schema uses that one field', () => {
+    expect(PASSWORD_MIN_LENGTH).toBe(12);
+    const eleven = 'a'.repeat(PASSWORD_MIN_LENGTH - 1);
+    const twelve = 'a'.repeat(PASSWORD_MIN_LENGTH);
+    for (const [name, parseValue] of [
+      ['createUser', (v: string) => createUserSchema.safeParse({ email: 'a@b.co', password: v, roleCodes: ['EMPLOYEE'] })],
+      ['changeOwnPassword', (v: string) => changeOwnPasswordSchema.safeParse({ currentPassword: 'something-else-entirely', newPassword: v })],
+      ['consumePasswordReset', (v: string) => consumePasswordResetSchema.safeParse({ token: 't'.repeat(43), newPassword: v })],
+    ] as const) {
+      expect(parseValue(eleven).success, `${name} accepted ${PASSWORD_MIN_LENGTH - 1} characters`).toBe(false);
+      expect(parseValue(twelve).success, `${name} rejected ${PASSWORD_MIN_LENGTH} characters`).toBe(true);
+    }
+  });
+
+  it('bootstrap:admin refuses a password one character short of the policy, in production', () => {
+    const short = runBootstrap('Short-Elevn1'.slice(0, PASSWORD_MIN_LENGTH - 1));
+    expect(short.failed).toBe(true);
+    expect(short.output).toMatch(/BOOTSTRAP_ADMIN_PASSWORD.*at least 12/);
+    expect(short.output).not.toMatch(/Short-Elev/); // the value itself is never echoed
+  }, 60000);
 });
 
 describe('destructive commands refuse production', () => {

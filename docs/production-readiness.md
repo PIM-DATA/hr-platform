@@ -127,7 +127,7 @@ shared store (Redis or equivalent) and is listed as a gap rather than built spec
 - Headers on every response: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
   `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, `Permissions-Policy`, a strict API CSP
   (`default-src 'none'`), and `Strict-Transport-Security` in production.
-- Passwords: bcrypt cost 12, minimum 8 characters (12 for the production bootstrap admin), never logged. Recovery is
+- Passwords: bcrypt cost 12, minimum **12 characters everywhere** (one shared policy: user creation, own change, reset link, `bootstrap:admin`; the development seed is the only, explicitly non-production, exception), never logged. Recovery is
   admin-assisted through a one-time reset link (`docs/account-recovery.md`); no administrator can read or set another
   person's password. There is no breached-password check and no email-delivered self-service reset (§9).
 - Authorization: permission codes + data scope, verified per request; see `docs/phase-2-leave-review.md`.
@@ -141,7 +141,7 @@ false comfort, so it is an explicit gap.
 **Pre-deploy**
 - [ ] `NODE_ENV=production` and every required variable set (the process refuses to start otherwise)
 - [ ] `CORS_ORIGIN` = the public https origin(s); `TRUST_PROXY` = real number of proxy hops
-- [ ] `PUBLIC_APP_URL` = the https origin users open (reset links are built from it, never from the request host)
+- [ ] `PUBLIC_APP_URL` = the https origin users open — **required**; the process refuses to start without it, and it must have no credentials, query string or fragment (reset links are built from it, never from the request host)
 - [ ] PostgreSQL reachable, credentials stored in the platform's secret store (never in the repository)
 - [ ] `npm ci && npm run build` succeeds; `npm run typecheck` and `npm test` green
 - [ ] TLS certificate valid at the edge; HTTP redirected to HTTPS

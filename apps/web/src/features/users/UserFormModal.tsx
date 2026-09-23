@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
+import { PASSWORD_MIN_LENGTH, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -109,7 +109,7 @@ export function UserFormModal({ open, onClose, roles, user }: UserFormModalProps
         <Input label="Email" type="email" required autoComplete="off" error={form.formState.errors.email?.message} {...form.register('email')} />
 
         {!isEdit && (
-          <Input label="Temporary password" type="password" required autoComplete="new-password" hint="At least 8 characters. Share it with the user securely; they should change it after first login." error={form.formState.errors.password?.message} {...form.register('password')} />
+          <Input label="Temporary password" type="password" required autoComplete="new-password" hint={`At least ${PASSWORD_MIN_LENGTH} characters. Share it with the user securely; they should change it after first login.`} error={form.formState.errors.password?.message} {...form.register('password')} />
         )}
 
         <div className="space-y-1.5">

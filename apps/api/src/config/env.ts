@@ -7,13 +7,19 @@ import { z } from 'zod';
 // variables always win: dotenv never overwrites what the platform already set.
 dotenv.config({ path: process.env.ENV_FILE ?? path.resolve(__dirname, '../../.env') });
 
+/**
+ * An env file that carries a key with no value (`SEED_ADMIN_PASSWORD=`) means "not set", not "set to the empty
+ * string" — treating it literally makes an optional variable fail validation for a reason nobody can act on.
+ */
+const optional = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DATABASE_URL: z.string().min(1),
   /** Dedicated PostgreSQL test database. Required when NODE_ENV=test; must differ from DATABASE_URL. */
-  TEST_DATABASE_URL: z.string().min(1).optional(),
+  TEST_DATABASE_URL: optional(z.string().min(1)),
   /** Browser origin(s) allowed to call the API, comma-separated. Production requires explicit https origins. */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /**
@@ -33,22 +39,39 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === 'true'),
   /** Optional build marker (commit SHA or release tag) surfaced on /health. Never required. */
-  APP_VERSION: z.string().optional(),
+  APP_VERSION: optional(z.string()),
   /**
    * Public URL of the web application, used to build password-reset links. Never derived from the Host header:
-   * a forged Host would otherwise send a working reset link to an attacker's domain.
+   * a forged Host would otherwise send a working reset link to an attacker's domain. REQUIRED in production —
+   * falling back to the first CORS origin there guesses which of several allowed origins a person should be sent to,
+   * and a guess in a password-reset link is not acceptable. Development may fall back (see `publicAppUrl`).
    */
-  PUBLIC_APP_URL: z.string().url().optional(),
+  PUBLIC_APP_URL: optional(z.string().url()),
   /** How long an admin-issued password reset link stays valid. */
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
-  SEED_ADMIN_EMAIL: z.string().email().optional(),
-  SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
-  SEED_DEMO_PASSWORD: z.string().min(8).optional(),
+  /**
+   * Development seed credentials. These are the ONE explicit exception to the shared password policy
+   * (`PASSWORD_MIN_LENGTH`, 12): they only ever create accounts through `npm run db:seed`, which refuses to run in
+   * production, and production rejects them outright below. Nothing a person sets through the application is covered
+   * by this exception.
+   */
+  SEED_ADMIN_EMAIL: optional(z.string().email()),
+  SEED_ADMIN_PASSWORD: optional(z.string().min(8)),
+  SEED_DEMO_PASSWORD: optional(z.string().min(8)),
 });
 
 /** Values that are fine locally but must never be accepted by a production process. */
 const DEV_PLACEHOLDER_SECRETS = ['change-me-locally', 'changeme', 'password', 'secret', 'demo', 'test1234'];
 const isLocalOrigin = (origin: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?$/i.test(origin.trim());
+const safeUrl = (value: string): URL | null => {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+};
+/** Trailing slashes are stripped so `${publicAppUrl}/reset-password` never produces a double slash. */
+const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, '');
 
 export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: z.infer<typeof envSchema> } | { ok: false; errors: string[] } {
   const parsed = envSchema.safeParse(source);
@@ -75,9 +98,17 @@ export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: z.infer<
       if (secret && DEV_PLACEHOLDER_SECRETS.includes(secret.toLowerCase())) errors.push(`${name} is a development placeholder and cannot be used in production`);
     }
     if (source.COOKIE_SECURE === 'false') errors.push('COOKIE_SECURE cannot be false in production (session cookies must be Secure)');
-    if (value.PUBLIC_APP_URL) {
-      if (!value.PUBLIC_APP_URL.startsWith('https://')) errors.push('PUBLIC_APP_URL must use https:// in production');
-      if (isLocalOrigin(new URL(value.PUBLIC_APP_URL).origin)) errors.push('PUBLIC_APP_URL must not point at localhost in production');
+    // Reset links must point somewhere the operator chose deliberately — never at "whichever CORS origin came first".
+    if (!source.PUBLIC_APP_URL) errors.push('PUBLIC_APP_URL is required in production (the https URL users open; reset links are built from it)');
+    else {
+      const url = safeUrl(value.PUBLIC_APP_URL ?? source.PUBLIC_APP_URL);
+      if (!url) errors.push('PUBLIC_APP_URL is not a valid URL');
+      else {
+        if (url.protocol !== 'https:') errors.push('PUBLIC_APP_URL must use https:// in production');
+        if (url.username || url.password) errors.push('PUBLIC_APP_URL must not contain credentials');
+        if (url.search || url.hash) errors.push('PUBLIC_APP_URL must not contain a query string or fragment (the reset token is appended to it)');
+        if (isLocalOrigin(url.origin)) errors.push('PUBLIC_APP_URL must not point at localhost in production');
+      }
     }
   }
 
@@ -114,9 +145,10 @@ export const env = {
   /** Allowed browser origins (comma-separated in CORS_ORIGIN). */
   allowedOrigins: data.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean),
   /**
-   * Base URL for links the server generates (password resets). PUBLIC_APP_URL when set, otherwise the first allowed
-   * origin — never the request's Host header.
+   * Base URL for links the server generates (password resets). PUBLIC_APP_URL always in production, where it is
+   * required; development may fall back to the first allowed origin so `npm run dev` needs no extra configuration.
+   * Never the request's Host header, whatever the environment.
    */
-  publicAppUrl: (data.PUBLIC_APP_URL ?? data.CORS_ORIGIN.split(',')[0] ?? '').trim().replace(/\/$/, ''),
+  publicAppUrl: normalizeBaseUrl(data.PUBLIC_APP_URL ?? data.CORS_ORIGIN.split(',')[0] ?? ''),
 };
 export type Env = typeof env;

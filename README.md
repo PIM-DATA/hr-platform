@@ -278,7 +278,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MINUTES` | login rate limit |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | first System Admin (seed, dev only) |
 | `SEED_DEMO_PASSWORD` | optional demo accounts per role (seed, dev only) |
-| `PUBLIC_APP_URL` | base URL the server puts in generated links (password resets). Falls back to the first `CORS_ORIGIN`; never derived from the request `Host` header. Must be https and non-local in production |
+| `PUBLIC_APP_URL` | base URL the server puts in generated links (password resets). **Required in production** (https, no credentials/query/fragment, not localhost); development falls back to the first `CORS_ORIGIN`. Never derived from the request `Host` header |
 | `PASSWORD_RESET_TTL_MINUTES` | lifetime of a one-time reset link (5–1440, default 60) |
 | `TEST_LOG_LEVEL` | tests only: set `error` to print server-side 5xx causes |
 
@@ -659,7 +659,7 @@ Full guides: [docs/account-recovery.md](docs/account-recovery.md), [docs/privacy
 
 ## Security notes
 
-- Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.
+- Passwords: bcrypt (cost 12), minimum 12 characters from one shared policy (`passwordField`) used by user creation, own change, reset links and `bootstrap:admin`. Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.
 - Permissions are enforced in the API (`requirePermission`) — the UI only hides what the user cannot do.
 - Audit logs never contain passwords, hashes, tokens or cookies (`services/audit/redact.ts` runs before every write).
 - Seed admin credentials come from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` and are skipped in production.

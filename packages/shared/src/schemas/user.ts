@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { passwordField } from './account'; // one policy for every path that sets a password
 import { paginationQuerySchema } from './common';
 
 const emailField = z.string().trim().toLowerCase().email('Enter a valid email address').max(254);
-const passwordField = z.string().min(8, 'Password must be at least 8 characters').max(128);
+
 const roleCodesField = z.array(z.string().trim().min(1)).min(1, 'Select at least one role').max(20);
 
 export const createUserSchema = z.object({

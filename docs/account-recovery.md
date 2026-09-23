@@ -28,8 +28,10 @@ What no one can do, by design:
 **Account security** (user menu → Account security), or `POST /api/v1/account/change-password`.
 
 - The current password must be proven; a wrong one changes nothing (`CURRENT_PASSWORD_INCORRECT`).
-- The new password must differ from the current one and be at least **8 characters** (one policy, shared by every
-  path that sets a password: `packages/shared/src/schemas/account.ts`).
+- The new password must differ from the current one and be at least **12 characters**. That is the single policy
+  (`passwordField` in `packages/shared/src/schemas/account.ts`) used by every path that sets a password — creating a
+  user, changing your own, using a reset link and `bootstrap:admin`. The only exception is the development seed
+  (`SEED_ADMIN_PASSWORD` / `SEED_DEMO_PASSWORD`), which never runs in production.
 - On success **every session is revoked — including the browser making the change** — and every outstanding reset
   link for that account is revoked. The user signs in again with the new password.
 
@@ -49,8 +51,10 @@ What happens:
 
 Rules and limits:
 
-- The link is built from **`PUBLIC_APP_URL`** (falling back to the first `CORS_ORIGIN`), never from the request's
-  `Host` header — a forged header must not be able to produce a link pointing at an attacker's site.
+- The link is built from **`PUBLIC_APP_URL`**, never from the request's `Host` header — a forged header must not be
+  able to produce a link pointing at an attacker's site. `PUBLIC_APP_URL` is **required in production** and must be an
+  https URL with no credentials, query string or fragment, and not localhost; trailing slashes are normalized.
+  Development may fall back to the first `CORS_ORIGIN` so `npm run dev` needs no extra configuration.
 - Default lifetime **60 minutes** (`PASSWORD_RESET_TTL_MINUTES`, 5–1440).
 - An administrator cannot issue a link **to themselves** (`USE_CHANGE_PASSWORD`) — use the change-password screen,
   which proves the current password.

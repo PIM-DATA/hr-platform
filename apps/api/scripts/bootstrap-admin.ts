@@ -6,11 +6,13 @@
  *
  *   BOOTSTRAP_ADMIN_EMAIL=... BOOTSTRAP_ADMIN_PASSWORD=... npm run bootstrap:admin
  *
- * Safety: refuses to overwrite an existing account, refuses obvious placeholder passwords, and requires at least
- * 12 characters in production. The password is read from the environment and never logged or echoed.
+ * Safety: refuses to overwrite an existing account, refuses obvious placeholder passwords, and applies the shared
+ * password policy (`passwordField`) — the same rule the application enforces, so a
+ * password that cannot be set inside the app cannot be smuggled in through the bootstrap either. The password is read
+ * from the environment and never logged or echoed.
  */
 import { PrismaClient } from '@prisma/client';
-import { ROLES } from '@hr/shared';
+import { PASSWORD_MIN_LENGTH, ROLES, passwordField } from '@hr/shared';
 import { seedRolesAndPermissions } from '../prisma/seeders/roles';
 import { env } from '../src/config/env';
 import { hashPassword } from '../src/lib/password';
@@ -21,14 +23,17 @@ const PLACEHOLDERS = ['change-me-locally', 'changeme', 'password', 'secret', 'de
 async function main() {
   const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
-  const minLength = env.isProduction ? 12 : 8;
 
   const problems: string[] = [];
   if (!email) problems.push('BOOTSTRAP_ADMIN_EMAIL is required');
   else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) problems.push('BOOTSTRAP_ADMIN_EMAIL is not a valid email address');
   if (!password) problems.push('BOOTSTRAP_ADMIN_PASSWORD is required');
-  else if (password.length < minLength) problems.push(`BOOTSTRAP_ADMIN_PASSWORD must be at least ${minLength} characters`);
-  else if (PLACEHOLDERS.includes(password.toLowerCase())) problems.push('BOOTSTRAP_ADMIN_PASSWORD is a well-known placeholder — choose a real password');
+  else {
+    // The shared policy, not a copy of it: one rule for every path that sets a password.
+    const checked = passwordField.safeParse(password);
+    if (!checked.success) problems.push(`BOOTSTRAP_ADMIN_PASSWORD: ${checked.error.issues[0]?.message ?? `must be at least ${PASSWORD_MIN_LENGTH} characters`}`);
+    else if (PLACEHOLDERS.includes(password.toLowerCase())) problems.push('BOOTSTRAP_ADMIN_PASSWORD is a well-known placeholder — choose a real password');
+  }
   if (problems.length) {
     console.error(`bootstrap:admin refused:\n  - ${problems.join('\n  - ')}`);
     process.exit(1);

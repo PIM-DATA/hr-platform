@@ -7,7 +7,7 @@
 import type { Server } from 'node:http';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PRIVACY_REQUEST_TYPES } from '@hr/shared';
+import { PASSWORD_MIN_LENGTH, PRIVACY_REQUEST_TYPES } from '@hr/shared';
 import { prisma } from '../src/lib/prisma';
 import { env } from '../src/config/env';
 import { logger } from '../src/lib/logger';
@@ -85,8 +85,10 @@ describe('change own password (50)', () => {
     expect((await login('subject@ap.local', PW)).status).toBe(200); // unchanged
     // the new password has to differ from the current one
     expect((await as(session, 'post', '/api/v1/account/change-password').send({ currentPassword: PW, newPassword: PW })).status).toBe(400);
-    // and it must satisfy the shared password policy
-    expect((await as(session, 'post', '/api/v1/account/change-password').send({ currentPassword: PW, newPassword: 'short' })).status).toBe(400);
+    // and it must satisfy the shared password policy — the same minimum the bootstrap command applies (Task 18.1)
+    const oneShort = `Policy-Short${'x'.repeat(PASSWORD_MIN_LENGTH)}`.slice(0, PASSWORD_MIN_LENGTH - 1);
+    expect((await as(session, 'post', '/api/v1/account/change-password').send({ currentPassword: PW, newPassword: oneShort })).status).toBe(400);
+    expect((await login('subject@ap.local', oneShort)).status).toBe(401);
   }, 60000);
 
   it('3–8. a valid change switches the password, revokes every session and audits without the secret', async () => {
@@ -212,6 +214,18 @@ describe('consuming a reset token (52)', () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { id: subjectUserId } })).isActive).toBe(false);
     await prisma.user.update({ where: { id: subjectUserId }, data: { isActive: true } });
 
+    await restoreSubjectPassword();
+  }, 60000);
+
+  it('the same password policy applies to a reset: one character short is refused, the minimum is accepted', async () => {
+    const short = `Reset-Short-${'y'.repeat(PASSWORD_MIN_LENGTH)}`.slice(0, PASSWORD_MIN_LENGTH - 1);
+    const exact = `Reset-Exact-${'z'.repeat(PASSWORD_MIN_LENGTH)}`.slice(0, PASSWORD_MIN_LENGTH);
+    const issued = await issueReset(hrS, subjectUserId);
+    expect((await consumeReset(issued.body.data.token, short)).status).toBe(400);
+    expect((await login('subject@ap.local', short)).status).toBe(401);
+    // the token survives a rejected attempt: the policy failure is not a consumed link
+    expect((await consumeReset(issued.body.data.token, exact)).status).toBe(204);
+    expect((await login('subject@ap.local', exact)).status).toBe(200);
     await restoreSubjectPassword();
   }, 60000);
 
