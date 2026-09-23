@@ -92,6 +92,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.LEAVE_MANAGE_ENTITLEMENTS,
       P.LEAVE_VIEW,
       P.LEAVE_REQUEST,
+      P.ONBOARDING_MANAGE,
     ],
   },
   {

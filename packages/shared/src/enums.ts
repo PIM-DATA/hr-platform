@@ -29,7 +29,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'onboarding'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -101,6 +101,7 @@ export const AUDIT_ACTIONS = {
   APPROVE_LEAVE_REQUEST: 'APPROVE_LEAVE_REQUEST',
   REJECT_LEAVE_REQUEST: 'REJECT_LEAVE_REQUEST',
   CANCEL_LEAVE_REQUEST: 'CANCEL_LEAVE_REQUEST',
+  IMPORT_CUSTOMER_ONBOARDING: 'IMPORT_CUSTOMER_ONBOARDING',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

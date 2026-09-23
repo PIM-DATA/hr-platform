@@ -12,6 +12,9 @@ import type { AuthContext } from '../auth/auth.types';
 import { employeeScopeWhere } from './employees.scope';
 import { assertValidManager, resolvePositionAssignment } from './assignment.service';
 
+/** The caller's transaction: these services compose into a bulk operation (onboarding import) without nesting transactions. */
+export type Tx = Prisma.TransactionClient;
+
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 type Db = Prisma.TransactionClient | typeof prisma;
 const MODULE = 'employees';
@@ -104,6 +107,34 @@ const SORT: Record<EmployeeListQuery['sortBy'], (d: 'asc' | 'desc') => Prisma.Em
   createdAt: (d) => ({ createdAt: d }),
 };
 
+/**
+ * Create on the caller's transaction: the onboarding importer composes hundreds of these into ONE transaction while
+ * running the same uniqueness, assignment and manager invariants — and writing the same histories and audit rows —
+ * as a single create from the UI.
+ */
+export async function createEmployeeWithTx(tx: Tx, input: CreateEmployeeInput, actor: Actor) {
+  await assertUnique(tx, 'employeeCode', input.employeeCode);
+  await assertUnique(tx, 'email', input.email);
+  const assignment = await resolvePositionAssignment(tx, input.positionId);
+  if (input.managerId) await assertValidManager(tx, null, input.managerId);
+  const startDate = input.hireDate;
+  const created = await tx.employee.create({
+    data: {
+      employeeCode: input.employeeCode, firstName: input.firstName, lastName: input.lastName, nickname: input.nickname ?? null,
+      email: input.email, phone: input.phone ?? null, hireDate: input.hireDate, employmentType: input.employmentType, employmentStatus: 'ACTIVE',
+      ...assignment, managerId: input.managerId ?? null, createdBy: actor.auth.userId, updatedBy: actor.auth.userId,
+      positionHistory: { create: { positionId: assignment.positionId, departmentId: assignment.departmentId, startDate } },
+      managerHistory: input.managerId ? { create: { managerId: input.managerId, startDate } } : undefined,
+    },
+    include: detailInclude,
+  });
+  await auditService.log(audit(actor, 'CREATE_EMPLOYEE', created.id, undefined, {
+    employeeCode: created.employeeCode, firstName: created.firstName, lastName: created.lastName, email: created.email, hireDate: created.hireDate, employmentType: created.employmentType,
+    organizationId: created.organizationId, departmentId: created.departmentId, positionId: created.positionId, managerId: created.managerId,
+  }), tx);
+  return created;
+}
+
 export const employeesService = {
   async list(auth: AuthContext, q: EmployeeListQuery) {
     const filters: Prisma.EmployeeWhereInput = {};
@@ -177,28 +208,7 @@ export const employeesService = {
 
   /** Create employee + initial position history (+ manager history) + audit, atomically. */
   async create(input: CreateEmployeeInput, actor: Actor): Promise<EmployeeDetail> {
-    const row = await prisma.$transaction(async (tx) => {
-      await assertUnique(tx, 'employeeCode', input.employeeCode);
-      await assertUnique(tx, 'email', input.email);
-      const assignment = await resolvePositionAssignment(tx, input.positionId);
-      if (input.managerId) await assertValidManager(tx, null, input.managerId);
-      const startDate = input.hireDate;
-      const created = await tx.employee.create({
-        data: {
-          employeeCode: input.employeeCode, firstName: input.firstName, lastName: input.lastName, nickname: input.nickname ?? null,
-          email: input.email, phone: input.phone ?? null, hireDate: input.hireDate, employmentType: input.employmentType, employmentStatus: 'ACTIVE',
-          ...assignment, managerId: input.managerId ?? null, createdBy: actor.auth.userId, updatedBy: actor.auth.userId,
-          positionHistory: { create: { positionId: assignment.positionId, departmentId: assignment.departmentId, startDate } },
-          managerHistory: input.managerId ? { create: { managerId: input.managerId, startDate } } : undefined,
-        },
-        include: detailInclude,
-      });
-      await auditService.log(audit(actor, 'CREATE_EMPLOYEE', created.id, undefined, {
-        employeeCode: created.employeeCode, firstName: created.firstName, lastName: created.lastName, email: created.email, hireDate: created.hireDate, employmentType: created.employmentType,
-        organizationId: created.organizationId, departmentId: created.departmentId, positionId: created.positionId, managerId: created.managerId,
-      }), tx);
-      return created;
-    });
+    const row = await prisma.$transaction((tx) => createEmployeeWithTx(tx, input, actor));
     return toDetail(row, actor.auth);
   },
 

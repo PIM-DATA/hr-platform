@@ -38,3 +38,7 @@ apps/api/backups/
 *.dump
 *.dump.partial
 *.manifest.json
+
+# stray compiled output next to shared sources (build emits to packages/shared/dist only)
+packages/shared/src/**/*.js
+packages/shared/src/**/*.d.ts

@@ -5,6 +5,9 @@ import { AppError } from '../../lib/errors';
 import { auditService, diffFields } from '../../services/audit/audit.service';
 import { MODULE, actorMeta, inUse, notFound, paging, type Actor, type Db } from './organization.shared';
 
+/** The caller's transaction: these services compose into a bulk operation (onboarding import) without nesting transactions. */
+export type Tx = Prisma.TransactionClient;
+
 const include = {
   organization: { select: { id: true, code: true, name: true } },
   parent: { select: { id: true, code: true, name: true } },
@@ -60,6 +63,18 @@ const audit = (actor: Actor, action: keyof typeof AUDIT_ACTIONS, recordId: strin
   ...actorMeta(actor), action: AUDIT_ACTIONS[action], module: MODULE, recordType: 'Department', recordId, oldValue, newValue,
 });
 
+/** Create on the caller's transaction (shared by the HTTP path and the onboarding importer). */
+export async function createDepartmentWithTx(tx: Tx, input: CreateDepartmentInput, actor: Actor) {
+  const org = await tx.organization.findUnique({ where: { id: input.organizationId } });
+  if (!org) throw notFound.organization();
+  if (!org.isActive) throw new AppError(409, 'ORGANIZATION_INACTIVE', 'Cannot add a department to an inactive organization');
+  if (input.parentId) await assertValidParent(tx, input.organizationId, input.parentId);
+  await assertCodeFree(tx, input.organizationId, input.code);
+  const created = await tx.department.create({ data: { organizationId: input.organizationId, parentId: input.parentId ?? null, code: input.code, name: input.name }, include });
+  await auditService.log(audit(actor, 'CREATE_DEPARTMENT', created.id, undefined, { organizationId: created.organizationId, parentId: created.parentId, code: created.code, name: created.name }), tx);
+  return created;
+}
+
 export const departmentsService = {
   async list(q: DepartmentListQuery) {
     const where: Prisma.DepartmentWhereInput = {};
@@ -79,16 +94,7 @@ export const departmentsService = {
   },
 
   async create(input: CreateDepartmentInput, actor: Actor) {
-    const row = await prisma.$transaction(async (tx) => {
-      const org = await tx.organization.findUnique({ where: { id: input.organizationId } });
-      if (!org) throw notFound.organization();
-      if (!org.isActive) throw new AppError(409, 'ORGANIZATION_INACTIVE', 'Cannot add a department to an inactive organization');
-      if (input.parentId) await assertValidParent(tx, input.organizationId, input.parentId);
-      await assertCodeFree(tx, input.organizationId, input.code);
-      const created = await tx.department.create({ data: { organizationId: input.organizationId, parentId: input.parentId ?? null, code: input.code, name: input.name }, include });
-      await auditService.log(audit(actor, 'CREATE_DEPARTMENT', created.id, undefined, { organizationId: created.organizationId, parentId: created.parentId, code: created.code, name: created.name }), tx);
-      return created;
-    });
+    const row = await prisma.$transaction((tx) => createDepartmentWithTx(tx, input, actor));
     return toDto(row);
   },
 
@@ -151,20 +157,23 @@ export const departmentsService = {
    * Head must be an ACTIVE employee whose current assignment is in this department (hence this organization).
    */
   async setHead(id: string, input: UpdateDepartmentHeadInput, actor: Actor) {
-    const row = await prisma.$transaction(async (tx) => {
-      const before = await findOrThrow(tx, id);
-      if (input.employeeId) {
-        const emp = await tx.employee.findUnique({ where: { id: input.employeeId }, select: { id: true, employeeCode: true, employmentStatus: true, organizationId: true, departmentId: true } });
-        if (!emp) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
-        if (emp.employmentStatus !== 'ACTIVE') throw new AppError(409, 'EMPLOYEE_INACTIVE', `${emp.employeeCode} is not an active employee`);
-        if (emp.organizationId !== before.organizationId) throw new AppError(400, 'HEAD_ORGANIZATION_MISMATCH', `${emp.employeeCode} belongs to a different organization`);
-        if (emp.departmentId !== id) throw new AppError(400, 'HEAD_DEPARTMENT_MISMATCH', `${emp.employeeCode} is not assigned to this department`);
-      }
-      if (before.headEmployeeId === input.employeeId) return before;
-      const after = await tx.department.update({ where: { id }, data: { headEmployeeId: input.employeeId }, include });
-      await auditService.log(audit(actor, 'UPDATE_DEPARTMENT_HEAD', id, { headEmployeeId: before.headEmployeeId }, { headEmployeeId: after.headEmployeeId }), tx);
-      return after;
-    });
+    const row = await prisma.$transaction((tx) => setDepartmentHeadWithTx(tx, id, input.employeeId, actor));
     return toDto(row);
   },
 };
+
+/** Department-head assignment on the caller's transaction (shared by the HTTP path and the onboarding importer). */
+export async function setDepartmentHeadWithTx(tx: Tx, id: string, employeeId: string | null, actor: Actor) {
+  const before = await findOrThrow(tx, id);
+  if (employeeId) {
+    const emp = await tx.employee.findUnique({ where: { id: employeeId }, select: { id: true, employeeCode: true, employmentStatus: true, organizationId: true, departmentId: true } });
+    if (!emp) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
+    if (emp.employmentStatus !== 'ACTIVE') throw new AppError(409, 'EMPLOYEE_INACTIVE', `${emp.employeeCode} is not an active employee`);
+    if (emp.organizationId !== before.organizationId) throw new AppError(400, 'HEAD_ORGANIZATION_MISMATCH', `${emp.employeeCode} belongs to a different organization`);
+    if (emp.departmentId !== id) throw new AppError(400, 'HEAD_DEPARTMENT_MISMATCH', `${emp.employeeCode} is not assigned to this department`);
+  }
+  if (before.headEmployeeId === employeeId) return before;
+  const after = await tx.department.update({ where: { id }, data: { headEmployeeId: employeeId }, include });
+  await auditService.log(audit(actor, 'UPDATE_DEPARTMENT_HEAD', id, { headEmployeeId: before.headEmployeeId }, { headEmployeeId: after.headEmployeeId }), tx);
+  return after;
+}

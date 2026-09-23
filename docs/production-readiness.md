@@ -175,8 +175,12 @@ false comfort, so it is an explicit gap.
 - **Frontend CSP** and other static-hosting headers are not defined.
 - **Horizontal scaling**: rate limiting (and any future in-process state) assumes a single instance.
 - **PDPA/retention**: no data export, erasure workflow or audit-log retention policy.
-- **Onboarding**: no customer data import tooling; no per-customer configuration management.
-- **Dependency advisory**: `npm audit` reports 3 high advisories, all one issue — `deepmerge-ts` (stack exhaustion when
+- **Onboarding**: the Excel import (docs/customer-onboarding.md) covers the initial structure and employees.
+  Still missing: bulk update/correction tooling, user-account provisioning and invitations, historical leave/payroll
+  data migration, and per-customer configuration management.
+- **Dependency advisories**: the Excel parser (`exceljs`) pulls `uuid <11.1.1`, which carries a **moderate** advisory
+  (missing buffer bounds check in uuid v3/v5/v6 when a buffer is supplied — a code path the workbook parser does not
+  use). Revisit when exceljs updates its dependency. Separately, `npm audit` reports 3 high advisories, all one issue — `deepmerge-ts` (stack exhaustion when
   merging recursive object graphs) reached through `@prisma/config` in the **Prisma CLI**. The CLI is a build/migration
   tool, not part of the request path: the running server loads `@prisma/client`, not `prisma`/`@prisma/config`. The only
   remediation npm offers is a Prisma **major downgrade** to 6.12.0, which would undo the pinned 6.19.3 PostgreSQL work,

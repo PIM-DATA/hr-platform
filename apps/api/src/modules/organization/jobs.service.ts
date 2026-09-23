@@ -5,6 +5,9 @@ import { AppError } from '../../lib/errors';
 import { auditService, diffFields } from '../../services/audit/audit.service';
 import { MODULE, actorMeta, inUse, notFound, paging, type Actor, type Db } from './organization.shared';
 
+/** The caller's transaction: these services compose into a bulk operation (onboarding import) without nesting transactions. */
+export type Tx = Prisma.TransactionClient;
+
 const include = { _count: { select: { positions: true } } } satisfies Prisma.JobInclude;
 type Row = Prisma.JobGetPayload<{ include: typeof include }>;
 
@@ -28,6 +31,14 @@ const audit = (actor: Actor, action: keyof typeof AUDIT_ACTIONS, recordId: strin
   ...actorMeta(actor), action: AUDIT_ACTIONS[action], module: MODULE, recordType: 'Job', recordId, oldValue, newValue,
 });
 
+/** Create on the caller's transaction (shared by the HTTP path and the onboarding importer). */
+export async function createJobWithTx(tx: Tx, input: CreateJobInput, actor: Actor) {
+  await assertCodeFree(tx, input.code);
+  const created = await tx.job.create({ data: { code: input.code, title: input.title, level: input.level, description: input.description ?? null }, include });
+  await auditService.log(audit(actor, 'CREATE_JOB', created.id, undefined, { code: created.code, title: created.title, level: created.level }), tx);
+  return created;
+}
+
 export const jobsService = {
   async list(q: JobListQuery) {
     const where: Prisma.JobWhereInput = {};
@@ -45,12 +56,7 @@ export const jobsService = {
   },
 
   async create(input: CreateJobInput, actor: Actor) {
-    const row = await prisma.$transaction(async (tx) => {
-      await assertCodeFree(tx, input.code);
-      const created = await tx.job.create({ data: { code: input.code, title: input.title, level: input.level, description: input.description ?? null }, include });
-      await auditService.log(audit(actor, 'CREATE_JOB', created.id, undefined, { code: created.code, title: created.title, level: created.level }), tx);
-      return created;
-    });
+    const row = await prisma.$transaction((tx) => createJobWithTx(tx, input, actor));
     return toDto(row);
   },
 

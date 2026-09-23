@@ -603,6 +603,29 @@ npm run ops:revoke-sessions                            # after a restore: force 
   scheduler, no off-host copy and no backup encryption in the application — those are deployment responsibilities and
   are listed as gaps.
 
+## Customer onboarding (Excel import)
+
+Administration → Onboarding loads a new customer's structure and people from one workbook
+(`onboarding.manage`: HR Admin, System Admin). Full guide: [docs/customer-onboarding.md](docs/customer-onboarding.md).
+
+- **Create-oriented**: every row means "create this". An existing code is an error, never a silent update; there is no
+  bulk-edit mode and no undo. Sheets: Organizations → Departments → Jobs → Positions → Employees.
+- **Preview writes nothing** (no records, no audit, no stored file) and reports problems per sheet/row/field with a
+  downloadable error CSV. **Import re-uploads the same file**: the server hashes it (`ONBOARDING_FILE_CHANGED` if it
+  differs), re-validates *inside* the transaction and then creates everything through the ordinary domain services —
+  so uniqueness, assignment, manager-cycle, department-head rules, position/manager histories and per-entity audit are
+  the same ones the UI produces, not a second implementation.
+- **All-or-nothing**: one transaction; a single blocking error creates nothing. Concurrent imports serialise on a
+  PostgreSQL advisory lock taken only by this operation, and re-submitting an already imported workbook replays its
+  import record (the SHA-256 is the idempotency key) instead of duplicating entities.
+- **Forward references work**: a department's parent, a position's department, an employee's manager or a department
+  head may appear later in the same workbook.
+- **Never creates login accounts** and never links an employee to a user by email — accounts are made in
+  Administration → Users.
+- **Bounded and private**: 10 MB / 5,000 rows, `.xlsx` only, formulas rejected, nothing written to disk, and the
+  workbook is never stored. Import history keeps metadata only (counts, file hash, who, when). Logs never contain row
+  content.
+
 ## Security notes
 
 - Passwords: bcrypt (cost 12). Unknown email and wrong password return the same `INVALID_CREDENTIALS` error, with a constant-time dummy compare.

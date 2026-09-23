@@ -13,3 +13,4 @@ export * from './leave-entitlement';
 export * from './leave-request';
 export * from './notification';
 export * from './leave-report';
+export * from './onboarding';

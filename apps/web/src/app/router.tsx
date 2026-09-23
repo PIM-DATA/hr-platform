@@ -32,6 +32,7 @@ import { TeamLeavePage } from '@/features/leave/TeamLeavePage';
 import { AllRequestsPage } from '@/features/leave/AllRequestsPage';
 import { ReportsPage } from '@/features/leave/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
+import { OnboardingPage } from '@/features/onboarding/OnboardingPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
               ],
             }],
           },
+          { element: <RequirePermission permission={PERMISSIONS.ONBOARDING_MANAGE} />, children: [{ path: 'admin/onboarding', element: <OnboardingPage /> }] },
           { path: 'notifications', element: <NotificationsPage /> }, // the caller's own inbox: authentication only, no permission
           ...comingSoonRoutes,
           { path: '*', element: <ComingSoonPage title="Page not found" description="The page you are looking for does not exist." /> },

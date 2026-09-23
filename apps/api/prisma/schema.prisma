@@ -46,6 +46,7 @@ model User {
   workflowActions         WorkflowAction[]
   leaveLedgerEntries      LeaveLedger[]
   leaveRequestsCreated    LeaveRequest[]
+  onboardingImports       OnboardingImportRun[]
   notifications           Notification[]
 
   @@map("users")
@@ -684,4 +685,25 @@ model NotificationDelivery {
   @@unique([notificationId, channel])
   @@index([status, channel])
   @@map("notification_deliveries")
+}
+
+/// METADATA ONLY for a committed customer-onboarding import. The workbook itself is never stored (it is full of PII and
+/// the entities it created are the real record); this row exists to answer "what was imported, by whom, when" and to
+/// make re-submitting the same file a no-op rather than a duplicate import.
+model OnboardingImportRun {
+  id              String   @id @default(cuid())
+  fileName        String   @map("file_name") // sanitised basename, never a path
+  fileHash        String   @unique @map("file_hash") // SHA-256 of the workbook: the idempotency key
+  templateVersion Int      @map("template_version")
+  organizationCount Int    @default(0) @map("organization_count")
+  departmentCount Int      @default(0) @map("department_count")
+  jobCount        Int      @default(0) @map("job_count")
+  positionCount   Int      @default(0) @map("position_count")
+  employeeCount   Int      @default(0) @map("employee_count")
+  createdByUserId String   @map("created_by_user_id")
+  createdBy       User     @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("onboarding_import_runs")
 }

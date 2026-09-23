@@ -5,6 +5,9 @@ import { AppError } from '../../lib/errors';
 import { auditService, diffFields } from '../../services/audit/audit.service';
 import { MODULE, actorMeta, inUse, notFound, paging, type Actor, type Db } from './organization.shared';
 
+/** The caller's transaction: these services compose into a bulk operation (onboarding import) without nesting transactions. */
+export type Tx = Prisma.TransactionClient;
+
 const include = { _count: { select: { departments: true, employees: true } }, defaultCalendar: { select: { id: true, code: true, name: true } } } satisfies Prisma.OrganizationInclude;
 type Row = Prisma.OrganizationGetPayload<{ include: typeof include }>;
 
@@ -29,6 +32,19 @@ const audit = (actor: Actor, action: keyof typeof AUDIT_ACTIONS, recordId: strin
   ...actorMeta(actor), action: AUDIT_ACTIONS[action], module: MODULE, recordType: 'Organization', recordId, oldValue, newValue,
 });
 
+/**
+ * Create on the caller's transaction, so a bulk operation (customer onboarding import) composes many creates into ONE
+ * transaction while running exactly the same invariants and audit as the HTTP path. `timezone` is accepted here only
+ * for that importer: the public create endpoint does not expose it (organizations start on the default).
+ */
+export async function createOrganizationWithTx(tx: Tx, input: CreateOrganizationInput & { timezone?: string }, actor: Actor) {
+  await assertCodeFree(tx, input.code);
+  if (input.timezone !== undefined && !isValidTimezone(input.timezone)) throw new AppError(400, 'ORGANIZATION_TIMEZONE_INVALID', 'Timezone must be an IANA name such as Asia/Bangkok');
+  const created = await tx.organization.create({ data: { code: input.code, name: input.name, ...(input.timezone ? { timezone: input.timezone } : {}) }, include });
+  await auditService.log(audit(actor, 'CREATE_ORGANIZATION', created.id, undefined, { code: created.code, name: created.name, ...(input.timezone ? { timezone: input.timezone } : {}) }), tx);
+  return created;
+}
+
 export const organizationsService = {
   async list(q: OrganizationListQuery) {
     const where: Prisma.OrganizationWhereInput = {};
@@ -46,12 +62,7 @@ export const organizationsService = {
   },
 
   async create(input: CreateOrganizationInput, actor: Actor) {
-    const row = await prisma.$transaction(async (tx) => {
-      await assertCodeFree(tx, input.code);
-      const created = await tx.organization.create({ data: { code: input.code, name: input.name }, include });
-      await auditService.log(audit(actor, 'CREATE_ORGANIZATION', created.id, undefined, { code: created.code, name: created.name }), tx);
-      return created;
-    });
+    const row = await prisma.$transaction((tx) => createOrganizationWithTx(tx, input, actor));
     return toDto(row);
   },
 

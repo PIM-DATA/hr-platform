@@ -20,6 +20,10 @@ let csrfToken: string | null = null;
 export function setCsrfToken(token: string | null) {
   csrfToken = token;
 }
+/** For requests that cannot go through `api` (multipart uploads build their own fetch). */
+export function getCsrfToken(): string | null {
+  return csrfToken;
+}
 
 // Centralized 401 handling. AuthProvider registers a handler that drops the auth state,
 // which makes RequireAuth redirect to /login. Calls made during auth bootstrap / login

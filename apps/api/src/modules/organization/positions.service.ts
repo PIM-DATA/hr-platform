@@ -5,6 +5,9 @@ import { AppError } from '../../lib/errors';
 import { auditService, diffFields } from '../../services/audit/audit.service';
 import { MODULE, actorMeta, inUse, notFound, paging, type Actor, type Db } from './organization.shared';
 
+/** The caller's transaction: these services compose into a bulk operation (onboarding import) without nesting transactions. */
+export type Tx = Prisma.TransactionClient;
+
 const include = {
   department: { select: { id: true, code: true, name: true, organization: { select: { id: true, code: true, name: true } } } },
   job: { select: { id: true, code: true, title: true, level: true } },
@@ -67,6 +70,16 @@ const audit = (actor: Actor, action: keyof typeof AUDIT_ACTIONS, recordId: strin
   ...actorMeta(actor), action: AUDIT_ACTIONS[action], module: MODULE, recordType: 'Position', recordId, oldValue, newValue,
 });
 
+/** Create on the caller's transaction (shared by the HTTP path and the onboarding importer). */
+export async function createPositionWithTx(tx: Tx, input: CreatePositionInput, actor: Actor) {
+  await assertActiveDepartment(tx, input.departmentId);
+  await assertActiveJob(tx, input.jobId);
+  await assertCodeFree(tx, input.code);
+  const created = await tx.position.create({ data: { departmentId: input.departmentId, jobId: input.jobId, code: input.code, title: input.title }, include });
+  await auditService.log(audit(actor, 'CREATE_POSITION', created.id, undefined, { departmentId: created.departmentId, jobId: created.jobId, code: created.code, title: created.title }), tx);
+  return created;
+}
+
 export const positionsService = {
   async list(q: PositionListQuery) {
     const where: Prisma.PositionWhereInput = {};
@@ -87,14 +100,7 @@ export const positionsService = {
   },
 
   async create(input: CreatePositionInput, actor: Actor) {
-    const row = await prisma.$transaction(async (tx) => {
-      await assertActiveDepartment(tx, input.departmentId);
-      await assertActiveJob(tx, input.jobId);
-      await assertCodeFree(tx, input.code);
-      const created = await tx.position.create({ data: { departmentId: input.departmentId, jobId: input.jobId, code: input.code, title: input.title }, include });
-      await auditService.log(audit(actor, 'CREATE_POSITION', created.id, undefined, { departmentId: created.departmentId, jobId: created.jobId, code: created.code, title: created.title }), tx);
-      return created;
-    });
+    const row = await prisma.$transaction((tx) => createPositionWithTx(tx, input, actor));
     return toDto(row);
   },
 

@@ -79,6 +79,7 @@ export async function cleanUsers() {
  */
 export async function resetDatabase() {
   assertTestDatabase();
+  await prisma.onboardingImportRun.deleteMany();
   await prisma.notificationDelivery.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.leaveRequest.deleteMany();
