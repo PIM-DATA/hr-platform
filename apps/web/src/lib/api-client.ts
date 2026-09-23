@@ -7,7 +7,12 @@ export class ApiClientError extends Error {
   }
 }
 
-const BASE = '/api/v1';
+/**
+ * Same-origin by default: the reverse proxy serves the built frontend and forwards /api to the API, so cookies work
+ * without CORS. Set VITE_API_BASE_URL at build time only when the API lives on a different origin — then that origin
+ * must also be listed in the API's CORS_ORIGIN. Never hardcode a host here.
+ */
+const BASE = `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1`;
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // CSRF token lives in module scope (memory only) — set by AuthProvider from /auth/me or /auth/login.

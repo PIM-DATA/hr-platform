@@ -6,16 +6,19 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
+    "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed",
+    "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "db:test:reset": "NODE_ENV=test tsx scripts/reset-test-db.ts",
-    "test": "npm run -s db:test:reset && NODE_ENV=test vitest run"
+    "test": "npm run -s db:test:reset && NODE_ENV=test vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "db:seed:demo": "tsx prisma/seed.ts",
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

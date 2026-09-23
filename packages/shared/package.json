@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "description": "Shared constants, enums and zod schemas used by both api and web",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({type:'commonjs'}))\""
   },
   "dependencies": {
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "typescript": "^5.9.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

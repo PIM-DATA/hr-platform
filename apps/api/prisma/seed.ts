@@ -1,5 +1,5 @@
 /**
- * Seed — idempotent (safe to re-run).
+ * DEMO seed — development only, idempotent (safe to re-run).
  *  1. permissions + roles + role_permissions from @hr/shared (source of truth)
  *  2. admin user from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD (local dev only, never hardcoded)
  *  3. sample organization structure + employees (only when the tables are empty)
@@ -144,6 +144,12 @@ async function seedDemoUsers() {
 }
 
 async function main() {
+  // Hard stop: this script creates demo accounts and a sample company. A production database gets its roles and its
+  // first administrator from `npm run bootstrap:admin`, which asks for real credentials and creates nothing else.
+  if (env.isProduction) {
+    console.error('Refusing to run the demo seed with NODE_ENV=production. Use `npm run bootstrap:admin` instead.');
+    process.exit(1);
+  }
   const counts = await seedRolesAndPermissions(prisma);
   console.log(`✓ ${counts.permissions} permissions, ${counts.roles} roles`);
   await seedAdmin();

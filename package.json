@@ -19,7 +19,11 @@
     "db:studio": "npm run db:studio -w apps/api",
     "test": "npm run test -w apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
+    "start": "npm run start -w apps/api",
+    "db:deploy": "npm run db:deploy -w apps/api",
+    "db:seed:demo": "npm run db:seed:demo -w apps/api",
+    "bootstrap:admin": "npm run bootstrap:admin -w apps/api"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,

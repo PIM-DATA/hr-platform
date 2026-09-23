@@ -11,6 +11,8 @@ import path from 'node:path';
 import { env } from '../src/config/env';
 
 const fail = (msg: string): never => { console.error(`reset-test-db: ${msg}`); process.exit(1); };
+// Destructive: drops and recreates a schema. Production can never reach this, whatever else is set.
+if (env.isProduction || process.env.NODE_ENV === 'production') fail('refusing to run against a production environment');
 if (!env.isTest) fail('NODE_ENV must be "test"');
 const url = env.TEST_DATABASE_URL;
 if (!url || url === env.DATABASE_URL) fail('TEST_DATABASE_URL missing or equal to DATABASE_URL');

@@ -6,7 +6,11 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      // Build the web app from the shared SOURCE: the bundle never depends on packages/shared/dist being built first.
+      '@hr/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+    },
   },
   server: {
     port: 5173,

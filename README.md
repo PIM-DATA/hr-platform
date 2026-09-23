@@ -62,6 +62,8 @@ npm run db:migrate                          # applies the PostgreSQL migrations 
 npm run dev                                 # api → http://localhost:4000, web → http://localhost:5173
 ```
 
+For production see [Running in production](#running-in-production) — development commands are never used there.
+
 **Requires PostgreSQL** (developed against PostgreSQL 18; standard SQL only, no version-specific features). `npm run db:migrate`
 targets PostgreSQL — it will not produce a SQLite file.
 
@@ -537,6 +539,42 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - **Phase 2 closure review**: see [docs/phase-2-leave-review.md](docs/phase-2-leave-review.md) for the architecture,
   permission and data-scope model, lifecycle and locking guarantees, reporting semantics, test coverage, known
   limitations and production-readiness gaps.
+
+## Running in production
+
+Deployment contract (provider-neutral; the full runbook, checklist and gap list live in
+[docs/production-readiness.md](docs/production-readiness.md)):
+
+```bash
+npm ci
+npm run build       # packages/shared → apps/api (tsc → dist) → apps/web (vite → dist)
+npm run db:deploy   # prisma migrate deploy — never migrate dev / db push / migrate reset
+npm run start       # node apps/api/dist/server.js
+```
+
+- **Order matters**: build → migrate → start, and a failed migration aborts the release. Production never runs
+  `vite dev` or `tsx watch`.
+- **HTTPS is mandatory.** The app does not terminate TLS; a reverse proxy or platform edge serves
+  `apps/web/dist` and forwards `/api` to the Node process. Same-origin is the recommended setup (cookies without CORS);
+  a split deployment builds the frontend with `VITE_API_BASE_URL` and lists that origin in `CORS_ORIGIN`.
+- **Fail-fast configuration**: with `NODE_ENV=production` the process exits before listening if `DATABASE_URL` or
+  `CORS_ORIGIN` is missing, if an origin is `localhost`/`*`/non-https, if `SEED_DEMO_PASSWORD` is set, if a known
+  placeholder password is used, or if `COOKIE_SECURE=false`. `ENV_FILE` can point at a config file outside the repo;
+  real environment variables always win. There is no session signing secret — sessions are database-backed.
+- **`TRUST_PROXY`** must equal the number of proxy hops (default `0`). It drives `req.ip` (rate limiting) and
+  `req.protocol` (secure cookies), so a wrong value is a security setting, not a formality.
+- **Probes**: `/api/v1/health` (app + database), `/health/live`, `/health/ready` (503 when the database is down) —
+  unauthenticated, rate-limit exempt, and free of internal detail.
+- **Rate limits**: failed logins per IP (`LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_MINUTES`) and a general
+  `API_RATE_LIMIT_PER_MINUTE` ceiling (health exempt). Both are in-process, which is correct for the commercial model
+  of **one deployment + one database per customer**; scaling out horizontally would need a shared store.
+- **Logs** are structured JSON with a request id per line (`x-request-id` echoed back); passwords, tokens, cookies and
+  request bodies are never logged. Unknown errors return a generic message plus the request id — never a stack trace.
+- **Shutdown**: `SIGTERM`/`SIGINT` drain in-flight requests, disconnect Prisma and exit (10s force timeout);
+  uncaught exceptions and unhandled rejections are logged fatally and trigger the same shutdown.
+- **First install**: `BOOTSTRAP_ADMIN_EMAIL=… BOOTSTRAP_ADMIN_PASSWORD=… npm run bootstrap:admin` creates reference
+  data and one administrator. The demo seed (`npm run db:seed:demo`) and `db:test:reset` both **refuse** to run with
+  `NODE_ENV=production`.
 
 ## Security notes
 

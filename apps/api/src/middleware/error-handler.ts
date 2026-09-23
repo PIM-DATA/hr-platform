@@ -36,9 +36,19 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     }
   }
 
-  // body-parser JSON syntax error
-  if (typeof err === 'object' && err !== null && (err as { type?: string }).type === 'entity.parse.failed') {
-    return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Request body is not valid JSON' } });
+  // body-parser rejects a request before any handler runs: map its own status instead of reporting a server error.
+  if (typeof err === 'object' && err !== null && 'type' in err) {
+    const bodyErr = err as { type?: string; status?: number; statusCode?: number; expose?: boolean };
+    if (bodyErr.type === 'entity.parse.failed') {
+      return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Request body is not valid JSON' } });
+    }
+    if (bodyErr.type === 'entity.too.large') {
+      return res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large', requestId } });
+    }
+    const status = bodyErr.status ?? bodyErr.statusCode;
+    if (bodyErr.expose === true && status && status >= 400 && status < 500) {
+      return res.status(status).json({ error: { code: 'BAD_REQUEST', message: 'Request could not be processed', requestId } });
+    }
   }
 
   logger.error({ err, requestId, url: req.originalUrl }, 'unhandled error');

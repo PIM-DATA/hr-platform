@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { prisma } from './lib/prisma';
 import { authRouter } from './modules/auth/auth.routes';
 import { usersRouter } from './modules/users/users.routes';
 import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
@@ -18,11 +17,6 @@ import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRou
  * Adding a module: import its router and `router.use('/<resource>', <module>Router)`.
  */
 export const apiRouter = Router();
-
-apiRouter.get('/health', async (_req, res) => {
-  await prisma.$queryRaw`SELECT 1`;
-  res.json({ data: { status: 'ok', database: 'ok', timestamp: new Date().toISOString() } });
-});
 
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
