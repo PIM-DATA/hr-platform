@@ -30,6 +30,7 @@ import { MyLeavePage } from '@/features/leave/MyLeavePage';
 import { ApprovalsPage } from '@/features/leave/ApprovalsPage';
 import { TeamLeavePage } from '@/features/leave/TeamLeavePage';
 import { AllRequestsPage } from '@/features/leave/AllRequestsPage';
+import { ReportsPage } from '@/features/leave/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { MENU } from '@/config/menu';
 
@@ -112,7 +113,7 @@ export const router = createBrowserRouter([
               children: [
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ index: true, element: <MyLeavePage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_APPROVE} />, children: [{ path: 'approvals', element: <ApprovalsPage /> }] },
-                { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ path: 'team', element: <TeamLeavePage /> }, { path: 'requests', element: <AllRequestsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ path: 'team', element: <TeamLeavePage /> }, { path: 'requests', element: <AllRequestsPage /> }, { path: 'reports', element: <ReportsPage /> }] },
               ],
             }],
           },

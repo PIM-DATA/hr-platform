@@ -31,7 +31,7 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 11 Leave request + workflow + reservation concurrency | ✅ (API + tests; Leave UI is Task 12) |
 | 12 Leave UI + approval inbox | ✅ |
 | 13 Notification foundation (in-app) | ✅ |
-| 14 Leave dashboard + review | ⏳ |
+| 14 Leave reporting + Phase 2 review | ✅ |
 | Attendance | Phase 2B |
 
 ## Stack
@@ -516,6 +516,27 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
   401, so a previous user's notifications can never flash for the next one.
 - **Deliveries** (`notification_deliveries`) are the outbox foundation: Task 13 writes exactly one `IN_APP` / `SENT` row
   per notification and no EMAIL/LINE/LARK/PUSH rows at all. The table is not exposed to the frontend and has no admin UI.
+
+## Leave reporting (Task 14)
+
+- `GET /leave/reports/overview` and `/leave/reports/options` need only `leave.view`: a report is an aggregate of the
+  requests the caller can already read, and the data scope is applied **in SQL** (never as a post-filter). A filter can
+  narrow a report but never widen it. Options are derived from the caller's own visible requests, so a manager needs no
+  organization-admin permission to filter their report, and the DTO stays minimal (id/name only).
+- **Semantics** (also stated on the page): requests are attributed to the period containing their **start date**, with
+  the whole `units` value recorded at submit — a request crossing a month boundary counts in its start month, and
+  history is never re-prorated against the current calendar. DRAFTs are excluded; PENDING, APPROVED, REJECTED and
+  CANCELLED all count as submitted activity. Organization/department come from the request **snapshot**, so transfers
+  don't rewrite history. Figures come from request snapshots — the ledger remains the source of truth for balances.
+- Contents: summary KPIs, per-leave-type and per-department breakdowns (a request with no department snapshot is
+  grouped as "Unassigned", never dropped), a zero-filled monthly trend and pending aging (0–2 / 3–7 / 8+ days by
+  elapsed time since submission, counted in the database). `from`/`to` are required, `from ≤ to`, at most 24 months
+  (`REPORT_RANGE_TOO_LARGE`).
+- The Reports tab appears for `leave.view` with data scope TEAM or ALL (SELF users have My leave instead). Charts are
+  dependency-free CSS bars with exact numbers beside them — no chart library was added.
+- **Phase 2 closure review**: see [docs/phase-2-leave-review.md](docs/phase-2-leave-review.md) for the architecture,
+  permission and data-scope model, lifecycle and locking guarantees, reporting semantics, test coverage, known
+  limitations and production-readiness gaps.
 
 ## Security notes
 

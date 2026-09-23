@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { PERMISSIONS, adjustEntitlementSchema, balancesMeQuerySchema, leaveApprovalsQuerySchema, leaveCalendarQuerySchema, leaveRequestBodySchema, myLeaveRequestQuerySchema, leaveRequestListQuerySchema, updateLeaveRequestSchema, carryForwardSchema, createEntitlementSchema, createLeavePolicySchema, createLeaveTypeSchema, entitlementListQuerySchema, entitlementPreviewQuerySchema, leaveEmployeeOptionsQuerySchema, leavePolicyListQuerySchema, leaveTypeListQuerySchema, ledgerListQuerySchema, resolvePolicyQuerySchema, updateLeavePolicySchema, updateLeaveTypeSchema, workflowOptionsQuerySchema } from '@hr/shared';
+import { PERMISSIONS, adjustEntitlementSchema, balancesMeQuerySchema, leaveApprovalsQuerySchema, leaveReportQuerySchema, leaveCalendarQuerySchema, leaveRequestBodySchema, myLeaveRequestQuerySchema, leaveRequestListQuerySchema, updateLeaveRequestSchema, carryForwardSchema, createEntitlementSchema, createLeavePolicySchema, createLeaveTypeSchema, entitlementListQuerySchema, entitlementPreviewQuerySchema, leaveEmployeeOptionsQuerySchema, leavePolicyListQuerySchema, leaveTypeListQuerySchema, ledgerListQuerySchema, resolvePolicyQuerySchema, updateLeavePolicySchema, updateLeaveTypeSchema, workflowOptionsQuerySchema } from '@hr/shared';
 import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
@@ -8,6 +8,7 @@ import { leaveTypesService } from './leave-types.service';
 import { leavePoliciesService } from './leave-policies.service';
 import { entitlementsService } from './entitlements.service';
 import { leaveRequestsService } from './leave-requests.service';
+import { leaveReportsService } from './leave-reports.service';
 
 const types = requirePermission(PERMISSIONS.LEAVE_MANAGE_TYPES);
 const policies = requirePermission(PERMISSIONS.LEAVE_MANAGE_POLICIES);
@@ -62,4 +63,7 @@ leaveRouter.get('/requests/:id', async (req, res) => res.json({ data: await leav
 leaveRouter.patch('/requests/:id', request, validate(updateLeaveRequestSchema), async (req, res) => res.json({ data: await leaveRequestsService.update(req.auth!, id(req), req.body, actor(req)) }));
 leaveRouter.post('/requests/:id/submit', request, async (req, res) => res.json({ data: await leaveRequestsService.submit(req.auth!, id(req), actor(req)) }));
 leaveRouter.post('/requests/:id/cancel', request, async (req, res) => res.json({ data: await leaveRequestsService.cancel(req.auth!, id(req), actor(req)) }));
+// leave reporting — aggregates of what `leave.view` + data scope already allows (no separate report permission)
+leaveRouter.get('/reports/overview', view, validate(leaveReportQuerySchema, 'query'), async (req, res: Response) => res.json({ data: await leaveReportsService.overview(req.auth!, res.locals.query) }));
+leaveRouter.get('/reports/options', view, async (req, res: Response) => res.json({ data: await leaveReportsService.options(req.auth!) }));
 leaveRouter.get('/balances/me', view, validate(balancesMeQuerySchema, 'query'), async (req, res: Response) => res.json(await leaveRequestsService.balancesMe(req.auth!, res.locals.query.asOfDate)));

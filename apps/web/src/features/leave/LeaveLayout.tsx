@@ -18,6 +18,7 @@ export function useLeaveTabs() {
     hasPermission(PERMISSIONS.WORKFLOW_APPROVE) && { label: 'Approvals', to: '/hrm/leave/approvals' },
     canView && (scope === 'TEAM' || scope === 'ALL') && { label: 'Team leave', to: '/hrm/leave/team' },
     canView && scope === 'ALL' && { label: 'All requests', to: '/hrm/leave/requests' },
+    canView && (scope === 'TEAM' || scope === 'ALL') && { label: 'Reports', to: '/hrm/leave/reports' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];
 }
 

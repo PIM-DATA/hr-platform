@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  LeaveApprovalItemDto, LeaveCalendarEntryDto, LeaveRequestDetailDto, LeaveRequestDto, LeaveRequestPreviewDto, LeaveTypeOptionDto, MyBalanceDto,
+  LeaveApprovalItemDto, LeaveCalendarEntryDto, LeaveReportOptionsDto, LeaveReportOverviewDto, LeaveRequestDetailDto, LeaveRequestDto, LeaveRequestPreviewDto, LeaveTypeOptionDto, MyBalanceDto,
 } from '@hr/shared';
 import { api } from '@/lib/api-client';
 
@@ -20,6 +20,8 @@ export const leaveKeys = {
   calendar: (f: Record<string, unknown>) => ['leave', 'calendar', f] as const,
   requests: (f: Record<string, unknown>) => ['leave', 'requests', f] as const,
   types: ['leave', 'type-options'] as const,
+  report: (f: Record<string, unknown>) => ['leave', 'report', f] as const,
+  reportOptions: ['leave', 'report-options'] as const,
 };
 
 export const useMyLeaveRequests = (f: Record<string, unknown>) =>
@@ -39,6 +41,13 @@ export const useLeaveCalendar = (f: Record<string, unknown>, enabled = true) =>
 
 export const useAllLeaveRequests = (f: Record<string, unknown>, enabled = true) =>
   useQuery({ queryKey: leaveKeys.requests(f), queryFn: () => api.get<LeaveRequestDto[]>(`/leave/requests?${qs(f)}`), enabled, placeholderData: (p) => p });
+
+export const useLeaveReport = (f: Record<string, unknown>) =>
+  useQuery({ queryKey: leaveKeys.report(f), queryFn: () => api.get<LeaveReportOverviewDto>(`/leave/reports/overview?${qs(f)}`).then((r) => r.data), placeholderData: (p) => p, retry: false });
+
+/** Filter options derived from what the caller can already see — no organization-admin permission required. */
+export const useLeaveReportOptions = () =>
+  useQuery({ queryKey: leaveKeys.reportOptions, queryFn: () => api.get<LeaveReportOptionsDto>('/leave/reports/options').then((r) => r.data), retry: false });
 
 /** Leave types for filters/forms — served by the entitlement options endpoint for permission holders, so it may 403. */
 export const useLeaveTypeOptions = () =>
