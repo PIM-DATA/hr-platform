@@ -18,7 +18,11 @@
     "test": "npm run -s db:test:reset && NODE_ENV=test vitest run",
     "build": "tsc -p tsconfig.build.json",
     "db:seed:demo": "tsx prisma/seed.ts",
-    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts"
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
+    "db:backup": "tsx scripts/backup-db.ts",
+    "db:restore:verify": "tsx scripts/restore-verify.ts",
+    "ops:check": "tsx scripts/ops-check.ts",
+    "ops:revoke-sessions": "tsx scripts/revoke-sessions.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

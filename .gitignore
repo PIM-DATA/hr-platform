@@ -32,3 +32,9 @@ apps/web/dist/
 
 # test
 coverage/
+
+# operational backups (never committed — they contain every HR record)
+apps/api/backups/
+*.dump
+*.dump.partial
+*.manifest.json

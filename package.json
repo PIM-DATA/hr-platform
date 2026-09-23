@@ -23,7 +23,11 @@
     "start": "npm run start -w apps/api",
     "db:deploy": "npm run db:deploy -w apps/api",
     "db:seed:demo": "npm run db:seed:demo -w apps/api",
-    "bootstrap:admin": "npm run bootstrap:admin -w apps/api"
+    "bootstrap:admin": "npm run bootstrap:admin -w apps/api",
+    "db:backup": "npm run db:backup -w apps/api",
+    "db:restore:verify": "npm run db:restore:verify -w apps/api",
+    "ops:check": "npm run ops:check -w apps/api",
+    "ops:revoke-sessions": "npm run ops:revoke-sessions -w apps/api"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,

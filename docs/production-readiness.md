@@ -166,8 +166,11 @@ false comfort, so it is an explicit gap.
 
 ## 9. Known gaps after Task 15
 
-- **Backup/restore**: no automated backups, no tested restore drill, no point-in-time recovery.
-- **Monitoring**: no metrics, alerting, uptime checks or external error tracking; logs go to stdout only.
+- **Backup/restore**: `npm run db:backup` and `npm run db:restore:verify` exist and the restore drill passes
+  (see docs/operations-runbook.md). Still missing: an off-host copy of backups, encryption at rest for dump files,
+  automated scheduling/retention, backup-failure alerting and point-in-time recovery (WAL archiving).
+- **Monitoring**: `npm run ops:check` plus structured events give a monitor something to consume, but no metrics,
+  alerting, uptime checks or external error tracking (Sentry/Datadog) are wired up; logs go to stdout only.
 - **Account recovery**: no password reset / forgot-password flow; an administrator must reset credentials.
 - **Frontend CSP** and other static-hosting headers are not defined.
 - **Horizontal scaling**: rate limiting (and any future in-process state) assumes a single instance.
