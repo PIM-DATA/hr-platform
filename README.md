@@ -29,7 +29,8 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 10.5 PostgreSQL migration + balance concurrency validation | ✅ |
 | 10.6 Request policy vs entitlement policy semantics | ✅ |
 | 11 Leave request + workflow + reservation concurrency | ✅ (API + tests; Leave UI is Task 12) |
-| 12 Approval inbox + Leave UI · 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
+| 12 Leave UI + approval inbox | ✅ |
+| 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
 | Attendance | Phase 2B |
 
 ## Stack
@@ -430,6 +431,45 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - **Permissions** `leave.view` + `leave.request` (both granted to EMPLOYEE, MANAGER, HR, HR_ADMIN, EXECUTIVE, SYSTEM_ADMIN);
   25 permissions total. `attachmentRef` is an opaque string — there is no upload or document service yet, and no notifications
   (Task 13) or Leave UI (Task 12).
+
+## Leave UI and approval inbox (Task 12)
+
+- **Pages** under `/hrm/leave` (`features/leave/`): **My leave** (balance cards + my requests + new/edit request dialog),
+  **Approvals** (inbox), **Team leave** (who is away, by day) and **All requests** (organization-wide). Tab visibility is
+  capability-based, never role names: My leave needs `leave.view` + a linked employee, Approvals needs `workflow.approve`,
+  Team leave needs `leave.view` + data scope TEAM/ALL, All requests needs `leave.view` + scope ALL. These are UX hints —
+  every endpoint re-checks the same rules.
+- **Read models added for the UI** (no business logic duplicated on the client):
+  `GET /leave/requests/me` — always the caller's own requests; an ALL-scope user opening My leave does **not** load the
+  company. No employee profile → empty list (mutations still return `EMPLOYEE_PROFILE_REQUIRED`).
+  `GET /leave/approvals` — pending leave steps where the caller **is the snapshot approver**, with the request, employee,
+  department, position and leave type batch-loaded in one query (no per-row detail fetch). Data scope and
+  `workflow.view_all` never widen it.
+  `GET /leave/calendar` — summary of who is away in a required `from`/`to` range inside the caller's data scope;
+  deliberately excludes reason, attachment, policy internals, ledger figures and workflow comments, and `status` is
+  whitelisted to PENDING/APPROVED (a draft is not an absence and belongs to its owner).
+  `GET /leave/type-options` now also accepts `leave.view` so any requester can pick a leave type.
+- **The server is the only calculator.** The new-request dialog calls `POST /leave/requests/preview` for units, policy
+  rules, calendar, balance and the approval route; changing any field marks the preview stale and blocks Submit until it
+  is refreshed. A preview is **not a guarantee** — Submit revalidates everything, and a losing race (e.g.
+  `INSUFFICIENT_LEAVE_BALANCE`, `LEAVE_REQUEST_OVERLAP`) is shown in the dialog with the balances refreshed.
+  Submitting follows the real lifecycle: create draft → `POST /:id/submit`.
+- **Approve / reject** use the generic `POST /workflow/instances/:id/actions`; there is no leave-specific approval
+  mutation. The screen requires a comment to reject (the API keeps it optional — changing that would be an engine rule).
+  Cancel/withdraw uses `POST /leave/requests/:id/cancel` for DRAFT and PENDING; approved leave shows a note that
+  cancelling it is not supported yet.
+- **Shared leave UI** (`features/leave/leave-ui.tsx`): `formatLeaveUnits` (in `@hr/shared`, half-day precise — 10, 10.5,
+  0.5, -0.5; replaces the page-local formatter Task 10 used), `formatBusinessDate` (formats `YYYY-MM-DD` from its parts,
+  never through a UTC `Date`, so days never shift), `LeaveStatusBadge` (text + colour), `StepTimeline` (snapshot
+  approvers exactly as recorded, with human-readable skip reasons), `BalanceCards` (`reserved` shown as "Pending"; the
+  accounting term stays `reserved` in the API and ledger) and `leaveErrorMessage` mapping every leave business error to a
+  sentence, with a generic fallback for unknown/5xx.
+- **Query keys** are namespaced (`leaveKeys.myRequests/request/balancesMe/approvals/calendar/requests`); mutations
+  invalidate the leave namespace plus the dashboard, never the whole cache. Buttons disable while a mutation is in
+  flight — backend idempotency and row locks remain the correctness mechanism.
+- **Responsive**: verified at 390px with no horizontal scroll; tables drop secondary columns on phones (the details move
+  into the row subtitle) and the request form is single-column. Team leave is a dependency-free month list grouped by
+  day — no calendar library was added, and no new dependency at all in this task.
 
 ## Security notes
 

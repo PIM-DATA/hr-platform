@@ -336,8 +336,10 @@ describe('options endpoints', () => {
     expect(types.body.data.map((t: { code: string }) => t.code)).not.toContain('SICK');
     expect(Object.keys(types.body.data[0]).sort()).toEqual(['code', 'id', 'name']);
     expect((await as(s, 'get', '/api/v1/leave/types')).status).toBe(403); // no leave.manage_types needed for options
-    expect((await as(emp, 'get', '/api/v1/leave/employee-options')).status).toBe(403);
-    expect((await as(emp, 'get', '/api/v1/leave/type-options')).status).toBe(403);
+    expect((await as(emp, 'get', '/api/v1/leave/employee-options')).status).toBe(403); // employee browser stays admin-only
+    // type-options widened in Task 12: leave.view holders (every employee) need the active leave types to request leave.
+    // The admin-only intent is unchanged — an EMPLOYEE still cannot reach any entitlement endpoint (tests 1–3).
+    expect((await as(emp, 'get', '/api/v1/leave/type-options')).status).toBe(200);
     // preview endpoint resolves policy without letting the client pick it
     const prev = await as(s, 'get', `/api/v1/leave/entitlements/preview?employeeId=${PT}&leaveTypeId=${annual}&periodStart=2026-01-01`);
     expect(prev.body.data.policy).toMatchObject({ name: 'Annual PT 5', annualUnits: 5 });

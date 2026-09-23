@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LEAVE_REQUEST_STATUSES } from '../enums';
+import { LEAVE_BLOCKING_STATUSES, LEAVE_REQUEST_STATUSES } from '../enums';
 import { businessDateSchema } from './calendar';
 import { paginationQuerySchema } from './common';
 import type { BalanceSummary } from '../leave-ledger';
@@ -36,6 +36,40 @@ export const leaveRequestListQuerySchema = paginationQuerySchema.extend({
 export type LeaveRequestListQuery = z.infer<typeof leaveRequestListQuerySchema>;
 
 export const balancesMeQuerySchema = z.object({ asOfDate: businessDateSchema.optional() });
+
+/** My Leave: never widened by the caller's data scope — always the caller's own requests. */
+export const myLeaveRequestQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(LEAVE_REQUEST_STATUSES as [string, ...string[]]).optional(),
+  leaveTypeId: z.string().min(1).optional(),
+  from: businessDateSchema.optional(),
+  to: businessDateSchema.optional(),
+});
+export type MyLeaveRequestQuery = z.infer<typeof myLeaveRequestQuerySchema>;
+
+/** Approval inbox: steps where the caller IS the snapshot approver (never data-scope based). */
+export const leaveApprovalsQuerySchema = paginationQuerySchema.extend({
+  leaveTypeId: z.string().min(1).optional(),
+  from: businessDateSchema.optional(),
+  to: businessDateSchema.optional(),
+});
+export type LeaveApprovalsQuery = z.infer<typeof leaveApprovalsQuerySchema>;
+
+/**
+ * Team calendar: summary projection inside the caller's data scope; a date range is required.
+ * `status` is whitelisted to the statuses that mean "this person is away" — a DRAFT is not an absence yet
+ * and belongs to its owner only, so it is never selectable here (REJECTED/CANCELLED are not absences either).
+ */
+export const leaveCalendarQuerySchema = z
+  .object({
+    from: businessDateSchema,
+    to: businessDateSchema,
+    status: z.enum(LEAVE_BLOCKING_STATUSES as unknown as [string, ...string[]]).optional(),
+    departmentId: z.string().min(1).optional(),
+    leaveTypeId: z.string().min(1).optional(),
+    search: z.string().trim().max(100).optional(),
+  })
+  .refine((v) => v.from <= v.to, { message: 'from must be on or before to', path: ['to'] });
+export type LeaveCalendarQuery = z.infer<typeof leaveCalendarQuerySchema>;
 
 // ---------- DTOs ----------
 export interface LeaveRequestDto {
@@ -88,6 +122,42 @@ export interface LeaveRequestPreviewDto {
   calendar: { id: string; name: string };
   remainingAfter: number;
   workflow: { code: string; name: string };
+}
+
+/** One pending step waiting for the caller, with the leave request it belongs to (batch-loaded, never N+1). */
+export interface LeaveApprovalItemDto {
+  workflowInstanceId: string;
+  workflowStepId: string;
+  stepOrder: number;
+  stepName: string;
+  submittedAt: string | null;
+  request: {
+    id: string;
+    employee: { id: string; employeeCode: string; firstName: string; lastName: string; department: { id: string; name: string } | null; position: { id: string; title: string } | null };
+    leaveType: { id: string; code: string; name: string };
+    startDate: string;
+    endDate: string;
+    startPart: 'FULL' | 'PM';
+    endPart: 'FULL' | 'AM';
+    units: number;
+    status: string;
+  };
+}
+
+/**
+ * Team calendar summary: who is away and when. Deliberately excludes reason, attachmentRef, policy internals,
+ * ledger figures and workflow comments — those live behind the request detail endpoint.
+ */
+export interface LeaveCalendarEntryDto {
+  requestId: string;
+  employee: { id: string; employeeCode: string; firstName: string; lastName: string; department: { id: string; name: string } | null };
+  leaveType: { id: string; code: string; name: string };
+  startDate: string;
+  endDate: string;
+  startPart: 'FULL' | 'PM';
+  endPart: 'FULL' | 'AM';
+  units: number;
+  status: string;
 }
 
 export interface MyBalanceDto extends BalanceSummary {

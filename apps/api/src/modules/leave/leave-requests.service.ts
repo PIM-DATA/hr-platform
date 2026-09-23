@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import {
   AUDIT_ACTIONS, LEAVE_BLOCKING_STATUSES, LEAVE_REQUEST_STATUS as ST, LEAVE_WORKFLOW, PERMISSIONS, addDays, availableUnits, businessToday, calculateLeaveUnits, compareBusinessDate, leaveSpansOverlap, operationKeys,
-  type LeaveRequestBody, type LeaveRequestDetailDto, type LeaveRequestDto, type LeaveRequestListQuery, type LeaveRequestPreviewDto, type LeaveWorkflowTimelineDto, type MyBalanceDto, type UpdateLeaveRequestInput,
+  type LeaveApprovalItemDto, type LeaveApprovalsQuery, type LeaveCalendarEntryDto, type LeaveCalendarQuery, type LeaveRequestBody, type LeaveRequestDetailDto, type LeaveRequestDto, type LeaveRequestListQuery, type LeaveRequestPreviewDto, type LeaveWorkflowTimelineDto, type MyBalanceDto, type MyLeaveRequestQuery, type UpdateLeaveRequestInput,
 } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -275,6 +275,78 @@ export const leaveRequestsService = {
       actions: wf.actions.map((a) => ({ stepOrder: a.stepOrder, action: a.action, actor: a.actor, comment: a.comment, createdAt: a.createdAt.toISOString() })),
     } : null;
     return { ...toDto(row), balance: ent ? { granted: ent.granted, carriedForward: ent.carriedForward, adjustment: ent.adjustment, reserved: ent.reserved, used: ent.used, available: availableUnits(ent), periodStart: ent.periodStart, periodEnd: ent.periodEnd } : null, workflow: timeline };
+  },
+
+  /**
+   * My Leave (Task 12 read model): ALWAYS the caller's own requests — the caller's data scope never widens it, so an
+   * ALL-scope user opening "My Leave" does not load the whole company. Without an employee profile the list is simply
+   * empty (mutations still fail with EMPLOYEE_PROFILE_REQUIRED).
+   */
+  async listMine(auth: AuthContext, q: MyLeaveRequestQuery): Promise<{ data: LeaveRequestDto[]; meta: { page: number; pageSize: number; total: number } }> {
+    if (!auth.employeeId) return { data: [], meta: { page: q.page, pageSize: q.pageSize, total: 0 } };
+    const where: Prisma.LeaveRequestWhereInput = {
+      employeeId: auth.employeeId, status: q.status, leaveTypeId: q.leaveTypeId,
+      ...(q.from ? { endDate: { gte: q.from } } : {}), ...(q.to ? { startDate: { lte: q.to } } : {}),
+    };
+    const [total, rows] = await prisma.$transaction([prisma.leaveRequest.count({ where }), prisma.leaveRequest.findMany({ where, include, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
+    return { data: rows.map(toDto), meta: { page: q.page, pageSize: q.pageSize, total } };
+  },
+
+  /**
+   * Approval inbox projection (Task 12): pending leave steps where the caller IS the snapshot approver. Authorization is
+   * the snapshot identity only — data scope and workflow.view_all never widen it. One query joins the request, employee,
+   * department, position and leave type, so the UI never issues a detail request per row.
+   */
+  async approvals(auth: AuthContext, q: LeaveApprovalsQuery): Promise<{ data: LeaveApprovalItemDto[]; meta: { page: number; pageSize: number; total: number } }> {
+    const requestWhere: Prisma.LeaveRequestWhereInput = { status: ST.PENDING, leaveTypeId: q.leaveTypeId, ...(q.from ? { endDate: { gte: q.from } } : {}), ...(q.to ? { startDate: { lte: q.to } } : {}) };
+    const where: Prisma.WorkflowInstanceStepWhereInput = {
+      approverUserId: auth.userId, status: 'PENDING',
+      instance: { status: 'PENDING', module: LEAVE_WORKFLOW.module, entityType: LEAVE_WORKFLOW.entityType, entityId: { in: (await prisma.leaveRequest.findMany({ where: requestWhere, select: { id: true } })).map((r) => r.id) } },
+    };
+    const [total, steps] = await prisma.$transaction([
+      prisma.workflowInstanceStep.count({ where }),
+      prisma.workflowInstanceStep.findMany({ where, include: { instance: { select: { id: true, entityId: true, submittedAt: true } } }, orderBy: { instance: { submittedAt: 'asc' } }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
+    ]);
+    if (!steps.length) return { data: [], meta: { page: q.page, pageSize: q.pageSize, total } };
+    const requests = await prisma.leaveRequest.findMany({
+      where: { id: { in: steps.map((s) => s.instance.entityId) } },
+      include: { leaveType: { select: { id: true, code: true, name: true } }, employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, department: { select: { id: true, name: true } }, position: { select: { id: true, title: true } } } } },
+    });
+    const byId = new Map(requests.map((r) => [r.id, r]));
+    return {
+      data: steps.flatMap((s) => {
+        const r = byId.get(s.instance.entityId);
+        if (!r) return [];
+        return [{
+          workflowInstanceId: s.instanceId, workflowStepId: s.id, stepOrder: s.stepOrder, stepName: s.name, submittedAt: s.instance.submittedAt?.toISOString() ?? null,
+          request: { id: r.id, employee: r.employee, leaveType: r.leaveType, startDate: r.startDate, endDate: r.endDate, startPart: r.startPart as 'FULL' | 'PM', endPart: r.endPart as 'FULL' | 'AM', units: r.units, status: r.status },
+        }];
+      }),
+      meta: { page: q.page, pageSize: q.pageSize, total },
+    };
+  },
+
+  /**
+   * Team calendar (Task 12): who is away in [from, to] within the caller's data scope. Summary projection only —
+   * no reason, attachment, policy internals, ledger figures or workflow comments.
+   */
+  async calendar(auth: AuthContext, q: LeaveCalendarQuery): Promise<{ data: LeaveCalendarEntryDto[] }> {
+    const and: Prisma.LeaveRequestWhereInput[] = [
+      { employee: employeeScopeWhere(auth) },
+      { startDate: { lte: q.to } },
+      { endDate: { gte: q.from } },
+      { status: q.status ?? { in: [...LEAVE_BLOCKING_STATUSES] } },
+    ];
+    if (q.leaveTypeId) and.push({ leaveTypeId: q.leaveTypeId });
+    if (q.departmentId) and.push({ OR: [{ departmentId: q.departmentId }, { departmentId: null, employee: { departmentId: q.departmentId } }] });
+    if (q.search) and.push({ employee: { OR: [{ employeeCode: { contains: q.search, mode: 'insensitive' } }, { firstName: { contains: q.search, mode: 'insensitive' } }, { lastName: { contains: q.search, mode: 'insensitive' } }] } });
+    const rows = await prisma.leaveRequest.findMany({
+      where: { AND: and },
+      select: { id: true, startDate: true, endDate: true, startPart: true, endPart: true, units: true, status: true, leaveType: { select: { id: true, code: true, name: true } }, employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, department: { select: { id: true, name: true } } } } },
+      orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+      take: 500,
+    });
+    return { data: rows.map((r) => ({ requestId: r.id, employee: r.employee, leaveType: r.leaveType, startDate: r.startDate, endDate: r.endDate, startPart: r.startPart as 'FULL' | 'PM', endPart: r.endPart as 'FULL' | 'AM', units: r.units, status: r.status })) };
   },
 
   /** My entitlements whose period covers asOfDate (default: business today in my organization's timezone). */

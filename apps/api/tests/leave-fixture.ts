@@ -103,6 +103,7 @@ export async function setupLeaveFixture(app: Server) {
   const entitle = async (employeeId: string, leaveTypeId: string) => { const r = await as(admin, 'post', '/api/v1/leave/entitlements').send({ employeeId, leaveTypeId, ...period }); if (r.status !== 201) throw new Error(JSON.stringify(r.body)); return r.body.data.id as string; };
   const ent: Record<string, string> = {};
   for (const e of [EMP, EMP2, OTHER, TRANS]) for (const t of ['ANNUAL', 'SICK', 'STRICT', 'LONG', 'ADV'] as const) ent[`${e}:${t}`] = await entitle(e, types[t]);
+  ent[`${HRA}:ANNUAL`] = await entitle(HRA, types.ANNUAL);
   ent[`${LONER}:AUTO`] = await entitle(LONER, types.AUTO);
   ent[`${LONER}:ANNUAL`] = await entitle(LONER, types.ANNUAL);
 

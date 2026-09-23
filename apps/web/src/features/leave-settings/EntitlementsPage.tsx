@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Eye, Plus, SlidersHorizontal } from 'lucide-react';
-import { availableUnits, type EntitlementDto, type LeaveEmployeeOptionDto } from '@hr/shared';
+import { availableUnits, formatLeaveUnits, type EntitlementDto, type LeaveEmployeeOptionDto } from '@hr/shared';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -17,9 +17,7 @@ import { errorMessage } from '@/features/organization/shared';
 import { useOrganizationOptions } from '@/features/organization/organization.api';
 import { useEntitlement, useEntitlementLedger, useEntitlementMutations, useEntitlementPreview, useEntitlements, useLeaveEmployeeOptions, useLeaveTypeOptions } from './leave-settings.api';
 
-// Leave units are half-day precise; the shared formatNumber rounds to whole numbers.
-const formatNumber = (n: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(n);
-const units = (n: number) => (n === 0 ? '0' : `${n > 0 ? '+' : ''}${formatNumber(n)}`);
+const units = (n: number) => (n === 0 ? '0' : `${n > 0 ? '+' : ''}${formatLeaveUnits(n)}`);
 const year = new Date().getFullYear();
 
 export function EntitlementsPage() {
@@ -40,12 +38,12 @@ export function EntitlementsPage() {
     { key: 'type', header: 'Leave type', render: (e) => e.leaveType.name },
     { key: 'period', header: 'Period', hideBelow: 'md', render: (e) => <span className="whitespace-nowrap text-slate-600">{e.periodStart} → {e.periodEnd}</span> },
     { key: 'policy', header: 'Policy', hideBelow: 'lg', render: (e) => <span className="text-slate-600">{e.policy.name}{!e.policy.isActive && <span className="ml-1 text-xs text-slate-400">(inactive)</span>}</span> },
-    { key: 'g', header: 'Granted', hideBelow: 'sm', className: 'text-right', render: (e) => <span className="tabular-nums">{formatNumber(e.granted)}</span> },
-    { key: 'cf', header: 'Carry fwd', hideBelow: 'lg', className: 'text-right', render: (e) => <span className="tabular-nums">{formatNumber(e.carriedForward)}</span> },
+    { key: 'g', header: 'Granted', hideBelow: 'sm', className: 'text-right', render: (e) => <span className="tabular-nums">{formatLeaveUnits(e.granted)}</span> },
+    { key: 'cf', header: 'Carry fwd', hideBelow: 'lg', className: 'text-right', render: (e) => <span className="tabular-nums">{formatLeaveUnits(e.carriedForward)}</span> },
     { key: 'adj', header: 'Adj.', hideBelow: 'lg', className: 'text-right', render: (e) => <span className="tabular-nums">{units(e.adjustment)}</span> },
-    { key: 'res', header: 'Reserved', hideBelow: 'lg', className: 'text-right', render: (e) => <span className="tabular-nums">{formatNumber(e.reserved)}</span> },
-    { key: 'used', header: 'Used', hideBelow: 'md', className: 'text-right', render: (e) => <span className="tabular-nums">{formatNumber(e.used)}</span> },
-    { key: 'avail', header: 'Available', className: 'text-right', render: (e) => <span className={`font-semibold tabular-nums ${e.available < 0 ? 'text-red-600' : 'text-slate-900'}`}>{formatNumber(e.available)}</span> },
+    { key: 'res', header: 'Reserved', hideBelow: 'lg', className: 'text-right', render: (e) => <span className="tabular-nums">{formatLeaveUnits(e.reserved)}</span> },
+    { key: 'used', header: 'Used', hideBelow: 'md', className: 'text-right', render: (e) => <span className="tabular-nums">{formatLeaveUnits(e.used)}</span> },
+    { key: 'avail', header: 'Available', className: 'text-right', render: (e) => <span className={`font-semibold tabular-nums ${e.available < 0 ? 'text-red-600' : 'text-slate-900'}`}>{formatLeaveUnits(e.available)}</span> },
     { key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', render: (e) => (
       <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
         <Button variant="ghost" size="sm" aria-label="Adjust" title="Adjust balance" onClick={() => setAdjustFor(e)}><SlidersHorizontal className="h-4 w-4" /></Button>
@@ -137,16 +135,16 @@ function AdjustModal({ entitlement, onClose }: { entitlement: EntitlementDto | n
     setErr(null);
     try { await m.adjust.mutateAsync({ id: entitlement.id, input: { units: unitsIn, note } }); toast.success('Balance adjusted'); onClose(); } catch (x) { setErr(errorMessage(x)); }
   };
-  const Row = ({ l, v }: { l: string; v: number }) => <div className="flex justify-between"><span className="text-slate-500">{l}</span><span className="tabular-nums">{formatNumber(v)}</span></div>;
+  const Row = ({ l, v }: { l: string; v: number }) => <div className="flex justify-between"><span className="text-slate-500">{l}</span><span className="tabular-nums">{formatLeaveUnits(v)}</span></div>;
   return (
     <Modal open onClose={onClose} title="Adjust balance" description={`${entitlement.employee.employeeCode} · ${entitlement.leaveType.name} · ${entitlement.periodStart} → ${entitlement.periodEnd}`} size="sm"
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={submit} loading={m.adjust.isPending} disabled={!unitsIn || !note}>Apply adjustment</Button></>}>
       <div className="space-y-4">
         {err && <Alert>{err}</Alert>}
-        <div className="space-y-1 rounded-md bg-slate-50 p-3 text-sm"><Row l="Granted" v={entitlement.granted} /><Row l="Carry forward" v={entitlement.carriedForward} /><Row l="Adjustment" v={entitlement.adjustment} /><Row l="Reserved" v={entitlement.reserved} /><Row l="Used" v={entitlement.used} /><div className="mt-1 flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Available</span><span className="tabular-nums">{formatNumber(entitlement.available)}</span></div></div>
+        <div className="space-y-1 rounded-md bg-slate-50 p-3 text-sm"><Row l="Granted" v={entitlement.granted} /><Row l="Carry forward" v={entitlement.carriedForward} /><Row l="Adjustment" v={entitlement.adjustment} /><Row l="Reserved" v={entitlement.reserved} /><Row l="Used" v={entitlement.used} /><div className="mt-1 flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Available</span><span className="tabular-nums">{formatLeaveUnits(entitlement.available)}</span></div></div>
         <Input label="Adjustment (+/−, multiples of 0.5)" type="number" step={0.5} required value={unitsIn} onChange={(e) => setUnitsIn(e.target.value)} placeholder="+1 or -0.5" />
         <Input label="Reason / note" required value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. compensation for public-holiday work" />
-        <div className="rounded-md border border-slate-200 p-3 text-sm"><span className="text-slate-500">Available after adjustment (preview): </span><span className={`font-semibold tabular-nums ${after < 0 ? 'text-red-600' : 'text-slate-900'}`}>{formatNumber(after)}</span>{after < 0 && !entitlement.policy.allowNegativeBalance && <span className="ml-2 text-xs text-red-600">policy does not allow a negative balance</span>}</div>
+        <div className="rounded-md border border-slate-200 p-3 text-sm"><span className="text-slate-500">Available after adjustment (preview): </span><span className={`font-semibold tabular-nums ${after < 0 ? 'text-red-600' : 'text-slate-900'}`}>{formatLeaveUnits(after)}</span>{after < 0 && !entitlement.policy.allowNegativeBalance && <span className="ml-2 text-xs text-red-600">policy does not allow a negative balance</span>}</div>
       </div>
     </Modal>
   );
@@ -169,7 +167,7 @@ function EntitlementDetailModal({ id, onClose }: { id: string | null; onClose: (
         <div className="space-y-5">
           <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
             {[['Granted', d.granted], ['Carry fwd', d.carriedForward], ['Adjustment', d.adjustment], ['Reserved', d.reserved], ['Used', d.used], ['Available', d.available]].map(([l, v]) => (
-              <div key={l as string} className={`rounded-md border p-2 ${l === 'Available' ? 'border-brand-200 bg-brand-50' : 'border-slate-200'}`}><div className="text-[11px] uppercase tracking-wide text-slate-500">{l}</div><div className={`text-lg font-semibold tabular-nums ${(v as number) < 0 ? 'text-red-600' : 'text-slate-900'}`}>{formatNumber(v as number)}</div></div>
+              <div key={l as string} className={`rounded-md border p-2 ${l === 'Available' ? 'border-brand-200 bg-brand-50' : 'border-slate-200'}`}><div className="text-[11px] uppercase tracking-wide text-slate-500">{l}</div><div className={`text-lg font-semibold tabular-nums ${(v as number) < 0 ? 'text-red-600' : 'text-slate-900'}`}>{formatLeaveUnits(v as number)}</div></div>
             ))}
           </div>
           <div className="rounded-md border border-dashed border-slate-300 p-3">

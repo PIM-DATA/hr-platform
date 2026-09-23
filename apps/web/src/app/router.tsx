@@ -25,6 +25,11 @@ import { LeaveTypesPage } from '@/features/leave-settings/LeaveTypesPage';
 import { PoliciesPage } from '@/features/leave-settings/PoliciesPage';
 import { CalendarsPage } from '@/features/leave-settings/CalendarsPage';
 import { EntitlementsPage } from '@/features/leave-settings/EntitlementsPage';
+import { LeaveLayout } from '@/features/leave/LeaveLayout';
+import { MyLeavePage } from '@/features/leave/MyLeavePage';
+import { ApprovalsPage } from '@/features/leave/ApprovalsPage';
+import { TeamLeavePage } from '@/features/leave/TeamLeavePage';
+import { AllRequestsPage } from '@/features/leave/AllRequestsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -95,6 +100,18 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_POLICIES} />, children: [{ path: 'policies', element: <PoliciesPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS} />, children: [{ path: 'entitlements', element: <EntitlementsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.CALENDAR_VIEW} />, children: [{ path: 'calendars', element: <CalendarsPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Leave (Task 12). Tab visibility is capability-based inside the layout; each page's API enforces the same rules.
+            element: <RequirePermission permission={[PERMISSIONS.LEAVE_VIEW, PERMISSIONS.WORKFLOW_APPROVE]} />,
+            children: [{
+              path: 'hrm/leave', element: <LeaveLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ index: true, element: <MyLeavePage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_APPROVE} />, children: [{ path: 'approvals', element: <ApprovalsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ path: 'team', element: <TeamLeavePage /> }, { path: 'requests', element: <AllRequestsPage /> }] },
               ],
             }],
           },

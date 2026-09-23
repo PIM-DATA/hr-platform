@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { businessToday, calculateLeaveUnits, compareBusinessDate, enumerateDates, enumerateWorkingDays, isBusinessDate, isHalfDayUnit, isValidTimezone, isWorkingDay, normalizeWorkingDays, weekdayOf } from '@hr/shared';
+import { businessToday, calculateLeaveUnits, compareBusinessDate, enumerateDates, enumerateWorkingDays, formatLeaveUnits, isBusinessDate, isHalfDayUnit, isValidTimezone, isWorkingDay, normalizeWorkingDays, skipReasonLabel, weekdayOf } from '@hr/shared';
 
 const MON_FRI = ['MON', 'TUE', 'WED', 'THU', 'FRI'] as const;
 // 2026-09-21 = Monday, 2026-09-26 = Saturday, 2026-09-27 = Sunday
@@ -76,5 +76,28 @@ describe('leave units (half-day precision)', () => {
     expect(units('2026-09-23', '2026-09-22')).toEqual({ ok: false, code: 'INVALID_DATE_RANGE' });
     expect(units('2026-09-26', '2026-09-28', 'PM', 'FULL')).toEqual({ ok: false, code: 'HALF_DAY_ON_NON_WORKING_DAY' }); // Saturday PM
     expect(units('2026-09-22', '2026-09-23', 'FULL', 'AM', ['2026-09-23'])).toEqual({ ok: false, code: 'HALF_DAY_ON_NON_WORKING_DAY' }); // AM on a holiday
+  });
+});
+
+describe('formatLeaveUnits (Task 12 — shared half-day formatter used by every leave screen)', () => {
+  it('keeps half days and never rounds to whole numbers', () => {
+    expect(formatLeaveUnits(10)).toBe('10');
+    expect(formatLeaveUnits(10.5)).toBe('10.5');
+    expect(formatLeaveUnits(0.5)).toBe('0.5');
+    expect(formatLeaveUnits(-0.5)).toBe('-0.5');
+    expect(formatLeaveUnits(0)).toBe('0');
+    expect(formatLeaveUnits(1234.5)).toBe('1,234.5');
+    expect(formatLeaveUnits(null)).toBe('—');
+    expect(formatLeaveUnits(undefined)).toBe('—');
+    expect(formatLeaveUnits(Number.NaN)).toBe('—');
+  });
+});
+
+describe('skipReasonLabel (Task 12 — human-readable workflow skip reasons)', () => {
+  it('maps known reasons and degrades gracefully', () => {
+    expect(skipReasonLabel('SELF')).toBe('Skipped — requester is the approver');
+    expect(skipReasonLabel('UNRESOLVED')).toBe('Skipped — no approver could be resolved');
+    expect(skipReasonLabel('SOME_NEW_REASON')).toBe('Skipped — some new reason');
+    expect(skipReasonLabel(null)).toBeNull();
   });
 });
