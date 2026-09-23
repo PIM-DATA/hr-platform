@@ -4,9 +4,16 @@
  * Unauthenticated by design — it only calls the public probes, so it can run from a deployment pipeline or a monitor
  * without credentials. Exits 0 when healthy and non-zero when not, which is all a scheduler needs.
  */
+import { env } from '../src/config/env';
 import { opsLog } from './lib/pg-tools';
 
-const base = (process.env.OPS_CHECK_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4000}`).replace(/\/$/, '');
+/**
+ * The port comes from the application's own configuration, so a host whose settings live in an `ENV_FILE` outside the
+ * repository is probed where it actually listens. Reading `process.env.PORT` directly would silently fall back to
+ * 4000 there — and "healthy" reported about a different process is worse than no check at all.
+ * `OPS_CHECK_URL` still overrides everything, for probing through a proxy or from another machine.
+ */
+const base = (process.env.OPS_CHECK_URL ?? `http://127.0.0.1:${env.PORT}`).replace(/\/$/, '');
 const timeoutMs = Number(process.env.OPS_CHECK_TIMEOUT_MS ?? 5000);
 
 async function probe(pathname: string): Promise<{ ok: boolean; status: number; body: unknown }> {

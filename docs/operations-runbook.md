@@ -138,7 +138,29 @@ Measured locally during the Task 16 drill (development dataset, Postgres.app on 
 revocation). These are development measurements on a tiny dataset — they are **not** production figures and must not
 be quoted as an SLA. Re-measure with real data volumes before agreeing RPO/RTO with a customer.
 
-## 10. Routine cleanup
+## 10. Secrets and rotation
+
+There is **no application signing secret to rotate**: sessions are database rows, the cookie carries an opaque random
+token and only its SHA-256 hash is stored, CSRF tokens are per-session random values, and password reset tokens are
+hashed the same way. Nothing in this system is encrypted or signed with a long-lived key, so there is no key ceremony
+and no key material to lose.
+
+What does exist:
+
+| Secret | Where it lives | Rotating it |
+|---|---|---|
+| Database credential (`DATABASE_URL`) | the platform's secret store / `ENV_FILE` | create the new role or password in PostgreSQL, grant it the same rights, update `DATABASE_URL`, restart the API (§5), confirm `/health/ready`, then retire the old credential. A short read-only window is normal; nothing is cached in the application. |
+| Bootstrap administrator password | used once, by `npm run bootstrap:admin` | not rotated — the person signs in and changes their own password, which revokes every session. The environment variable is not needed again. |
+| Backup files | `BACKUP_DIR` (mode `0600`) | not a secret to rotate, but they contain every HR record: keep them where only the operator can read them, and off this host. |
+
+Revoking access in a hurry: `npm run ops:revoke-sessions` signs everyone out; deactivating a user in
+Administration → Users stops that person signing in at all; `POST /admin/users/:id/revoke-sessions` does it for one
+person. Changing the database credential does not sign anybody out — sessions live in the database itself.
+
+If an external provider is ever integrated (email, SMS, SSO), its credential belongs in this table with the same
+treatment. Do not invent a rotation procedure for a key the system does not have.
+
+## 11. Routine cleanup
 
 | Job | Command | When |
 |---|---|---|
@@ -149,7 +171,7 @@ It prints one JSON line (`reset_tokens_cleaned`) with the count — no token val
 deletes business data on a schedule: retention policy is the customer's decision
 (see `docs/privacy-operations.md`).
 
-## 11. Operational safety rules
+## 12. Operational safety rules
 
 - `prisma migrate reset`, `db:test:reset` and the demo seed **never** run against production; the scripts refuse
   (`NODE_ENV=production`) but the habit matters more than the guard.

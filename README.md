@@ -553,6 +553,7 @@ Deployment contract (provider-neutral; the full runbook, checklist and gap list 
 npm ci
 npm run build       # packages/shared → apps/api (tsc → dist) → apps/web (vite → dist)
 npm run db:deploy   # prisma migrate deploy — never migrate dev / db push / migrate reset
+                    # the Prisma CLI reads its own environment, not ENV_FILE: DATABASE_URL="…" npm run db:deploy
 npm run start       # node apps/api/dist/server.js
 ```
 
@@ -561,8 +562,8 @@ npm run start       # node apps/api/dist/server.js
 - **HTTPS is mandatory.** The app does not terminate TLS; a reverse proxy or platform edge serves
   `apps/web/dist` and forwards `/api` to the Node process. Same-origin is the recommended setup (cookies without CORS);
   a split deployment builds the frontend with `VITE_API_BASE_URL` and lists that origin in `CORS_ORIGIN`.
-- **Fail-fast configuration**: with `NODE_ENV=production` the process exits before listening if `DATABASE_URL` or
-  `CORS_ORIGIN` is missing, if an origin is `localhost`/`*`/non-https, if `SEED_DEMO_PASSWORD` is set, if a known
+- **Fail-fast configuration**: with `NODE_ENV=production` the process exits before listening if `DATABASE_URL`,
+  `CORS_ORIGIN` or `PUBLIC_APP_URL` is missing, if an origin is `localhost`/`*`/non-https, if `SEED_DEMO_PASSWORD` is set, if a known
   placeholder password is used, or if `COOKIE_SECURE=false`. `ENV_FILE` can point at a config file outside the repo;
   real environment variables always win. There is no session signing secret — sessions are database-backed.
 - **`TRUST_PROXY`** must equal the number of proxy hops (default `0`). It drives `req.ip` (rate limiting) and
@@ -656,6 +657,13 @@ Full guides: [docs/account-recovery.md](docs/account-recovery.md), [docs/privacy
   customer's decision. This is a privacy operations foundation, not a compliance certification.
 - **Logs**: query strings are stripped before logging (request logger and error handler), so a token in a URL cannot
   reach a log file. `npm run ops:cleanup-reset-tokens -- --days 30` removes spent tokens.
+
+## Pilot release
+
+- [docs/releases/pilot-rc.md](docs/releases/pilot-rc.md) — what is in the pilot release candidate, the commercial gap
+  matrix, test evidence, dependency advisories and the version convention.
+- [docs/pilot-checklist.md](docs/pilot-checklist.md) — the operator's checklist from "nothing installed" to go-live,
+  daily support answers, and pilot offboarding.
 
 ## Security notes
 

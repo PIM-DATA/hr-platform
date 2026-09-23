@@ -42,13 +42,54 @@ A production database on the same host is allowed (single-VM install) but logged
 `ENV_FILE` points the loader at a configuration file outside the repository; real process environment variables always
 win over file values.
 
-### Environment variables (names only)
+### Environment inventory (names and formats only — never real values)
 
-`NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`, `TEST_DATABASE_URL`, `CORS_ORIGIN`, `TRUST_PROXY`,
-`API_RATE_LIMIT_PER_MINUTE`, `JSON_BODY_LIMIT`, `SESSION_TTL_HOURS`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MINUTES`,
-`COOKIE_SECURE`, `APP_VERSION`, `ENV_FILE`, `PUBLIC_APP_URL`, `PASSWORD_RESET_TTL_MINUTES`; bootstrap-only: `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`;
-development-only: `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_PASSWORD`; frontend build-only:
-`VITE_API_BASE_URL`.
+Every variable the code actually reads. "Secret" means it must live in the platform's secret store, never in the
+repository, a ticket or a chat message.
+
+**Required in production** — the process refuses to start without the first four; `BACKUP_DIR` is required by the
+backup command rather than at startup.
+
+| Variable | Purpose | Example format | Secret |
+|---|---|---|---|
+| `NODE_ENV` | selects the strict production rules | `production` | no |
+| `DATABASE_URL` | PostgreSQL connection for this customer's database | `postgresql://USER:PASSWORD@HOST:5432/DB?schema=public` | **yes** |
+| `CORS_ORIGIN` | browser origin(s) allowed to call the API; also the CSRF origin check | `https://hr.customer.example` (comma-separated for several) | no |
+| `PUBLIC_APP_URL` | base URL for links the server generates (password resets). https, no credentials, no query/fragment, not localhost | `https://hr.customer.example` | no |
+| `BACKUP_DIR` | directory that holds database dumps and manifests (files are written `0600`) | `/var/backups/hr` | no |
+
+**Optional, with defaults** — set them deliberately; the defaults are safe but not always right for a given host.
+
+| Variable | Purpose | Default / example | Secret |
+|---|---|---|---|
+| `PORT` | API listen port | `4000` | no |
+| `LOG_LEVEL` | pino level | `info` | no |
+| `TRUST_PROXY` | reverse-proxy hops to trust for client IP and protocol | `0` (direct), `1` (one proxy) | no |
+| `SESSION_TTL_HOURS` | session lifetime | `12` | no |
+| `LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_MINUTES` | failed-login limiter per IP | `10` / `15` | no |
+| `API_RATE_LIMIT_PER_MINUTE` | global per-IP ceiling (`0` disables) | `600` | no |
+| `JSON_BODY_LIMIT` | maximum request body | `1mb` | no |
+| `PASSWORD_RESET_TTL_MINUTES` | lifetime of an admin-issued reset link (5–1440) | `60` | no |
+| `COOKIE_SECURE` | forced `true` in production regardless; may not be `false` there | `true` | no |
+| `APP_VERSION` | build marker reported by `/health` | `0.1.0-rc.1` | no |
+| `ENV_FILE` | path to a configuration file outside the repository | `/etc/hr-platform/api.env` | no (its contents are) |
+
+**Operational (tools, not the server)**
+
+| Variable | Purpose | Example | Secret |
+|---|---|---|---|
+| `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | first administrator, one command, once | `admin@customer.example` / 12+ characters | password **yes** |
+| `PG_BIN_DIR` | where `pg_dump`/`pg_restore`/`psql` live, when not on `PATH` | `/usr/lib/postgresql/18/bin` | no |
+| `OPS_CHECK_URL` / `OPS_CHECK_TIMEOUT_MS` | override the health-probe target (defaults to `127.0.0.1:$PORT`) | `https://hr.customer.example` / `5000` | no |
+
+**Never set in production** (the process refuses `SEED_DEMO_PASSWORD`, and the demo seed refuses to run):
+`TEST_DATABASE_URL`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_PASSWORD`, `TEST_LOG_LEVEL`.
+Frontend build-only: `VITE_API_BASE_URL` (split-origin deployments only).
+
+**The Prisma CLI does not read `ENV_FILE`.** It reads the process environment (or `apps/api/.env`), so a host whose
+configuration lives outside the repository runs migrations as
+`DATABASE_URL="$(…)" npm run db:deploy`, or with `DATABASE_URL` exported in the deploy shell. The application server,
+the backup, restore-verify, ops-check, session-revoke and reset-token-cleanup commands all honour `ENV_FILE`.
 
 There is **no session signing secret**: sessions are database-backed and the cookie carries an opaque token whose
 SHA-256 hash is stored, so there is nothing to sign and no secret to rotate.
@@ -132,9 +173,22 @@ shared store (Redis or equivalent) and is listed as a gap rather than built spec
   person's password. There is no breached-password check and no email-delivered self-service reset (§9).
 - Authorization: permission codes + data scope, verified per request; see `docs/phase-2-leave-review.md`.
 
-**Frontend CSP is not configured.** The API's own CSP is strict, but the static frontend needs a policy written against
-what Vite actually emits, delivered by whatever serves the files. Guessing one here would either break the app or give
-false comfort, so it is an explicit gap.
+### Frontend Content-Security-Policy (Task 19)
+
+The API sends its own strict policy (`default-src 'none'`). The **static frontend** is served by something else — nginx,
+Caddy, a CDN — so its policy is set there. The build emits one JavaScript bundle, one stylesheet, no inline script, no
+external script, font or image host, so a strict policy is possible and has been verified against the built bundle
+(login → leave → approvals → notifications → account security → reset page, at phone width, with the policy enforced:
+no violations):
+
+```
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+```
+
+`style-src` needs `'unsafe-inline'` because React sets `style` attributes for progress bars and tree indentation;
+everything else is `'self'`. In a **split-origin** deployment (the frontend on a different host from the API) add the
+API origin to `connect-src`. Serve the same host's responses with `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`.
 
 ## 8. Deployment checklist
 
@@ -148,11 +202,12 @@ false comfort, so it is an explicit gap.
 - [ ] Backup of the target database taken (restore is manual today)
 
 **Deploy**
-- [ ] `npm run db:deploy` (abort the release if it fails)
+- [ ] `DATABASE_URL=… npm run db:deploy` (the Prisma CLI does not read `ENV_FILE`; abort the release if it fails)
 - [ ] Start `npm run start`; confirm the startup log shows the expected environment and version
 - [ ] `GET /api/v1/health/ready` returns 200
 
 **Post-deploy smoke**
+- [ ] Static frontend served with the Content-Security-Policy from §7
 - [ ] Sign in as an administrator; the session cookie shows `Secure`, `HttpOnly`, `SameSite=Lax`
 - [ ] Dashboard loads; create → submit → approve one leave request; balance and notification update
 - [ ] `/api/v1/leave/reports/overview` returns figures
@@ -167,7 +222,7 @@ false comfort, so it is an explicit gap.
 - Application: redeploy the previous build (the API is stateless).
 - Schema: no automated rollback — write a new forward migration. `migrate reset` is never acceptable on customer data.
 
-## 9. Known gaps after Task 15
+## 9. Known gaps
 
 - **Backup/restore**: `npm run db:backup` and `npm run db:restore:verify` exist and the restore drill passes
   (see docs/operations-runbook.md). Still missing: an off-host copy of backups, encryption at rest for dump files,
@@ -186,6 +241,9 @@ false comfort, so it is an explicit gap.
 - **Onboarding**: the Excel import (docs/customer-onboarding.md) covers the initial structure and employees.
   Still missing: bulk update/correction tooling, user-account provisioning and invitations, historical leave/payroll
   data migration, and per-customer configuration management.
+- **Commercial gaps** (bulk user provisioning, batch entitlement generation, external notification delivery, file
+  attachments, off-host backup integration, external monitoring, retention automation): reviewed and classified for the
+  pilot in `docs/releases/pilot-rc.md`.
 - **Dependency advisories**: the Excel parser (`exceljs`) pulls `uuid <11.1.1`, which carries a **moderate** advisory
   (missing buffer bounds check in uuid v3/v5/v6 when a buffer is supplied — a code path the workbook parser does not
   use). Revisit when exceljs updates its dependency. Separately, `npm audit` reports 3 high advisories, all one issue — `deepmerge-ts` (stack exhaustion when
