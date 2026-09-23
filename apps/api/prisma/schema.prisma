@@ -46,6 +46,7 @@ model User {
   workflowActions         WorkflowAction[]
   leaveLedgerEntries      LeaveLedger[]
   leaveRequestsCreated    LeaveRequest[]
+  notifications           Notification[]
 
   @@map("users")
 }
@@ -639,4 +640,48 @@ model LeaveRequest {
   @@map("leave_requests")
 }
 
-// Reserved for later Phase 2 tasks (not created yet): notifications, notification_deliveries
+/// In-app notification for ONE user. Immutable once written except `readAt`; the inbox is the recipient's own data
+/// (no permission code — every query filters by userId). `dedupeKey` makes publishing idempotent inside a retried
+/// business transaction. Never holds leave reasons, attachment references, approval comments, policy or ledger details.
+model Notification {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  user             User      @relation(fields: [userId], references: [id])
+  type             String // APPROVAL_REQUIRED | LEAVE_SUBMITTED | LEAVE_APPROVED | LEAVE_REJECTED | LEAVE_CANCELLED (reserved)
+  title            String
+  body             String
+  sourceModule     String?   @map("source_module") // e.g. leave
+  sourceEntityType String?   @map("source_entity_type") // e.g. LEAVE_REQUEST
+  sourceEntityId   String?   @map("source_entity_id")
+  data             Json? // minimal ids for deep-linking only
+  dedupeKey        String    @map("dedupe_key") // deterministic per event, e.g. leave:<id>:approved
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  deliveries NotificationDelivery[]
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([sourceModule, sourceEntityType, sourceEntityId])
+  @@map("notifications")
+}
+
+/// Outbox foundation. Task 13 writes only IN_APP rows (SENT at publish time, in the business transaction).
+/// EMAIL/LINE/LARK/PUSH rows arrive with recipient preferences + a worker; no external call ever runs inside a transaction.
+model NotificationDelivery {
+  id             String       @id @default(cuid())
+  notificationId String       @map("notification_id")
+  notification   Notification @relation(fields: [notificationId], references: [id])
+  channel        String // IN_APP | EMAIL | LINE | LARK | PUSH
+  status         String // PENDING | SENT | FAILED
+  attempts       Int          @default(0)
+  lastError      String?      @map("last_error")
+  sentAt         DateTime?    @map("sent_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@unique([notificationId, channel])
+  @@index([status, channel])
+  @@map("notification_deliveries")
+}

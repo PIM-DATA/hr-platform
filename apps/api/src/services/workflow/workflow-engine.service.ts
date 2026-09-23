@@ -10,7 +10,7 @@ import { hasPermission } from '../authorization/authorization.service';
 import type { AuthContext } from '../../modules/auth/auth.types';
 import { workflowDefinitionsService } from './workflow-definitions.service';
 import { resolveApprover } from './approver-resolver';
-import type { Actor, SubmitInput, Tx, WorkflowCallbackContext, WorkflowHandlers } from './workflow.types';
+import type { Actor, SubmitInput, Tx, WorkflowCallbackContext, WorkflowHandlers, WorkflowStepPendingContext } from './workflow.types';
 
 const handlers = new Map<string, WorkflowHandlers>();
 const employeeRef = { select: { id: true, employeeCode: true, firstName: true, lastName: true } } as const;
@@ -58,6 +58,16 @@ export async function loadWorkflowInstanceForMutation(tx: Tx, id: string) {
 
 function callbackContext(i: InstanceRow, actor: Actor, comment: string | null): WorkflowCallbackContext {
   return { instanceId: i.id, module: i.module, entityType: i.entityType, entityId: i.entityId, requesterEmployeeId: i.requesterEmployeeId, actor, comment };
+}
+
+/** Fires onStepPending for the instance's CURRENT pending step (never for WAITING steps further down the chain). */
+async function notifyStepPending(i: InstanceRow, actor: Actor, comment: string | null, tx: Tx) {
+  const h = handlers.get(i.module)?.onStepPending;
+  if (!h) return;
+  const step = i.steps.find((s) => s.stepOrder === i.currentStepOrder && s.status === SS.PENDING);
+  if (!step) return;
+  const ctx: WorkflowStepPendingContext = { ...callbackContext(i, actor, comment), step: { id: step.id, stepOrder: step.stepOrder, name: step.name, approverUserId: step.approverUserId, approverEmployeeId: step.approverEmployeeId } };
+  await h(ctx, tx);
 }
 
 /**
@@ -131,6 +141,7 @@ export const workflowEngine = {
       autoApproved: allSkipped,
     }), tx);
     if (allSkipped) await handlers.get(input.module)?.onApproved?.(callbackContext(instance, actor, null), tx);
+    else await notifyStepPending(instance, actor, null, tx); // only the step that is pending right now
     return toDto(instance);
   },
 
@@ -173,6 +184,7 @@ export const workflowEngine = {
     const h = handlers.get(after.module);
     if (finalStatus === IS.APPROVED) await h?.onApproved?.(callbackContext(after, actor, comment), tx);
     if (finalStatus === IS.REJECTED) await h?.onRejected?.(callbackContext(after, actor, comment), tx);
+    if (finalStatus === IS.PENDING) await notifyStepPending(after, actor, comment, tx); // the step this approval advanced to
     return toDto(after);
   },
 

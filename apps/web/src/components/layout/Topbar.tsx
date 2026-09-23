@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, LogOut, Menu } from 'lucide-react';
+import { ChevronDown, LogOut, Menu } from 'lucide-react';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { displayName, useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -19,9 +20,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-1">
-        <button className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications">
-          <Bell className="h-5 w-5" />
-        </button>
+        <NotificationBell />
         <UserMenu />
       </div>
     </header>

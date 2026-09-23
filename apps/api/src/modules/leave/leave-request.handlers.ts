@@ -1,7 +1,9 @@
-import { AUDIT_ACTIONS, LEAVE_REQUEST_STATUS as ST, LEAVE_WORKFLOW, operationKeys } from '@hr/shared';
+import { AUDIT_ACTIONS, LEAVE_REQUEST_STATUS as ST, LEAVE_WORKFLOW, NOTIFICATION_TYPES, operationKeys } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
-import { workflowEngine, type WorkflowCallbackContext } from '../../services/workflow';
+import { workflowEngine, type WorkflowCallbackContext, type WorkflowStepPendingContext } from '../../services/workflow';
+import { notificationService } from '../../services/notification';
+import { leaveNotificationVars, notifyLeaveEvent } from './leave-notifications';
 import type { Tx } from './balance.service';
 import { balanceService } from './balance.service';
 import { loadLeaveRequestForMutation } from './leave-requests.service';
@@ -31,6 +33,7 @@ export const leaveWorkflowHandlers = {
     const now = new Date();
     await tx.leaveRequest.update({ where: { id: req.id }, data: { status: ST.APPROVED, approvedAt: now } });
     await auditService.log(audit(ctx, 'APPROVE_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.APPROVED, units: req.units, workflowInstanceId: ctx.instanceId, comment: ctx.comment, balance: r.summary }), tx);
+    await notifyLeaveEvent(tx, req, NOTIFICATION_TYPES.LEAVE_APPROVED, 'approved');
   },
   /** Rejection: reservation released, status REJECTED. */
   async onRejected(ctx: WorkflowCallbackContext, tx: Tx) {
@@ -38,7 +41,31 @@ export const leaveWorkflowHandlers = {
     const r = await balanceService.release(tx, req.entitlementId, req.units, meta(ctx, req, 'release'));
     await tx.leaveRequest.update({ where: { id: req.id }, data: { status: ST.REJECTED, rejectedAt: new Date() } });
     await auditService.log(audit(ctx, 'REJECT_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.REJECTED, units: req.units, workflowInstanceId: ctx.instanceId, comment: ctx.comment, balance: r.summary }), tx);
+    // the rejection comment stays in the workflow timeline — it is never copied into a notification body
+    await notifyLeaveEvent(tx, req, NOTIFICATION_TYPES.LEAVE_REJECTED, 'rejected');
   },
+  /**
+   * A step just became the current pending step (at submit, or after an approval advanced the instance): notify that
+   * snapshot approver only. Future WAITING approvers are never notified, and the approver who just acted is not
+   * notified again because the engine only reports the step that is pending NOW.
+   */
+  async onStepPending(ctx: WorkflowStepPendingContext, tx: Tx) {
+    if (!ctx.step.approverUserId) return;
+    const req = await tx.leaveRequest.findUnique({ where: { id: ctx.entityId }, include: { leaveType: { select: { name: true } }, employee: { select: { firstName: true, lastName: true } } } });
+    if (!req) return;
+    await notificationService.publish(
+      {
+        userId: ctx.step.approverUserId,
+        type: NOTIFICATION_TYPES.APPROVAL_REQUIRED,
+        source: { module: LEAVE_WORKFLOW.module, entityType: LEAVE_WORKFLOW.entityType, entityId: req.id },
+        data: { leaveRequestId: req.id, workflowInstanceId: ctx.instanceId },
+        dedupeKey: `workflow:${ctx.instanceId}:step:${ctx.step.id}:approval-required`,
+      },
+      { ...leaveNotificationVars(req), employeeName: `${req.employee.firstName} ${req.employee.lastName}` },
+      tx,
+    );
+  },
+
   /** Requester withdrawal of a pending request: reservation released, status CANCELLED. */
   async onCancelled(ctx: WorkflowCallbackContext, tx: Tx) {
     const req = await pendingRequest(tx, ctx);

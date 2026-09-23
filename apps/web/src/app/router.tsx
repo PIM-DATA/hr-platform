@@ -30,6 +30,7 @@ import { MyLeavePage } from '@/features/leave/MyLeavePage';
 import { ApprovalsPage } from '@/features/leave/ApprovalsPage';
 import { TeamLeavePage } from '@/features/leave/TeamLeavePage';
 import { AllRequestsPage } from '@/features/leave/AllRequestsPage';
+import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -115,6 +116,7 @@ export const router = createBrowserRouter([
               ],
             }],
           },
+          { path: 'notifications', element: <NotificationsPage /> }, // the caller's own inbox: authentication only, no permission
           ...comingSoonRoutes,
           { path: '*', element: <ComingSoonPage title="Page not found" description="The page you are looking for does not exist." /> },
         ],

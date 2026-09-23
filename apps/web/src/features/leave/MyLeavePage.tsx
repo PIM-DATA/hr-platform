@@ -23,7 +23,9 @@ export function MyLeavePage() {
   const page = Number(params.get('page') ?? 1);
   const setParam = (key: string, value: string) => setParams((p) => { const next = new URLSearchParams(p); if (value) next.set(key, value); else next.delete(key); if (key !== 'page') next.delete('page'); return next; }, { replace: true });
   const [editing, setEditing] = useState<{ open: boolean; request?: LeaveRequestDto }>({ open: false });
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // `?request=<id>` deep-links here from a notification; closing the dialog drops the parameter again.
+  const [detailId, setDetailId] = useState<string | null>(params.get('request'));
+  const closeDetail = () => { setDetailId(null); setParams((p) => { const next = new URLSearchParams(p); next.delete('request'); return next; }, { replace: true }); };
 
   const hasProfile = !!user?.employee;
   const balances = useMyBalances();
@@ -90,7 +92,7 @@ export function MyLeavePage() {
       </section>
 
       <LeaveRequestDialog open={editing.open} request={editing.request} onClose={() => setEditing({ open: false })} onOpenDetail={setDetailId} />
-      <LeaveRequestDetailDialog id={detailId} onClose={() => setDetailId(null)} onEditDraft={(r) => { setDetailId(null); setEditing({ open: true, request: r }); }} />
+      <LeaveRequestDetailDialog id={detailId} onClose={closeDetail} onEditDraft={(r) => { closeDetail(); setEditing({ open: true, request: r }); }} />
     </div>
   );
 }

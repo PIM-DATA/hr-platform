@@ -54,6 +54,7 @@ export function useLeaveMutations() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: leaveKeys.all });
     qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['notifications'] }); // submit/approve/reject publish notifications for someone
   };
   return {
     preview: useMutation({ mutationFn: (input: unknown) => api.post<LeaveRequestPreviewDto>('/leave/requests/preview', input).then((r) => r.data) }),

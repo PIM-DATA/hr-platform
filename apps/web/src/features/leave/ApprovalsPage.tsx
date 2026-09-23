@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { LeaveApprovalItemDto } from '@hr/shared';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -17,7 +18,10 @@ import { formatLeavePeriod, formatLeaveUnits } from './leave-ui';
 export function ApprovalsPage() {
   const [page, setPage] = useState(1);
   const list = useLeaveApprovals({ page, pageSize: 10 });
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // `?request=<id>` deep-links here from an APPROVAL_REQUIRED notification, even if the row already left the inbox.
+  const [params, setParams] = useSearchParams();
+  const [detailId, setDetailId] = useState<string | null>(params.get('request'));
+  const closeDetail = () => { setDetailId(null); setParams((p) => { const next = new URLSearchParams(p); next.delete('request'); return next; }, { replace: true }); };
 
   const columns: Column<LeaveApprovalItemDto>[] = [
     {
@@ -56,7 +60,7 @@ export function ApprovalsPage() {
         />
         {list.data?.meta && <Pagination {...list.data.meta} onPageChange={setPage} />}
       </Card>
-      <LeaveRequestDetailDialog id={detailId} onClose={() => setDetailId(null)} />
+      <LeaveRequestDetailDialog id={detailId} onClose={closeDetail} />
     </>
   );
 }

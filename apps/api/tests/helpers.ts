@@ -79,6 +79,8 @@ export async function cleanUsers() {
  */
 export async function resetDatabase() {
   assertTestDatabase();
+  await prisma.notificationDelivery.deleteMany();
+  await prisma.notification.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.leaveLedger.deleteMany();
   await prisma.leaveEntitlement.deleteMany();

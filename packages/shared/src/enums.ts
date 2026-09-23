@@ -5,6 +5,20 @@
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
+export const NOTIFICATION_TYPES = {
+  APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
+  LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
+  LEAVE_APPROVED: 'LEAVE_APPROVED',
+  LEAVE_REJECTED: 'LEAVE_REJECTED',
+  /** Reserved: a requester cancelling their own request needs no notification (they performed the action). */
+  LEAVE_CANCELLED: 'LEAVE_CANCELLED',
+} as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
+
+export const NOTIFICATION_CHANNELS = { IN_APP: 'IN_APP', EMAIL: 'EMAIL', LINE: 'LINE', LARK: 'LARK', PUSH: 'PUSH' } as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[keyof typeof NOTIFICATION_CHANNELS];
+export const NOTIFICATION_DELIVERY_STATUS = { PENDING: 'PENDING', SENT: 'SENT', FAILED: 'FAILED' } as const;
+
 export const LEAVE_REQUEST_STATUS = { DRAFT: 'DRAFT', PENDING: 'PENDING', APPROVED: 'APPROVED', REJECTED: 'REJECTED', CANCELLED: 'CANCELLED' } as const;
 export type LeaveRequestStatus = (typeof LEAVE_REQUEST_STATUS)[keyof typeof LEAVE_REQUEST_STATUS];
 export const LEAVE_REQUEST_STATUSES = Object.values(LEAVE_REQUEST_STATUS);

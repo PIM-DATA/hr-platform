@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import {
   AUDIT_ACTIONS, LEAVE_BLOCKING_STATUSES, LEAVE_REQUEST_STATUS as ST, LEAVE_WORKFLOW, PERMISSIONS, addDays, availableUnits, businessToday, calculateLeaveUnits, compareBusinessDate, leaveSpansOverlap, operationKeys,
-  type LeaveApprovalItemDto, type LeaveApprovalsQuery, type LeaveCalendarEntryDto, type LeaveCalendarQuery, type LeaveRequestBody, type LeaveRequestDetailDto, type LeaveRequestDto, type LeaveRequestListQuery, type LeaveRequestPreviewDto, type LeaveWorkflowTimelineDto, type MyBalanceDto, type MyLeaveRequestQuery, type UpdateLeaveRequestInput,
+  NOTIFICATION_TYPES, type LeaveApprovalItemDto, type LeaveApprovalsQuery, type LeaveCalendarEntryDto, type LeaveCalendarQuery, type LeaveRequestBody, type LeaveRequestDetailDto, type LeaveRequestDto, type LeaveRequestListQuery, type LeaveRequestPreviewDto, type LeaveWorkflowTimelineDto, type MyBalanceDto, type MyLeaveRequestQuery, type UpdateLeaveRequestInput,
 } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -14,6 +14,7 @@ import { calendarsService } from '../calendar/calendars.service';
 import type { Actor } from './leave-types.service';
 import { leavePoliciesService } from './leave-policies.service';
 import { balanceService, type Tx } from './balance.service';
+import { notifyLeaveEvent } from './leave-notifications';
 
 /**
  * Leave request lifecycle: DRAFT → PENDING → APPROVED | REJECTED | CANCELLED.
@@ -209,6 +210,9 @@ export const leaveRequestsService = {
       // only the instance id — never touch status here (the handler may already have set APPROVED)
       const after = await tx.leaveRequest.update({ where: { id }, data: { workflowInstanceId: instance.id }, include });
       await auditService.log(audit(actor, 'SUBMIT_LEAVE_REQUEST', id, snapshotOf(req), { ...snapshotOf(after), workflowStatus: instance.status }), tx);
+      // An auto-approved workflow already notified the requester with the final outcome (LEAVE_APPROVED) inside
+      // workflowEngine.submit, so "submitted" is only sent when the request is actually waiting for someone.
+      if (after.status === ST.PENDING) await notifyLeaveEvent(tx, after, NOTIFICATION_TYPES.LEAVE_SUBMITTED, 'submitted');
       return after;
     });
     return toDto(row);

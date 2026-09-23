@@ -30,7 +30,8 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 10.6 Request policy vs entitlement policy semantics | ✅ |
 | 11 Leave request + workflow + reservation concurrency | ✅ (API + tests; Leave UI is Task 12) |
 | 12 Leave UI + approval inbox | ✅ |
-| 13 Notification (in-app) · 14 Leave dashboard + review | ⏳ |
+| 13 Notification foundation (in-app) | ✅ |
+| 14 Leave dashboard + review | ⏳ |
 | Attendance | Phase 2B |
 
 ## Stack
@@ -470,6 +471,51 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - **Responsive**: verified at 390px with no horizontal scroll; tables drop secondary columns on phones (the details move
   into the row subtitle) and the request form is single-column. Team leave is a dependency-free month list grouped by
   day — no calendar library was added, and no new dependency at all in this task.
+
+## Notifications (Task 13)
+
+- **Shared service, not a leave feature.** `services/notification/` owns the model, the wording and the outbox;
+  business modules only publish events: `notificationService.publish({ userId, type, source, data, dedupeKey }, vars, tx)`.
+  Titles and bodies come from `notification.templates.ts`, so no module hardcodes copy.
+- **Authorization**: the inbox is the signed-in user's own data, so there is **no permission code and no data scope** —
+  `requireAuth` plus a `userId` filter on every query. Not even SYSTEM_ADMIN or an ALL-scope role can read another
+  inbox; another user's notification id returns **404** (never 403, so existence is not leaked). Admin inspection of
+  other people's notifications is backlog.
+- **Transaction policy**: `publish` runs on the caller's transaction, so the notification row and its IN_APP delivery
+  commit with the leave/workflow change — a failed notification insert rolls the business transaction back (in-app
+  delivery is durable by definition). **No external call ever runs inside a transaction**; email/LINE/Lark/push will be
+  PENDING outbox rows plus a worker. A missing or inactive recipient is skipped silently — an approval must never fail
+  because the requester has no active account.
+- **Idempotency**: unique `(userId, dedupeKey)` with deterministic keys — `leave:<id>:submitted|approved|rejected`,
+  `workflow:<instanceId>:step:<stepId>:approval-required`. Same key + same event replays the existing row; same key for
+  a *different* event is a 409 `NOTIFICATION_DEDUPE_CONFLICT`. A concurrent double publish leaves exactly one
+  notification and one delivery (unique index as the backstop).
+- **Workflow integration stays generic**: the engine gained `onStepPending(ctx, tx)` alongside
+  `onApproved/onRejected/onCancelled` and fires it only for the step that is pending **now** — at submit and after each
+  approval that advances the instance. The engine imports nothing leave-specific; the leave handler turns the event into
+  an APPROVAL_REQUIRED notification for the **snapshot** approver, so changing an employee's manager afterwards never
+  redirects a pending notification.
+- **Event mapping**: submit (still pending) → requester `LEAVE_SUBMITTED` + current approver `APPROVAL_REQUIRED`;
+  intermediate approval → next approver only (no noise for the requester or the approver who just acted); final approval
+  → requester `LEAVE_APPROVED`; rejection → requester `LEAVE_REJECTED`. An **auto-approved** submit sends only the final
+  outcome. A requester cancelling their own request gets nothing (they did it), and the approver's earlier
+  APPROVAL_REQUIRED stays as history — notifications are append-only, never edited or deleted (only `readAt` changes).
+- **Privacy**: a notification says what happened and links to the record. Bodies and `data` never contain leave reasons,
+  attachment references, approval comments, policy rules or ledger amounts; `data` holds only `leaveRequestId` and
+  `workflowInstanceId` for deep-linking.
+- **API** (all `requireAuth`): `GET /notifications` (status all|unread|read, type, pagination, newest first),
+  `GET /notifications/latest` (bell dropdown), `GET /notifications/unread-count` (COUNT only),
+  `POST /notifications/:id/read` (idempotent — the first read timestamp is kept), `POST /notifications/read-all`.
+  Marking read is **not audited**: it is UX state, and the underlying business events already carry audit entries.
+- **UI**: topbar bell with an unread badge (hidden at 0, `99+` from 100) and the ten newest items, plus `/notifications`
+  with All/Unread tabs, mark-as-read and mark-all-as-read. Clicking a notification marks it read and deep-links into the
+  Task 12 Leave screens (`/hrm/leave?request=<id>`, `/hrm/leave/approvals?request=<id>`); if the request has changed in
+  the meantime the dialog simply shows its current state. Unread is conveyed by the word "Unread" as well as colour.
+- **Polling, not sockets**: the unread count refetches every 60 s and on window focus, and leave mutations invalidate the
+  notification queries. No websocket, SSE, Redis or queue was added. The query cache is cleared on login, logout and any
+  401, so a previous user's notifications can never flash for the next one.
+- **Deliveries** (`notification_deliveries`) are the outbox foundation: Task 13 writes exactly one `IN_APP` / `SENT` row
+  per notification and no EMAIL/LINE/LARK/PUSH rows at all. The table is not exposed to the frontend and has no admin UI.
 
 ## Security notes
 
