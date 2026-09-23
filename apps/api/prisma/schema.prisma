@@ -55,6 +55,7 @@ model User {
   attendanceSchedules     AttendanceSchedule[]   @relation("AttendanceScheduleCreator")
   attendanceClockEvents   AttendanceClockEvent[] @relation("AttendanceClockCreator")
   attendanceCorrections   AttendanceCorrection[] @relation("AttendanceCorrectionCreator")
+  overtimeRequestsCreated OvertimeRequest[]      @relation("OvertimeRequestCreator")
   notifications           Notification[]
 
   @@map("users")
@@ -148,6 +149,8 @@ model Organization {
   workCalendars WorkCalendar[] @relation("OrganizationCalendars")
   leavePolicies LeavePolicy[]
   attendanceShifts AttendanceShift[]
+  overtimePolicies OvertimePolicy[]
+  overtimeRequests OvertimeRequest[]
 
   @@map("organizations")
 }
@@ -260,6 +263,7 @@ model Employee {
   attendanceClockEvents AttendanceClockEvent[]
   attendanceRecords     AttendanceRecord[]
   attendanceCorrections AttendanceCorrection[]
+  overtimeRequests      OvertimeRequest[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -892,4 +896,75 @@ model AttendanceCorrection {
   @@index([employeeId, attendanceDate])
   @@index([status, attendanceDate])
   @@map("attendance_corrections")
+}
+
+
+// ---------------------------------------------------------------------------
+// Overtime (Task 21)
+// ---------------------------------------------------------------------------
+
+/// What overtime is worth on each kind of day, and the limits on a claim. Multipliers are ratios, not money: this
+/// release calculates no monetary overtime — payroll (Task 22) multiplies approved minutes by a salary basis.
+model OvertimePolicy {
+  id                           String   @id @default(cuid())
+  organizationId               String   @map("organization_id")
+  organization                 Organization @relation(fields: [organizationId], references: [id])
+  name                         String
+  effectiveFrom                String   @map("effective_from") // YYYY-MM-DD
+  effectiveTo                  String?  @map("effective_to")
+  workdayMultiplier            Float    @map("workday_multiplier")
+  offDayMultiplier             Float    @map("off_day_multiplier")
+  holidayMultiplier            Float    @map("holiday_multiplier")
+  /// A claim below this is not overtime. A threshold, never a rounding rule.
+  minimumEligibleMinutes       Int?     @map("minimum_eligible_minutes")
+  maximumApprovedMinutesPerDay Int?     @map("maximum_approved_minutes_per_day")
+  workflowDefinitionCode       String   @map("workflow_definition_code")
+  isActive                     Boolean  @default(true) @map("is_active")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  requests OvertimeRequest[]
+
+  @@index([organizationId, isActive, effectiveFrom])
+  @@map("overtime_policies")
+}
+
+/// One claim for one day. Everything that decides what it is eventually worth — day type, eligible minutes, the
+/// multiplier and the policy — is snapshotted when it is submitted, so a later policy edit cannot rewrite history.
+model OvertimeRequest {
+  id                     String          @id @default(cuid())
+  employeeId             String          @map("employee_id")
+  employee               Employee        @relation(fields: [employeeId], references: [id])
+  attendanceDate         String          @map("attendance_date")
+  claimedMinutes         Int             @map("claimed_minutes")
+  /// What the day allowed at submit. Kept so a later change in attendance is visible rather than silent.
+  eligibleMinutesSnapshot Int?           @map("eligible_minutes_snapshot")
+  approvedMinutes        Int?            @map("approved_minutes")
+  dayType                String?         @map("day_type") // WORKDAY | OFF_DAY | HOLIDAY
+  rateMultiplierSnapshot Float?          @map("rate_multiplier_snapshot")
+  policyId               String?         @map("policy_id")
+  policy                 OvertimePolicy? @relation(fields: [policyId], references: [id])
+  reason                 String?
+  status                 String          @default("DRAFT") // DRAFT | PENDING | APPROVED | REJECTED | CANCELLED
+  workflowInstanceId     String?         @unique @map("workflow_instance_id")
+  submittedAt            DateTime?       @map("submitted_at")
+  approvedAt             DateTime?       @map("approved_at")
+  rejectedAt             DateTime?       @map("rejected_at")
+  cancelledAt            DateTime?       @map("cancelled_at")
+  /// Snapshot of where the employee sat when the claim was submitted (reporting keeps working after a transfer).
+  organizationId         String?         @map("organization_id")
+  organization           Organization?   @relation(fields: [organizationId], references: [id])
+  departmentId           String?         @map("department_id")
+  positionId             String?         @map("position_id")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  createdByUserId        String          @map("created_by_user_id")
+  createdBy              User            @relation("OvertimeRequestCreator", fields: [createdByUserId], references: [id])
+
+  @@index([employeeId, attendanceDate])
+  @@index([employeeId, status])
+  @@index([attendanceDate, status])
+  @@index([organizationId, attendanceDate])
+  @@index([policyId])
+  @@map("overtime_requests")
 }

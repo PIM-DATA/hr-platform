@@ -288,7 +288,8 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Audit: actor email is the current email (identity = `userId`); no retention/archive/export.
 - Account recovery is admin-assisted (one-time link); no email/SMS delivery, so no self-service forgot-password.
 - Privacy: request register + personal-data export exist; retention/erasure policy and automated deletion do not.
-- Attendance: web clock only — no overtime, GPS, biometric devices, multiple punches or payroll posting.
+- Attendance: web clock only — no GPS, biometric devices, multiple punches or payroll posting.
+- Overtime: claim-based after the fact, minutes and multipliers only — no monetary calculation, rounding rule or approved-claim reversal.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -684,6 +685,29 @@ Full guide: [docs/attendance.md](docs/attendance.md). HRM → Time & attendance.
   the day from the requested times and **never rewrites a raw clock event**; rejecting leaves the day as it was.
 - **Not in this release**: overtime calculation or payment (`extraMinutes` is informational), GPS/geofence, biometric
   or terminal integration, multiple punches and break tracking, rotating rosters, payroll posting.
+
+## Overtime (Task 21)
+
+Full guide: [docs/overtime.md](docs/overtime.md). HRM → Time & attendance → Overtime.
+
+- **No money is calculated.** Overtime produces approved **minutes** plus a **multiplier snapshot**; payroll (Task 22)
+  is what turns them into an amount. Minutes are the unit everywhere — 150 is stored as `150`, shown as `2h 30m`, and
+  never rounded.
+- **Eligibility** is one pure function: `min(time outside the shift, worked − required)` on a workday, and every paid
+  minute on an off day or holiday. The cap is what stops a late arrival that is made up at the end of the day from
+  becoming overtime — 09:00→18:00 on an 08:00–17:00 shift is **zero** eligible minutes, 08:00→19:00 is 120.
+- **The client sends a date, minutes and a reason.** Employee, day type, policy, multiplier and eligible minutes are
+  all derived server-side, and snapshotted onto the claim at submit.
+- **Policy** (`ot.manage_policy`): per organization, non-overlapping periods, multipliers per day type (ratios the
+  customer configures — nothing assumes 1.5/2/3), optional minimum and daily maximum, and the approval workflow.
+  Once a claim has snapshotted a policy its rates are frozen (`OT_POLICY_IN_USE`).
+- **Approval** runs through the shared workflow engine (`module = attendance`, `entityType = OVERTIME_REQUEST`) — there
+  is no `ot.approve` and no overtime-specific approval endpoint. Final approval **revalidates against the current
+  attendance** and fails with `OT_ATTENDANCE_CHANGED_REVIEW_REQUIRED` rather than approving unsupported overtime.
+- **Approved overtime is protected**: an attendance correction that would leave the day supporting less than what was
+  approved is refused (`ATTENDANCE_CORRECTION_CONFLICTS_WITH_APPROVED_OT`) and nothing moves.
+- **Payroll handoff**: `overtimeService.getApprovedOvertimeForPayroll({ employeeId, from, to })` returns requestId,
+  date, approved minutes, day type, multiplier and policy — nothing else.
 
 ## Pilot release
 

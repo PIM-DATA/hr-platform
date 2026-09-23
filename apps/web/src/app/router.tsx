@@ -45,6 +45,8 @@ import { SchedulePage } from '@/features/attendance/SchedulePage';
 import { ShiftsPage } from '@/features/attendance/ShiftsPage';
 import { CorrectionsPage } from '@/features/attendance/CorrectionsPage';
 import { AttendanceReportsPage } from '@/features/attendance/AttendanceReportsPage';
+import { OvertimePage } from '@/features/attendance/OvertimePage';
+import { OvertimePoliciesPage } from '@/features/attendance/OvertimePoliciesPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -135,7 +137,7 @@ export const router = createBrowserRouter([
           {
             // Time & attendance (Task 20). Tab visibility is capability-based inside the layout; each page's API
             // enforces the same permission and the caller's data scope.
-            element: <RequirePermission permission={[PERMISSIONS.ATTENDANCE_VIEW, PERMISSIONS.ATTENDANCE_CLOCK]} />,
+            element: <RequirePermission permission={[PERMISSIONS.ATTENDANCE_VIEW, PERMISSIONS.ATTENDANCE_CLOCK, PERMISSIONS.OT_VIEW]} />,
             children: [{
               path: 'hrm/attendance', element: <AttendanceLayout />,
               children: [
@@ -151,6 +153,14 @@ export const router = createBrowserRouter([
                   ],
                 },
                 { element: <RequirePermission permission={PERMISSIONS.ATTENDANCE_MANAGE} />, children: [{ path: 'shifts', element: <ShiftsPage /> }] },
+                {
+                  // Overtime (Task 21): claims need `ot.request`, reading needs `ot.view`, policies `ot.manage_policy`.
+                  element: <RequirePermission permission={PERMISSIONS.OT_VIEW} />,
+                  children: [
+                    { path: 'overtime', element: <OvertimePage /> },
+                    { path: 'overtime-policies', element: <OvertimePoliciesPage /> },
+                  ],
+                },
               ],
             }],
           },

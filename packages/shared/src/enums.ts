@@ -47,6 +47,21 @@ export const ATTENDANCE_CORRECTION_TERMINAL: readonly AttendanceCorrectionStatus
 /** The workflow engine coordinates for a correction request (same shape as LEAVE_WORKFLOW). */
 export const ATTENDANCE_WORKFLOW = { module: 'attendance', entityType: 'ATTENDANCE_CORRECTION' } as const;
 
+// ---------- overtime (Task 21) ----------
+/**
+ * The kind of day overtime was worked on — derived on the server from the schedule and the work calendar, never sent
+ * by a client, because it selects the rate multiplier.
+ */
+export const OVERTIME_DAY_TYPES = ['WORKDAY', 'OFF_DAY', 'HOLIDAY'] as const;
+export type OvertimeDayType = (typeof OVERTIME_DAY_TYPES)[number];
+
+export const OVERTIME_STATUSES = ['DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+export type OvertimeStatus = (typeof OVERTIME_STATUSES)[number];
+/** A request in one of these states is settled: it never blocks a new claim for the same day. */
+export const OVERTIME_SETTLED: readonly OvertimeStatus[] = ['REJECTED', 'CANCELLED'];
+
+export const OVERTIME_WORKFLOW = { module: 'attendance', entityType: 'OVERTIME_REQUEST' } as const;
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -56,6 +71,8 @@ export const NOTIFICATION_TYPES = {
   LEAVE_CANCELLED: 'LEAVE_CANCELLED',
   ATTENDANCE_CORRECTION_APPROVED: 'ATTENDANCE_CORRECTION_APPROVED',
   ATTENDANCE_CORRECTION_REJECTED: 'ATTENDANCE_CORRECTION_REJECTED',
+  OVERTIME_APPROVED: 'OVERTIME_APPROVED',
+  OVERTIME_REJECTED: 'OVERTIME_REJECTED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -73,7 +90,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -153,6 +170,14 @@ export const AUDIT_ACTIONS = {
   CLOCK_IN: 'CLOCK_IN',
   CLOCK_OUT: 'CLOCK_OUT',
   RECALCULATE_ATTENDANCE: 'RECALCULATE_ATTENDANCE',
+  CREATE_OT_POLICY: 'CREATE_OT_POLICY',
+  UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
+  CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
+  UPDATE_OVERTIME_REQUEST: 'UPDATE_OVERTIME_REQUEST',
+  SUBMIT_OVERTIME_REQUEST: 'SUBMIT_OVERTIME_REQUEST',
+  APPROVE_OVERTIME_REQUEST: 'APPROVE_OVERTIME_REQUEST',
+  REJECT_OVERTIME_REQUEST: 'REJECT_OVERTIME_REQUEST',
+  CANCEL_OVERTIME_REQUEST: 'CANCEL_OVERTIME_REQUEST',
   SUBMIT_ATTENDANCE_CORRECTION: 'SUBMIT_ATTENDANCE_CORRECTION',
   APPROVE_ATTENDANCE_CORRECTION: 'APPROVE_ATTENDANCE_CORRECTION',
   REJECT_ATTENDANCE_CORRECTION: 'REJECT_ATTENDANCE_CORRECTION',
@@ -202,6 +227,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   calendar: 'Calendar',
   leave: 'Leave',
   attendance: 'Attendance',
+  ot: 'Overtime',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

@@ -6,4 +6,5 @@ export * from './business-date';
 export * from './leave-ledger';
 export * from './leave-overlap';
 export * from './attendance';
+export * from './overtime';
 export * from './schemas';

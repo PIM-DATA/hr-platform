@@ -14,6 +14,7 @@ export * from './leave-request';
 export * from './notification';
 export * from './leave-report';
 export * from './attendance';
+export * from './overtime';
 export * from './onboarding';
 export * from './account';
 export * from './privacy';

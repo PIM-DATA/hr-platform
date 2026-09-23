@@ -66,6 +66,8 @@ export function useAttendanceTabs() {
     canView && scope === 'ALL' && { label: 'Daily', to: '/hrm/attendance/daily' },
     canView && teamOrAll && { label: 'Schedule', to: '/hrm/attendance/schedule' },
     canView && { label: 'Corrections', to: '/hrm/attendance/corrections' },
+    hasPermission(PERMISSIONS.OT_VIEW) && { label: 'Overtime', to: '/hrm/attendance/overtime' },
+    hasPermission(PERMISSIONS.OT_VIEW) && { label: 'OT policies', to: '/hrm/attendance/overtime-policies' },
     hasPermission(PERMISSIONS.ATTENDANCE_MANAGE) && { label: 'Shifts', to: '/hrm/attendance/shifts' },
     canView && teamOrAll && { label: 'Reports', to: '/hrm/attendance/reports' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];

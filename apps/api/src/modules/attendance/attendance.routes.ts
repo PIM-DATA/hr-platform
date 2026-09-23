@@ -1,8 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import {
   PERMISSIONS, assignScheduleSchema, attendanceListQuerySchema, attendanceReportQuerySchema, clockSchema,
-  correctionListQuerySchema, createCorrectionSchema, createShiftSchema, myAttendanceQuerySchema,
-  scheduleListQuerySchema, shiftListQuerySchema, updateShiftSchema,
+  correctionListQuerySchema, createCorrectionSchema, createOvertimePolicySchema, createOvertimeRequestSchema,
+  createShiftSchema, myAttendanceQuerySchema, overtimeListQuerySchema, overtimePolicyListQuerySchema,
+  overtimePreviewSchema, overtimeReportQuerySchema, scheduleListQuerySchema, shiftListQuerySchema,
+  updateOvertimePolicySchema, updateOvertimeRequestSchema, updateShiftSchema,
 } from '@hr/shared';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
@@ -14,7 +16,9 @@ import { schedulesService } from './schedules.service';
 import { clockService } from './clock.service';
 import { attendanceRecordsService } from './attendance-records.service';
 import { correctionsService } from './corrections.service';
-import './correction.handlers'; // registers the workflow callbacks for module 'attendance'
+import { overtimeService } from './overtime.service';
+import { overtimePoliciesService } from './overtime-policies.service';
+import './correction.handlers'; // registers the workflow callbacks for module 'attendance' (corrections + overtime)
 
 /**
  * Time & Attendance (Task 20).
@@ -27,6 +31,9 @@ import './correction.handlers'; // registers the workflow callbacks for module '
 const actor = (req: Request) => ({ auth: req.auth!, ...requestMeta(req) });
 const id = (req: Request) => req.params.id as string;
 const view = requirePermission(PERMISSIONS.ATTENDANCE_VIEW);
+const otView = requirePermission(PERMISSIONS.OT_VIEW);
+const otRequest = requirePermission(PERMISSIONS.OT_REQUEST);
+const otPolicy = requirePermission(PERMISSIONS.OT_MANAGE_POLICY);
 const clock = requirePermission(PERMISSIONS.ATTENDANCE_CLOCK);
 const manage = requirePermission(PERMISSIONS.ATTENDANCE_MANAGE);
 const scheduleManage = requirePermission(PERMISSIONS.ATTENDANCE_SCHEDULE_MANAGE);
@@ -69,3 +76,20 @@ attendanceRouter.get('/corrections/:id', view, async (req, res) => res.json({ da
 attendanceRouter.post('/corrections/:id/cancel', clock, async (req, res) => res.json({ data: await correctionsService.cancel(req.auth!, id(req), actor(req)) }));
 // Approving and rejecting go through the generic workflow endpoint (POST /workflow/instances/:id/actions), which
 // checks the snapshot approver — there is no attendance-specific approval mutation.
+
+// ---------- overtime (Task 21) ----------
+// Claims are raised with `ot.request`, read with `ot.view` (narrowed by data scope) and decided through the generic
+// workflow endpoint — there is deliberately no `ot.approve` and no overtime-specific approval mutation.
+attendanceRouter.get('/overtime/policies', otView, validate(overtimePolicyListQuerySchema, 'query'), async (_req, res: Response) => res.json(await overtimePoliciesService.list(res.locals.query)));
+attendanceRouter.post('/overtime/policies', otPolicy, validate(createOvertimePolicySchema), async (req, res) => res.status(201).json({ data: await overtimePoliciesService.create(req.body, actor(req)) }));
+attendanceRouter.get('/overtime/policies/:id', otView, async (req, res) => res.json({ data: await overtimePoliciesService.getById(id(req)) }));
+attendanceRouter.patch('/overtime/policies/:id', otPolicy, validate(updateOvertimePolicySchema), async (req, res) => res.json({ data: await overtimePoliciesService.update(id(req), req.body, actor(req)) }));
+
+attendanceRouter.post('/overtime/preview', otRequest, validate(overtimePreviewSchema), async (req, res) => res.json({ data: await overtimeService.preview(req.auth!, req.body.attendanceDate) }));
+attendanceRouter.get('/overtime/requests', otView, validate(overtimeListQuerySchema, 'query'), async (req, res: Response) => res.json(await overtimeService.list(req.auth!, res.locals.query)));
+attendanceRouter.post('/overtime/requests', otRequest, validate(createOvertimeRequestSchema), async (req, res) => res.status(201).json({ data: await overtimeService.create(req.auth!, req.body, actor(req)) }));
+attendanceRouter.get('/overtime/requests/:id', otView, async (req, res) => res.json({ data: await overtimeService.getById(req.auth!, id(req)) }));
+attendanceRouter.patch('/overtime/requests/:id', otRequest, validate(updateOvertimeRequestSchema), async (req, res) => res.json({ data: await overtimeService.update(req.auth!, id(req), req.body, actor(req)) }));
+attendanceRouter.post('/overtime/requests/:id/submit', otRequest, async (req, res) => res.json({ data: await overtimeService.submit(req.auth!, id(req), actor(req)) }));
+attendanceRouter.post('/overtime/requests/:id/cancel', otRequest, async (req, res) => res.json({ data: await overtimeService.cancel(req.auth!, id(req), actor(req)) }));
+attendanceRouter.get('/overtime/reports/overview', otView, validate(overtimeReportQuerySchema, 'query'), async (req, res: Response) => res.json({ data: await overtimeService.report(req.auth!, res.locals.query) }));

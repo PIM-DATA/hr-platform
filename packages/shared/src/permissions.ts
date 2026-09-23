@@ -48,6 +48,10 @@ export const PERMISSIONS = {
   ATTENDANCE_MANAGE: 'attendance.manage',
   ATTENDANCE_CORRECT: 'attendance.correct',
   ATTENDANCE_SCHEDULE_MANAGE: 'attendance.schedule_manage',
+
+  OT_VIEW: 'ot.view',
+  OT_REQUEST: 'ot.request',
+  OT_MANAGE_POLICY: 'ot.manage_policy',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -103,6 +107,10 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.ATTENDANCE_MANAGE, module: 'attendance', description: 'Manage shifts and recalculate attendance' },
   { code: PERMISSIONS.ATTENDANCE_CORRECT, module: 'attendance', description: 'Decide attendance correction requests' },
   { code: PERMISSIONS.ATTENDANCE_SCHEDULE_MANAGE, module: 'attendance', description: 'Assign work schedules' },
+
+  { code: PERMISSIONS.OT_VIEW, module: 'ot', description: 'View overtime requests (scope depends on role data scope)' },
+  { code: PERMISSIONS.OT_REQUEST, module: 'ot', description: 'Claim overtime for yourself' },
+  { code: PERMISSIONS.OT_MANAGE_POLICY, module: 'ot', description: 'Manage overtime policies' },
 ];
 
 /**
@@ -126,6 +134,8 @@ export const PERMISSION_ACTION_LABELS: Record<string, string> = {
   activate: 'Activate / Deactivate',
   manage: 'Manage',
   clock: 'Clock in / out',
+  request: 'Request',
+  manage_policy: 'Manage policies',
   correct: 'Correct',
   schedule_manage: 'Manage schedules',
 };

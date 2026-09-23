@@ -15,6 +15,8 @@ export interface TemplateVars {
   requestKind?: string;
   /** A single business date, for day-shaped records such as an attendance correction. */
   date?: string;
+  /** A formatted duration, e.g. `2h 30m` — never an amount of money. */
+  minutes?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -42,6 +44,14 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.ATTENDANCE_CORRECTION_REJECTED]: (v) => ({
     title: 'Attendance correction rejected',
     body: `Your attendance correction${v.date ? ` for ${v.date}` : ''} was rejected. Open it to see the details.`,
+  }),
+  [NOTIFICATION_TYPES.OVERTIME_APPROVED]: (v) => ({
+    title: 'Overtime approved',
+    body: `Your overtime claim${v.date ? ` for ${v.date}` : ''}${v.minutes ? ` (${v.minutes})` : ''} was approved.`,
+  }),
+  [NOTIFICATION_TYPES.OVERTIME_REJECTED]: (v) => ({
+    title: 'Overtime rejected',
+    body: `Your overtime claim${v.date ? ` for ${v.date}` : ''} was rejected. Open it to see the details.`,
   }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',
