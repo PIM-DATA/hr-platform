@@ -36,14 +36,14 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Employee',
     description: 'Employee self service: own profile and organization view',
     dataScope: DATA_SCOPES.SELF,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK],
   },
   {
     code: ROLES.MANAGER,
     name: 'Manager',
     description: 'Manager self service: own team',
     dataScope: DATA_SCOPES.TEAM,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK],
   },
   {
     code: ROLES.HR,
@@ -61,6 +61,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.LEAVE_MANAGE_ENTITLEMENTS,
       P.LEAVE_VIEW,
       P.LEAVE_REQUEST,
+      P.ATTENDANCE_VIEW,
+      P.ATTENDANCE_CLOCK,
+      P.ATTENDANCE_CORRECT,
     ],
   },
   {
@@ -96,6 +99,11 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.ACCOUNT_MANAGE_RECOVERY,
       P.PRIVACY_MANAGE_REQUESTS,
       P.PRIVACY_EXPORT_DATA,
+      P.ATTENDANCE_VIEW,
+      P.ATTENDANCE_CLOCK,
+      P.ATTENDANCE_MANAGE,
+      P.ATTENDANCE_CORRECT,
+      P.ATTENDANCE_SCHEDULE_MANAGE,
     ],
   },
   {
@@ -103,7 +111,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Executive',
     description: 'Executive: read-only organization-wide view and dashboards',
     dataScope: DATA_SCOPES.ALL,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW],
   },
   {
     code: ROLES.SYSTEM_ADMIN,

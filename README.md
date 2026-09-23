@@ -288,6 +288,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Audit: actor email is the current email (identity = `userId`); no retention/archive/export.
 - Account recovery is admin-assisted (one-time link); no email/SMS delivery, so no self-service forgot-password.
 - Privacy: request register + personal-data export exist; retention/erasure policy and automated deletion do not.
+- Attendance: web clock only — no overtime, GPS, biometric devices, multiple punches or payroll posting.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -657,6 +658,32 @@ Full guides: [docs/account-recovery.md](docs/account-recovery.md), [docs/privacy
   customer's decision. This is a privacy operations foundation, not a compliance certification.
 - **Logs**: query strings are stripped before logging (request logger and error handler), so a token in a URL cannot
   reach a log file. `npm run ops:cleanup-reset-tokens -- --days 30` removes spent tokens.
+
+## Time & attendance (Task 20)
+
+Full guide: [docs/attendance.md](docs/attendance.md). HRM → Time & attendance.
+
+- **Shifts** (`attendance.manage`): start, end, unpaid break, late/early grace. `isOvernight` is derived from the
+  times; a 20:00 → 05:00 shift belongs to the day it **started**.
+- **Schedules** (`attendance.schedule_manage`): one row per employee per date (`WORK` + shift / `OFF` / `HOLIDAY`),
+  assigned over a range and filtered by weekday. The **work calendar from Leave is reused** — weekends and holidays
+  come from the organization's default calendar. No schedule row means nothing is expected, so it can never be an
+  absence. Approved leave is never written here; it is read when the day is calculated.
+- **Clocking** (`attendance.clock`): `POST /attendance/clock-in` / `clock-out`. The employee comes from the session,
+  events are **append-only**, and each clock takes the employee row lock, so two taps produce one event
+  (`ALREADY_CLOCKED_IN` / `NOT_CLOCKED_IN` / `ALREADY_CLOCKED_OUT`). A clock-out closes the open clock-in, which is
+  what makes an overnight shift one day.
+- **The calculated day** is a cache with a unique key (`employeeId` + `attendanceDate`), produced by one pure function
+  in `@hr/shared`: `NOT_SCHEDULED | SCHEDULED | NORMAL | LATE | EARLY_LEAVE | LATE_AND_EARLY | INCOMPLETE | ABSENT |
+  ON_LEAVE`, plus worked / late / early / extra minutes. Grace decides the status; the minutes recorded are the real
+  ones. **Absence is never predicted** — a day becomes ABSENT only after its shift has ended (hence *Recalculate*).
+- **Leave integration**: full-day leave is `ON_LEAVE`, half-day leave narrows the expected window to the other half
+  (and halves the break) without excusing it. Attendance never writes to Leave.
+- **Corrections**: an employee requests the times that should have been recorded; approval runs through the shared
+  **workflow engine** (definition code `ATTENDANCE_CORRECTION`) and the generic action endpoint. Approving recalculates
+  the day from the requested times and **never rewrites a raw clock event**; rejecting leaves the day as it was.
+- **Not in this release**: overtime calculation or payment (`extraMinutes` is informational), GPS/geofence, biometric
+  or terminal integration, multiple punches and break tracking, rotating rosters, payroll posting.
 
 ## Pilot release
 

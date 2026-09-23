@@ -224,6 +224,23 @@ describe('HTTP hardening', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/at \/|node_modules|prisma|SELECT/i);
     expect(res.headers['x-request-id']).toBe('err-trace-1');
   });
+  /** Task 19.1 — a malformed URL is a bad request, not a server error, and never reaches the database. */
+  it('a malformed path or query is rejected with 400 and leaves nothing in the log', async () => {
+    const nul = await request(app).get('/api/v1/leave/requests/%00');
+    expect(nul.status).toBe(400);
+    expect(nul.body.error.code).toBe('VALIDATION_ERROR');
+    expect(JSON.stringify(nul.body)).not.toMatch(/prisma|SELECT|ConnectorError|at \//i);
+
+    expect((await request(app).get('/api/v1/employees/%00abc')).status).toBe(400);
+    expect((await request(app).get(`/api/v1/users/${'x'.repeat(300)}`)).status).toBe(400);
+    expect((await request(app).get('/api/v1/employees/%zz')).status).toBe(400); // malformed percent-escape
+    expect((await request(app).get('/api/v1/employees?search=%00')).status).toBe(400);
+
+    // a well-formed id still reaches the normal path (unauthenticated here, so 401 — not 400)
+    expect((await request(app).get('/api/v1/leave/requests/clzz0000000000000000000')).status).toBe(401);
+    expect((await request(app).get('/api/v1/health/ready')).status).toBe(200); // probes are unaffected
+  });
+
   it('the JSON body limit rejects oversized payloads', async () => {
     const res = await request(app).post('/api/v1/auth/login').set('Content-Type', 'application/json').send(JSON.stringify({ email: 'a@b.c', password: 'x'.repeat(2 * 1024 * 1024) }));
     expect([413, 400]).toContain(res.status);

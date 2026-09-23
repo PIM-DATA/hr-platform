@@ -10,6 +10,7 @@ import { apiRateLimiter } from './middleware/rate-limit';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import { authenticate } from './middleware/auth';
 import { csrfGuard } from './middleware/csrf';
+import { validateRequestUrl } from './middleware/path-params';
 
 /** Builds the Express app (separated from server.ts so tests can import it with supertest). */
 export function createApp() {
@@ -37,7 +38,7 @@ export function createApp() {
   app.use('/api/v1/health', healthRouter);
 
   // Order matters: rate limit → resolve session → CSRF guard for mutations → business routes.
-  app.use('/api/v1', apiRateLimiter, authenticate, csrfGuard, apiRouter);
+  app.use('/api/v1', apiRateLimiter, validateRequestUrl, authenticate, csrfGuard, apiRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

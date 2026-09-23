@@ -35,7 +35,7 @@ export const MENU: MenuGroup[] = [
   {
     label: 'HRM',
     items: [
-      { label: 'Attendance', path: '/hrm/attendance', icon: CalendarCheck, comingSoon: true },
+      { label: 'Attendance', path: '/hrm/attendance', icon: CalendarCheck, permission: [P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK] },
       { label: 'Leave', path: '/hrm/leave', icon: CalendarOff, permission: [P.LEAVE_VIEW, P.WORKFLOW_APPROVE] },
       { label: 'Performance', path: '/hrm/performance', icon: Target, comingSoon: true },
     ],

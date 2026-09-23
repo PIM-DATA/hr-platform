@@ -52,6 +52,9 @@ model User {
   privacyRequestsSubject  PrivacyRequest[]       @relation("PrivacySubjectUser")
   privacyRequestsCreated  PrivacyRequest[]       @relation("PrivacyRequestCreator")
   privacyRequestsAssigned PrivacyRequest[]       @relation("PrivacyRequestAssignee")
+  attendanceSchedules     AttendanceSchedule[]   @relation("AttendanceScheduleCreator")
+  attendanceClockEvents   AttendanceClockEvent[] @relation("AttendanceClockCreator")
+  attendanceCorrections   AttendanceCorrection[] @relation("AttendanceCorrectionCreator")
   notifications           Notification[]
 
   @@map("users")
@@ -144,6 +147,7 @@ model Organization {
   employees     Employee[]
   workCalendars WorkCalendar[] @relation("OrganizationCalendars")
   leavePolicies LeavePolicy[]
+  attendanceShifts AttendanceShift[]
 
   @@map("organizations")
 }
@@ -252,6 +256,10 @@ model Employee {
   leaveEntitlements     LeaveEntitlement[]
   leaveRequests         LeaveRequest[]
   privacyRequests       PrivacyRequest[]
+  attendanceSchedules   AttendanceSchedule[]
+  attendanceClockEvents AttendanceClockEvent[]
+  attendanceRecords     AttendanceRecord[]
+  attendanceCorrections AttendanceCorrection[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -757,4 +765,131 @@ model PrivacyRequest {
   @@index([status, requestedAt])
   @@index([employeeId])
   @@map("privacy_requests")
+}
+
+
+// ---------------------------------------------------------------------------
+// Time & Attendance (Task 20)
+// ---------------------------------------------------------------------------
+
+/// A working pattern: when the day starts and ends, how long the unpaid break is, and how much lateness is forgiven.
+/// Times are `HH:mm` wall clock in the organization's timezone; the instants they mean are computed per date.
+model AttendanceShift {
+  id                     String   @id @default(cuid())
+  organizationId         String   @map("organization_id")
+  organization           Organization @relation(fields: [organizationId], references: [id])
+  code                   String
+  name                   String
+  startTime              String   @map("start_time") // HH:mm
+  endTime                String   @map("end_time") // HH:mm
+  breakMinutes           Int      @default(0) @map("break_minutes")
+  lateGraceMinutes       Int      @default(0) @map("late_grace_minutes")
+  earlyLeaveGraceMinutes Int      @default(0) @map("early_leave_grace_minutes")
+  /// Derived from the times at write time (end <= start), stored so queries need not recompute it.
+  isOvernight            Boolean  @default(false) @map("is_overnight")
+  isActive               Boolean  @default(true) @map("is_active")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  schedules AttendanceSchedule[]
+  records   AttendanceRecord[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+  @@map("attendance_shifts")
+}
+
+/// What one employee is expected to work on one date. Leave is deliberately NOT stored here: it is read from the
+/// approved leave requests when attendance is calculated, so approving or cancelling leave never leaves a stale row.
+model AttendanceSchedule {
+  id              String           @id @default(cuid())
+  employeeId      String           @map("employee_id")
+  employee        Employee         @relation(fields: [employeeId], references: [id])
+  date            String // YYYY-MM-DD
+  shiftId         String?          @map("shift_id")
+  shift           AttendanceShift? @relation(fields: [shiftId], references: [id])
+  dayType         String // WORK | OFF | HOLIDAY
+  source          String           @default("MANUAL") // DEFAULT | MANUAL
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdByUserId String?          @map("created_by_user_id")
+  createdBy       User?            @relation("AttendanceScheduleCreator", fields: [createdByUserId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([date])
+  @@map("attendance_schedules")
+}
+
+/// Raw clock events, append-only. Nothing ever updates or deletes a row here: a correction records what should have
+/// been, next to what actually happened, and the derived record is recomputed from both.
+model AttendanceClockEvent {
+  id              String   @id @default(cuid())
+  employeeId      String   @map("employee_id")
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  eventType       String   @map("event_type") // CLOCK_IN | CLOCK_OUT
+  occurredAt      DateTime @map("occurred_at") // UTC instant
+  attendanceDate  String   @map("attendance_date") // business date the event belongs to
+  source          String   @default("WEB") // WEB | ADMIN | IMPORT | API
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdByUserId String?  @map("created_by_user_id")
+  createdBy       User?    @relation("AttendanceClockCreator", fields: [createdByUserId], references: [id])
+
+  @@index([employeeId, occurredAt])
+  @@index([employeeId, attendanceDate])
+  @@map("attendance_clock_events")
+}
+
+/// One derived day per employee. Always recomputable from schedule + calendar + leave + clock events + an approved
+/// correction, so it is a cache with a unique key, never a second source of truth.
+model AttendanceRecord {
+  id                String           @id @default(cuid())
+  employeeId        String           @map("employee_id")
+  employee          Employee         @relation(fields: [employeeId], references: [id])
+  attendanceDate    String           @map("attendance_date")
+  shiftId           String?          @map("shift_id")
+  shift             AttendanceShift? @relation(fields: [shiftId], references: [id])
+  dayType           String           @map("day_type")
+  scheduledStart    DateTime?        @map("scheduled_start")
+  scheduledEnd      DateTime?        @map("scheduled_end")
+  firstClockIn      DateTime?        @map("first_clock_in")
+  lastClockOut      DateTime?        @map("last_clock_out")
+  workMinutes       Int              @default(0) @map("work_minutes")
+  lateMinutes       Int              @default(0) @map("late_minutes")
+  earlyLeaveMinutes Int              @default(0) @map("early_leave_minutes")
+  /// Worked beyond the shift. Informational: overtime is not calculated or paid in this release.
+  extraMinutes      Int              @default(0) @map("extra_minutes")
+  leaveUnits        Float            @default(0) @map("leave_units")
+  status            String
+  /// The approved correction whose times were used, if any.
+  correctionId      String?          @map("correction_id")
+  calculatedAt      DateTime         @map("calculated_at")
+
+  @@unique([employeeId, attendanceDate])
+  @@index([attendanceDate, status])
+  @@map("attendance_records")
+}
+
+/// "I forgot to clock out" — an employee's request to record different times for a day. Approval goes through the
+/// shared workflow engine; approving it never rewrites a raw clock event.
+model AttendanceCorrection {
+  id                 String    @id @default(cuid())
+  employeeId         String    @map("employee_id")
+  employee           Employee  @relation(fields: [employeeId], references: [id])
+  attendanceDate     String    @map("attendance_date")
+  requestedClockIn   DateTime? @map("requested_clock_in")
+  requestedClockOut  DateTime? @map("requested_clock_out")
+  reason             String
+  status             String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  workflowInstanceId String?   @unique @map("workflow_instance_id")
+  submittedAt        DateTime? @map("submitted_at")
+  decidedAt          DateTime? @map("decided_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdByUserId    String    @map("created_by_user_id")
+  createdBy          User      @relation("AttendanceCorrectionCreator", fields: [createdByUserId], references: [id])
+
+  @@index([employeeId, attendanceDate])
+  @@index([status, attendanceDate])
+  @@map("attendance_corrections")
 }

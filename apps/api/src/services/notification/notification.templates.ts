@@ -11,12 +11,17 @@ export interface TemplateVars {
   employeeName?: string;
   leaveType?: string;
   dateRange?: string;
+  /** What kind of request needs approving, for the generic approval notification ("leave", "attendance correction"). */
+  requestKind?: string;
+  /** A single business date, for day-shaped records such as an attendance correction. */
+  date?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
+  // Generic on purpose: the workflow engine raises this for any module, so the wording names the kind of request.
   [NOTIFICATION_TYPES.APPROVAL_REQUIRED]: (v) => ({
     title: 'Approval required',
-    body: `${v.employeeName ?? 'An employee'} submitted a ${v.leaveType ?? 'leave'} request${v.dateRange ? ` for ${v.dateRange}` : ''}.`,
+    body: `${v.employeeName ?? 'An employee'} submitted a ${v.requestKind ?? `${v.leaveType ?? 'leave'} request`}${v.dateRange ? ` for ${v.dateRange}` : v.date ? ` for ${v.date}` : ''}.`,
   }),
   [NOTIFICATION_TYPES.LEAVE_SUBMITTED]: (v) => ({
     title: 'Leave request submitted',
@@ -29,6 +34,14 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.LEAVE_REJECTED]: (v) => ({
     title: 'Leave request rejected',
     body: `Your ${v.leaveType ?? 'leave'} request${v.dateRange ? ` for ${v.dateRange}` : ''} was rejected. Open the request to see the details.`,
+  }),
+  [NOTIFICATION_TYPES.ATTENDANCE_CORRECTION_APPROVED]: (v) => ({
+    title: 'Attendance correction approved',
+    body: `Your attendance correction${v.date ? ` for ${v.date}` : ''} was approved and the day has been updated.`,
+  }),
+  [NOTIFICATION_TYPES.ATTENDANCE_CORRECTION_REJECTED]: (v) => ({
+    title: 'Attendance correction rejected',
+    body: `Your attendance correction${v.date ? ` for ${v.date}` : ''} was rejected. Open it to see the details.`,
   }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',

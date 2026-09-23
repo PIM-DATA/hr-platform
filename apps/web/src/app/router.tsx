@@ -38,6 +38,13 @@ import { ResetPasswordPage } from '@/features/account/ResetPasswordPage';
 import { PrivacyLayout } from '@/features/privacy/PrivacyLayout';
 import { PrivacyRequestsPage } from '@/features/privacy/PrivacyRequestsPage';
 import { DataExportPage } from '@/features/privacy/DataExportPage';
+import { AttendanceLayout } from '@/features/attendance/attendance-ui';
+import { MyAttendancePage } from '@/features/attendance/MyAttendancePage';
+import { DailyAttendancePage } from '@/features/attendance/DailyAttendancePage';
+import { SchedulePage } from '@/features/attendance/SchedulePage';
+import { ShiftsPage } from '@/features/attendance/ShiftsPage';
+import { CorrectionsPage } from '@/features/attendance/CorrectionsPage';
+import { AttendanceReportsPage } from '@/features/attendance/AttendanceReportsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -122,6 +129,28 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ index: true, element: <MyLeavePage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_APPROVE} />, children: [{ path: 'approvals', element: <ApprovalsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ path: 'team', element: <TeamLeavePage /> }, { path: 'requests', element: <AllRequestsPage /> }, { path: 'reports', element: <ReportsPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Time & attendance (Task 20). Tab visibility is capability-based inside the layout; each page's API
+            // enforces the same permission and the caller's data scope.
+            element: <RequirePermission permission={[PERMISSIONS.ATTENDANCE_VIEW, PERMISSIONS.ATTENDANCE_CLOCK]} />,
+            children: [{
+              path: 'hrm/attendance', element: <AttendanceLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.ATTENDANCE_CLOCK} />, children: [{ index: true, element: <MyAttendancePage /> }] },
+                {
+                  element: <RequirePermission permission={PERMISSIONS.ATTENDANCE_VIEW} />,
+                  children: [
+                    { path: 'team', element: <DailyAttendancePage scope="team" /> },
+                    { path: 'daily', element: <DailyAttendancePage scope="all" /> },
+                    { path: 'schedule', element: <SchedulePage /> },
+                    { path: 'corrections', element: <CorrectionsPage /> },
+                    { path: 'reports', element: <AttendanceReportsPage /> },
+                  ],
+                },
+                { element: <RequirePermission permission={PERMISSIONS.ATTENDANCE_MANAGE} />, children: [{ path: 'shifts', element: <ShiftsPage /> }] },
               ],
             }],
           },

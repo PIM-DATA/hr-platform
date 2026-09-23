@@ -12,6 +12,41 @@ export type PrivacyRequestStatus = (typeof PRIVACY_REQUEST_STATUSES)[number];
 /** Terminal states are not reopened: a new request is recorded instead, so the history of each decision stays intact. */
 export const PRIVACY_REQUEST_TERMINAL: readonly PrivacyRequestStatus[] = ['COMPLETED', 'REJECTED'];
 
+// ---------- attendance (Task 20) ----------
+export const ATTENDANCE_DAY_TYPES = ['WORK', 'OFF', 'HOLIDAY'] as const;
+export type AttendanceDayType = (typeof ATTENDANCE_DAY_TYPES)[number];
+
+/** Who put a schedule row there. Leave is never stored as a schedule — it is read at calculation time. */
+export const ATTENDANCE_SCHEDULE_SOURCES = ['DEFAULT', 'MANUAL'] as const;
+export type AttendanceScheduleSource = (typeof ATTENDANCE_SCHEDULE_SOURCES)[number];
+
+export const CLOCK_EVENT_TYPES = ['CLOCK_IN', 'CLOCK_OUT'] as const;
+export type ClockEventType = (typeof CLOCK_EVENT_TYPES)[number];
+
+/** WEB is the only source that exists today; the others are reserved so the model need not change to add them. */
+export const CLOCK_SOURCES = ['WEB', 'ADMIN', 'IMPORT', 'API'] as const;
+export type ClockSource = (typeof CLOCK_SOURCES)[number];
+
+/**
+ * One status per day, derived — never typed in by a person.
+ *   NOT_SCHEDULED  the day is OFF or a holiday (any clocking is still recorded)
+ *   SCHEDULED      a work day that has not finished yet and has no clock-in
+ *   NORMAL         worked within the shift, allowing for the grace minutes
+ *   LATE / EARLY_LEAVE / LATE_AND_EARLY  worked, outside the grace on one or both ends
+ *   INCOMPLETE     clocked in but never out (or a malformed sequence)
+ *   ABSENT         a work day that finished with no clocking and no full-day leave
+ *   ON_LEAVE       approved full-day leave
+ */
+export const ATTENDANCE_STATUSES = ['NOT_SCHEDULED', 'SCHEDULED', 'NORMAL', 'LATE', 'EARLY_LEAVE', 'LATE_AND_EARLY', 'INCOMPLETE', 'ABSENT', 'ON_LEAVE'] as const;
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
+
+export const ATTENDANCE_CORRECTION_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+export type AttendanceCorrectionStatus = (typeof ATTENDANCE_CORRECTION_STATUSES)[number];
+export const ATTENDANCE_CORRECTION_TERMINAL: readonly AttendanceCorrectionStatus[] = ['APPROVED', 'REJECTED', 'CANCELLED'];
+
+/** The workflow engine coordinates for a correction request (same shape as LEAVE_WORKFLOW). */
+export const ATTENDANCE_WORKFLOW = { module: 'attendance', entityType: 'ATTENDANCE_CORRECTION' } as const;
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -19,6 +54,8 @@ export const NOTIFICATION_TYPES = {
   LEAVE_REJECTED: 'LEAVE_REJECTED',
   /** Reserved: a requester cancelling their own request needs no notification (they performed the action). */
   LEAVE_CANCELLED: 'LEAVE_CANCELLED',
+  ATTENDANCE_CORRECTION_APPROVED: 'ATTENDANCE_CORRECTION_APPROVED',
+  ATTENDANCE_CORRECTION_REJECTED: 'ATTENDANCE_CORRECTION_REJECTED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -36,7 +73,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -109,6 +146,17 @@ export const AUDIT_ACTIONS = {
   REJECT_LEAVE_REQUEST: 'REJECT_LEAVE_REQUEST',
   CANCEL_LEAVE_REQUEST: 'CANCEL_LEAVE_REQUEST',
   IMPORT_CUSTOMER_ONBOARDING: 'IMPORT_CUSTOMER_ONBOARDING',
+
+  CREATE_SHIFT: 'CREATE_SHIFT',
+  UPDATE_SHIFT: 'UPDATE_SHIFT',
+  ASSIGN_SCHEDULE: 'ASSIGN_SCHEDULE',
+  CLOCK_IN: 'CLOCK_IN',
+  CLOCK_OUT: 'CLOCK_OUT',
+  RECALCULATE_ATTENDANCE: 'RECALCULATE_ATTENDANCE',
+  SUBMIT_ATTENDANCE_CORRECTION: 'SUBMIT_ATTENDANCE_CORRECTION',
+  APPROVE_ATTENDANCE_CORRECTION: 'APPROVE_ATTENDANCE_CORRECTION',
+  REJECT_ATTENDANCE_CORRECTION: 'REJECT_ATTENDANCE_CORRECTION',
+  CANCEL_ATTENDANCE_CORRECTION: 'CANCEL_ATTENDANCE_CORRECTION',
   CHANGE_OWN_PASSWORD: 'CHANGE_OWN_PASSWORD',
   ISSUE_PASSWORD_RESET: 'ISSUE_PASSWORD_RESET',
   REVOKE_OTHER_SESSIONS: 'REVOKE_OTHER_SESSIONS',
@@ -153,6 +201,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   workflow: 'Workflow',
   calendar: 'Calendar',
   leave: 'Leave',
+  attendance: 'Attendance',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

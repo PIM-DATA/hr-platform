@@ -42,6 +42,12 @@ export const PERMISSIONS = {
   ACCOUNT_MANAGE_RECOVERY: 'account.manage_recovery',
   PRIVACY_MANAGE_REQUESTS: 'privacy.manage_requests',
   PRIVACY_EXPORT_DATA: 'privacy.export_data',
+
+  ATTENDANCE_VIEW: 'attendance.view',
+  ATTENDANCE_CLOCK: 'attendance.clock',
+  ATTENDANCE_MANAGE: 'attendance.manage',
+  ATTENDANCE_CORRECT: 'attendance.correct',
+  ATTENDANCE_SCHEDULE_MANAGE: 'attendance.schedule_manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -91,6 +97,12 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.ACCOUNT_MANAGE_RECOVERY, module: 'account', description: 'Issue one-time password reset links and revoke other users\' sessions' },
   { code: PERMISSIONS.PRIVACY_MANAGE_REQUESTS, module: 'privacy', description: 'Record and track privacy requests from data subjects' },
   { code: PERMISSIONS.PRIVACY_EXPORT_DATA, module: 'privacy', description: 'Export an employee\'s personal data' },
+
+  { code: PERMISSIONS.ATTENDANCE_VIEW, module: 'attendance', description: 'View attendance (scope depends on role data scope)' },
+  { code: PERMISSIONS.ATTENDANCE_CLOCK, module: 'attendance', description: 'Clock in and out for yourself' },
+  { code: PERMISSIONS.ATTENDANCE_MANAGE, module: 'attendance', description: 'Manage shifts and recalculate attendance' },
+  { code: PERMISSIONS.ATTENDANCE_CORRECT, module: 'attendance', description: 'Decide attendance correction requests' },
+  { code: PERMISSIONS.ATTENDANCE_SCHEDULE_MANAGE, module: 'attendance', description: 'Assign work schedules' },
 ];
 
 /**
@@ -113,4 +125,7 @@ export const PERMISSION_ACTION_LABELS: Record<string, string> = {
   update: 'Update',
   activate: 'Activate / Deactivate',
   manage: 'Manage',
+  clock: 'Clock in / out',
+  correct: 'Correct',
+  schedule_manage: 'Manage schedules',
 };
