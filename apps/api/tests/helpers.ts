@@ -98,6 +98,15 @@ export async function resetDatabase() {
   await prisma.workflowDefinition.deleteMany();
   await prisma.employeeManager.deleteMany();
   await prisma.employeePosition.deleteMany();
+  await prisma.successionCandidate.deleteMany();
+  await prisma.successionPlan.deleteMany();
+  await prisma.talentPoolMember.deleteMany();
+  await prisma.talentPool.deleteMany();
+  await prisma.talentReview.deleteMany();
+  await prisma.talentPerformanceBucketRule.deleteMany();
+  await prisma.talentReviewCycle.deleteMany();
+  await prisma.careerPathStep.deleteMany();
+  await prisma.careerPath.deleteMany();
   await prisma.recruitmentInterviewFeedback.deleteMany();
   await prisma.recruitmentInterviewer.deleteMany();
   await prisma.recruitmentInterview.deleteMany();

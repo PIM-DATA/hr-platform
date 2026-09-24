@@ -167,6 +167,9 @@ model Organization {
   performanceCycles    PerformanceCycle[]
   recruitmentPolicies  RecruitmentPolicy[]
   requisitions         RecruitmentRequisition[]
+  careerPaths          CareerPath[]
+  talentReviewCycles   TalentReviewCycle[]
+  talentPools          TalentPool[]
   performanceKpis      PerformanceKpi[]
   trainingSessions     TrainingSession[]
   disciplinaryPolicies DisciplinaryPolicy[]
@@ -192,6 +195,7 @@ model Department {
   positions         Position[]
   employees         Employee[]
   employeePositions EmployeePosition[]
+  successionPlans   SuccessionPlan[]
 
   @@unique([organizationId, code])
   @@index([parentId])
@@ -213,6 +217,8 @@ model Job {
   competencyRequirements JobCompetencyRequirement[]
   requisitions           RecruitmentRequisition[]
   openings               RecruitmentOpening[]
+  careerStepsFrom        CareerPathStep[]           @relation("CareerStepFrom")
+  careerStepsTo          CareerPathStep[]           @relation("CareerStepTo")
 
   @@map("jobs")
 }
@@ -232,6 +238,7 @@ model Position {
 
   employees         Employee[]
   employeePositions EmployeePosition[]
+  successionPlans   SuccessionPlan[]
 
   @@index([departmentId])
   @@map("positions")
@@ -300,6 +307,10 @@ model Employee {
   employeeRelationCases        EmployeeRelationCase[]
   disciplinaryActions          DisciplinaryAction[]
   hiringRequisitions           RecruitmentRequisition[]      @relation("RequisitionHiringManager")
+  talentReviews                TalentReview[]                @relation("TalentReviewEmployee")
+  talentReviewsAsReviewer      TalentReview[]                @relation("TalentReviewReviewer")
+  talentPoolMemberships        TalentPoolMember[]
+  successionNominations        SuccessionCandidate[]
   interviewerAssignments       RecruitmentInterviewer[]
   disciplinaryAcknowledgements DisciplinaryAcknowledgement[]
 
@@ -1265,8 +1276,9 @@ model PerformanceCycle {
   updatedAt          DateTime      @updatedAt @map("updated_at")
   createdByUserId    String?       @map("created_by_user_id")
 
-  ratingBands PerformanceRatingBand[]
-  plans       PerformancePlan[]
+  ratingBands        PerformanceRatingBand[]
+  plans              PerformancePlan[]
+  talentReviewCycles TalentReviewCycle[]
 
   @@index([status])
   @@index([organizationId])
@@ -2366,4 +2378,232 @@ model RecruitmentOffer {
   @@index([applicationId])
   @@index([status])
   @@map("recruitment_offers")
+}
+
+// ---------------------------------------------------------------------------
+// Career, talent and succession (Task 28)
+// ---------------------------------------------------------------------------
+
+/// A named set of job-to-job transitions the organization considers possible. Possible — not promised.
+model CareerPath {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  name           String
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  description    String?
+  isActive       Boolean       @default(true) @map("is_active")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  steps CareerPathStep[]
+
+  @@map("career_paths")
+}
+
+/// One edge of the career graph: from one job to another. Requirements come from the target job's competency
+/// profile (Task 24); nothing about a requirement is stored here.
+model CareerPathStep {
+  id          String     @id @default(cuid())
+  pathId      String     @map("path_id")
+  path        CareerPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  fromJobId   String     @map("from_job_id")
+  fromJob     Job        @relation("CareerStepFrom", fields: [fromJobId], references: [id])
+  toJobId     String     @map("to_job_id")
+  toJob       Job        @relation("CareerStepTo", fields: [toJobId], references: [id])
+  stepOrder   Int?       @map("step_order")
+  description String?
+
+  @@unique([pathId, fromJobId, toJobId])
+  @@index([fromJobId])
+  @@index([toJobId])
+  @@map("career_path_steps")
+}
+
+/// One talent review round. The performance input is a finalized performance cycle; how its ratings map onto the
+/// three performance buckets is this cycle's configuration, never a constant in the code.
+model TalentReviewCycle {
+  id                 String            @id @default(cuid())
+  code               String            @unique
+  name               String
+  periodStart        String            @map("period_start")
+  periodEnd          String            @map("period_end")
+  organizationId     String?           @map("organization_id")
+  organization       Organization?     @relation(fields: [organizationId], references: [id])
+  performanceCycleId String?           @map("performance_cycle_id")
+  performanceCycle   PerformanceCycle? @relation(fields: [performanceCycleId], references: [id])
+  /// [{ code: LOW|MEDIUM|HIGH, label, description }] — the organization's own words for potential.
+  potentialLevels    Json              @map("potential_levels")
+  status             String            @default("DRAFT") // DRAFT | ACTIVE | REVIEW | CLOSED
+  activatedAt        DateTime?         @map("activated_at")
+  closedAt           DateTime?         @map("closed_at")
+  createdByUserId    String?           @map("created_by_user_id")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  bucketRules TalentPerformanceBucketRule[]
+  reviews     TalentReview[]
+
+  @@index([status])
+  @@map("talent_review_cycles")
+}
+
+/// ratingCode → LOW | MEDIUM | HIGH, one rule per rating band of the linked performance cycle.
+model TalentPerformanceBucketRule {
+  id         String            @id @default(cuid())
+  cycleId    String            @map("cycle_id")
+  cycle      TalentReviewCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  ratingCode String            @map("rating_code")
+  bucket     String
+
+  @@unique([cycleId, ratingCode])
+  @@map("talent_performance_bucket_rules")
+}
+
+/// One employee in one talent cycle. Everything about where they were and what their performance said is
+/// snapshotted; the potential level is a named reviewer's judgment, written once.
+model TalentReview {
+  id         String            @id @default(cuid())
+  cycleId    String            @map("cycle_id")
+  cycle      TalentReviewCycle @relation(fields: [cycleId], references: [id])
+  employeeId String            @map("employee_id")
+  employee   Employee          @relation("TalentReviewEmployee", fields: [employeeId], references: [id])
+
+  employeeCodeSnapshot     String  @map("employee_code_snapshot")
+  employeeNameSnapshot     String  @map("employee_name_snapshot")
+  organizationIdSnapshot   String? @map("organization_id_snapshot")
+  organizationNameSnapshot String? @map("organization_name_snapshot")
+  departmentIdSnapshot     String? @map("department_id_snapshot")
+  departmentNameSnapshot   String? @map("department_name_snapshot")
+  jobIdSnapshot            String? @map("job_id_snapshot")
+  jobTitleSnapshot         String? @map("job_title_snapshot")
+  positionIdSnapshot       String? @map("position_id_snapshot")
+  positionTitleSnapshot    String? @map("position_title_snapshot")
+
+  performancePlanId              String?  @map("performance_plan_id")
+  performanceCycleNameSnapshot   String?  @map("performance_cycle_name_snapshot")
+  performanceScoreSnapshot       Decimal? @map("performance_score_snapshot") @db.Decimal(6, 2)
+  performanceRatingCodeSnapshot  String?  @map("performance_rating_code_snapshot")
+  performanceRatingLabelSnapshot String?  @map("performance_rating_label_snapshot")
+  performanceBucket              String?  @map("performance_bucket")
+
+  reviewerEmployeeId   String?   @map("reviewer_employee_id")
+  reviewerEmployee     Employee? @relation("TalentReviewReviewer", fields: [reviewerEmployeeId], references: [id])
+  reviewerUserId       String?   @map("reviewer_user_id")
+  reviewerNameSnapshot String?   @map("reviewer_name_snapshot")
+
+  potentialLevel   String? @map("potential_level")
+  potentialComment String? @map("potential_comment")
+  potentialBucket  String? @map("potential_bucket")
+  nineBoxCell      String? @map("nine_box_cell")
+
+  status      String    @default("ASSIGNED") // ASSIGNED | SUBMITTED | FINALIZED
+  submittedAt DateTime? @map("submitted_at")
+  finalizedAt DateTime? @map("finalized_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  poolMemberships TalentPoolMember[]
+
+  @@unique([cycleId, employeeId])
+  @@index([employeeId])
+  @@index([reviewerUserId])
+  @@index([cycleId, nineBoxCell])
+  @@map("talent_reviews")
+}
+
+/// A named group of people the organization is watching or developing. Members are added by hand, never by a cell.
+model TalentPool {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  name           String
+  description    String?
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  isActive       Boolean       @default(true) @map("is_active")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  members TalentPoolMember[]
+
+  @@map("talent_pools")
+}
+
+/// Membership with history: removal marks the row, it never deletes it.
+model TalentPoolMember {
+  id                   String        @id @default(cuid())
+  poolId               String        @map("pool_id")
+  pool                 TalentPool    @relation(fields: [poolId], references: [id])
+  employeeId           String        @map("employee_id")
+  employee             Employee      @relation(fields: [employeeId], references: [id])
+  addedAt              DateTime      @default(now()) @map("added_at")
+  addedByUserId        String        @map("added_by_user_id")
+  reason               String?
+  sourceTalentReviewId String?       @map("source_talent_review_id")
+  sourceTalentReview   TalentReview? @relation(fields: [sourceTalentReviewId], references: [id])
+  status               String        @default("ACTIVE") // ACTIVE | REMOVED
+  removedAt            DateTime?     @map("removed_at")
+  removedByUserId      String?       @map("removed_by_user_id")
+  removalReason        String?       @map("removal_reason")
+
+  @@index([poolId, status])
+  @@index([employeeId])
+  @@map("talent_pool_members")
+}
+
+/// Who could take over a position. Bound to the position (the real seat), with its job, department and organization
+/// frozen as they were when the plan was made.
+model SuccessionPlan {
+  id                       String    @id @default(cuid())
+  positionId               String    @map("position_id")
+  position                 Position  @relation(fields: [positionId], references: [id])
+  organizationIdSnapshot   String?   @map("organization_id_snapshot")
+  organizationNameSnapshot String?   @map("organization_name_snapshot")
+  departmentIdSnapshot     String?   @map("department_id_snapshot")
+  departmentNameSnapshot   String?   @map("department_name_snapshot")
+  jobIdSnapshot            String?   @map("job_id_snapshot")
+  jobTitleSnapshot         String?   @map("job_title_snapshot")
+  positionTitleSnapshot    String    @map("position_title_snapshot")
+  /// Set by a person. Never inferred from salary, headcount or performance.
+  criticality              String    @default("NORMAL") // NORMAL | IMPORTANT | CRITICAL
+  notes                    String?
+  status                   String    @default("DRAFT") // DRAFT | ACTIVE | CLOSED
+  closedAt                 DateTime? @map("closed_at")
+  createdByUserId          String    @map("created_by_user_id")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  candidates   SuccessionCandidate[]
+  department   Department?           @relation(fields: [departmentId], references: [id])
+  departmentId String?
+
+  @@index([positionId, status])
+  @@index([departmentIdSnapshot])
+  @@map("succession_plans")
+}
+
+/// A nomination with the nominator's name on it, the readiness they recorded, and the candidate's job as it was.
+model SuccessionCandidate {
+  id                     String         @id @default(cuid())
+  planId                 String         @map("plan_id")
+  plan                   SuccessionPlan @relation(fields: [planId], references: [id])
+  employeeId             String         @map("employee_id")
+  employee               Employee       @relation(fields: [employeeId], references: [id])
+  jobTitleSnapshot       String?        @map("job_title_snapshot")
+  departmentNameSnapshot String?        @map("department_name_snapshot")
+  positionTitleSnapshot  String?        @map("position_title_snapshot")
+  readiness              String // READY_NOW | READY_SOON | DEVELOPING
+  targetReadinessDate    String?        @map("target_readiness_date")
+  notes                  String?
+  nominatedByUserId      String         @map("nominated_by_user_id")
+  nominatedAt            DateTime       @default(now()) @map("nominated_at")
+  status                 String         @default("ACTIVE") // ACTIVE | REMOVED
+  removedAt              DateTime?      @map("removed_at")
+  removedByUserId        String?        @map("removed_by_user_id")
+  removalReason          String?        @map("removal_reason")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+
+  @@index([planId, status])
+  @@index([employeeId, status])
+  @@map("succession_candidates")
 }

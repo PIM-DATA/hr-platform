@@ -209,7 +209,17 @@ export const privacyService = {
         take: MAX_ROWS,
       });
 
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations };
+      // Career and talent (Task 28): the factual records that exist about the subject — that they were reviewed in a
+      // cycle, belong to a pool, were nominated for a position — with the judgments left out. A potential level, a
+      // 9-box cell, a reviewer's comment and a nominator's note are internal organizational assessments; whether they
+      // are disclosed to the subject is a policy decision, stated in `notIncluded` rather than made here.
+      const [talentReviews, talentPools, successionNominations] = await Promise.all([
+        tx.talentReview.findMany({ where: { employeeId }, select: { status: true, submittedAt: true, finalizedAt: true, createdAt: true, jobTitleSnapshot: true, departmentNameSnapshot: true, performanceCycleNameSnapshot: true, performanceRatingLabelSnapshot: true, cycle: { select: { code: true, name: true, periodStart: true, periodEnd: true } } }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS }),
+        tx.talentPoolMember.findMany({ where: { employeeId }, select: { addedAt: true, status: true, removedAt: true, pool: { select: { code: true, name: true } } }, orderBy: { addedAt: 'asc' }, take: MAX_ROWS }),
+        tx.successionCandidate.findMany({ where: { employeeId }, select: { readiness: true, targetReadinessDate: true, nominatedAt: true, status: true, removedAt: true, jobTitleSnapshot: true, plan: { select: { positionTitleSnapshot: true, departmentNameSnapshot: true, status: true } } }, orderBy: { nominatedAt: 'asc' }, take: MAX_ROWS }),
+      ]);
+
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -233,6 +243,7 @@ export const privacyService = {
         { category: 'other people’s notifications', reason: 'Notifications sent to approvers or colleagues are their personal data, even when they concern this employee.' },
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
+        { category: 'potential assessments, 9-box placement, reviewer comments and succession notes', reason: 'These are internal organizational judgments about the subject made by named reviewers and nominators. The export carries the factual records (review participation, pool membership, nominations and recorded readiness); disclosing the judgments themselves is a policy decision made outside this export.' },
         { category: 'employee relations case narratives and internal notes', reason: 'The case description and HR investigation notes are HR working records that may concern other people; the export carries the documents issued to the subject and their acknowledgements.' },
       ],
     };
@@ -247,6 +258,7 @@ export const privacyService = {
           leaveRequests: data.leaveRequests.length, entitlements: data.entitlements.length, ledger: data.ledger.length,
           workflows: data.workflows.length, notifications: data.notifications.length, auditEvents: data.auditEvents.length, privacyRequests: data.privacyRequests.length,
           employeeRelations: data.employeeRelations.length,
+          talentReviews: data.talentReviews.length, talentPools: data.talentPools.length, successionNominations: data.successionNominations.length,
         },
       },
     });

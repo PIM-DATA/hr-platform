@@ -141,6 +141,15 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Hire recorded',
     body: `A candidate for ${v.openingTitle ?? 'an opening'} has been hired and an employee record created. Open the application to see it.`,
   }),
+  // Talent: a cycle name. Never a potential level, a cell, a comment or a nomination.
+  [NOTIFICATION_TYPES.TALENT_REVIEW_REQUIRED]: (v) => ({
+    title: 'Talent review assigned',
+    body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your potential assessment.`,
+  }),
+  [NOTIFICATION_TYPES.TALENT_REVIEW_COMPLETED]: (v) => ({
+    title: 'Talent review submitted',
+    body: `A potential assessment${v.cycleName ? ` in ${v.cycleName}` : ''} has been submitted. Open the cycle to see progress.`,
+  }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',
     body: `The ${v.leaveType ?? 'leave'} request${v.dateRange ? ` for ${v.dateRange}` : ''} was cancelled.`,

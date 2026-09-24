@@ -215,6 +215,35 @@ export const skillGapService = {
    * Coverage is measured against what the cycle actually assigned, never against the whole employee master: a cycle
    * that deliberately covered one department is not 4% complete.
    */
+  /**
+   * One employee's latest levels against ANOTHER job's requirements — the career question "what would I still need
+   * for that role?" (Task 28). Same levels, same gap rule, same unassessed-is-not-zero semantics as the profile;
+   * only the requirement set differs. Career and succession code calls this and never recomputes a gap itself.
+   */
+  async getGapsAgainstJob(q: { employeeId: string; jobId: string }): Promise<Omit<SkillGapRowDto, 'employeeCode' | 'employeeName' | 'departmentId' | 'departmentName'>[]> {
+    const requirements = await jobProfileService.requirementsFor(prisma, q.jobId);
+    if (requirements.length === 0) return [];
+    const levels = (await latestLevels([q.employeeId])).get(q.employeeId) ?? new Map();
+    const job = await prisma.job.findUnique({ where: { id: q.jobId }, select: { title: true } });
+    return requirements.map((requirement) => {
+      const assessed = levels.get(requirement.competencyId);
+      const gap = calculateGap({ requiredLevel: requirement.requiredLevel, currentLevel: assessed?.level ?? null });
+      return {
+        employeeId: q.employeeId,
+        competencyId: requirement.competencyId,
+        competencyCode: requirement.competency.code,
+        competencyName: requirement.competency.name,
+        currentLevel: assessed?.level ?? null,
+        requiredLevel: requirement.requiredLevel,
+        gapNeeded: gap.gapNeeded,
+        gapStatus: gap.status,
+        jobId: q.jobId,
+        jobTitle: job?.title ?? null,
+        assessmentDate: assessed?.assessedAt.toISOString() ?? null,
+      };
+    });
+  },
+
   async gapReport(q: GapReportQuery): Promise<GapReportDto> {
     const assessmentWhere: Prisma.CompetencyAssessmentWhereInput = {
       cycleId: q.cycleId,

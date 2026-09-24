@@ -278,6 +278,27 @@ export const OFFER_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT', 
 export type OfferStatus = (typeof OFFER_STATUSES)[number];
 export const RECRUITMENT_WORKFLOW = { module: 'recruitment', requisition: 'RECRUITMENT_REQUISITION', offer: 'JOB_OFFER' } as const;
 
+// ---------- career, talent and succession (Task 28) ----------
+/** What a readiness projection may say. Facts about competency requirements — never a recommendation to promote. */
+export const CAREER_READINESS_STATUSES = ['READY_REQUIREMENTS_MET', 'GAPS_EXIST', 'ASSESSMENT_REQUIRED', 'NO_REQUIREMENTS_DEFINED'] as const;
+export type CareerReadinessStatus = (typeof CAREER_READINESS_STATUSES)[number];
+export const TALENT_CYCLE_STATUSES = ['DRAFT', 'ACTIVE', 'REVIEW', 'CLOSED'] as const;
+export type TalentCycleStatus = (typeof TALENT_CYCLE_STATUSES)[number];
+export const TALENT_REVIEW_STATUSES = ['ASSIGNED', 'SUBMITTED', 'FINALIZED'] as const;
+export type TalentReviewStatus = (typeof TALENT_REVIEW_STATUSES)[number];
+/** The three buckets of the 3×3 matrix, on both axes. */
+export const TALENT_BUCKETS = ['LOW', 'MEDIUM', 'HIGH'] as const;
+export type TalentBucket = (typeof TALENT_BUCKETS)[number];
+export const TALENT_MEMBERSHIP_STATUSES = ['ACTIVE', 'REMOVED'] as const;
+export const SUCCESSION_PLAN_STATUSES = ['DRAFT', 'ACTIVE', 'CLOSED'] as const;
+export type SuccessionPlanStatus = (typeof SUCCESSION_PLAN_STATUSES)[number];
+export const SUCCESSION_CRITICALITIES = ['NORMAL', 'IMPORTANT', 'CRITICAL'] as const;
+export type SuccessionCriticality = (typeof SUCCESSION_CRITICALITIES)[number];
+/** A human's judgment, recorded as given. Never derived from a score. */
+export const SUCCESSOR_READINESS = ['READY_NOW', 'READY_SOON', 'DEVELOPING'] as const;
+export type SuccessorReadiness = (typeof SUCCESSOR_READINESS)[number];
+export const DEVELOPMENT_ACTION_SOURCES = ['CAREER', 'SUCCESSION', 'TALENT_REVIEW'] as const;
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -313,6 +334,8 @@ export const NOTIFICATION_TYPES = {
   INTERVIEW_ASSIGNED: 'INTERVIEW_ASSIGNED',
   INTERVIEW_FEEDBACK_REQUIRED: 'INTERVIEW_FEEDBACK_REQUIRED',
   HIRING_COMPLETED: 'HIRING_COMPLETED',
+  TALENT_REVIEW_REQUIRED: 'TALENT_REVIEW_REQUIRED',
+  TALENT_REVIEW_COMPLETED: 'TALENT_REVIEW_COMPLETED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -330,7 +353,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -514,6 +537,24 @@ export const AUDIT_ACTIONS = {
   HIRE_CANDIDATE: 'HIRE_CANDIDATE',
   UPDATE_RECRUITMENT_POLICY: 'UPDATE_RECRUITMENT_POLICY',
   EXPORT_CANDIDATE_PERSONAL_DATA: 'EXPORT_CANDIDATE_PERSONAL_DATA',
+  // career, talent and succession
+  CREATE_CAREER_PATH: 'CREATE_CAREER_PATH',
+  UPDATE_CAREER_PATH: 'UPDATE_CAREER_PATH',
+  CREATE_TALENT_CYCLE: 'CREATE_TALENT_CYCLE',
+  UPDATE_TALENT_CYCLE: 'UPDATE_TALENT_CYCLE',
+  ASSIGN_TALENT_REVIEW: 'ASSIGN_TALENT_REVIEW',
+  SUBMIT_POTENTIAL_ASSESSMENT: 'SUBMIT_POTENTIAL_ASSESSMENT',
+  FINALIZE_TALENT_REVIEW: 'FINALIZE_TALENT_REVIEW',
+  CREATE_TALENT_POOL: 'CREATE_TALENT_POOL',
+  UPDATE_TALENT_POOL: 'UPDATE_TALENT_POOL',
+  ADD_TALENT_POOL_MEMBER: 'ADD_TALENT_POOL_MEMBER',
+  REMOVE_TALENT_POOL_MEMBER: 'REMOVE_TALENT_POOL_MEMBER',
+  CREATE_SUCCESSION_PLAN: 'CREATE_SUCCESSION_PLAN',
+  UPDATE_SUCCESSION_PLAN: 'UPDATE_SUCCESSION_PLAN',
+  NOMINATE_SUCCESSOR: 'NOMINATE_SUCCESSOR',
+  UPDATE_SUCCESSOR_READINESS: 'UPDATE_SUCCESSOR_READINESS',
+  REMOVE_SUCCESSOR: 'REMOVE_SUCCESSOR',
+  CREATE_DEVELOPMENT_ACTION_FROM_TALENT: 'CREATE_DEVELOPMENT_ACTION_FROM_TALENT',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -578,6 +619,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   training: 'Training & development',
   employee_relations: 'Employee relations',
   recruitment: 'Recruitment',
+  talent: 'Career & talent',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

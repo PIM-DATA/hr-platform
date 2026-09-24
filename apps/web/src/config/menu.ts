@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus,
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -48,6 +48,7 @@ export const MENU: MenuGroup[] = [
     items: [
       { label: 'Competency', path: '/hrd/competency', icon: Award, permission: P.COMPETENCY_VIEW },
       { label: 'Training & development', path: '/hrd/training', icon: GraduationCap, permission: [P.TRAINING_VIEW, P.IDP_VIEW] },
+      { label: 'Career & talent', path: '/hrd/career', icon: Route, permission: [P.CAREER_VIEW, P.TALENT_VIEW, P.TALENT_MANAGE, P.SUCCESSION_VIEW, P.TALENT_VIEW_REPORTS] },
     ],
   },
   {

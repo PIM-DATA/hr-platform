@@ -296,6 +296,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, certificate upload, full OJT workflow, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
 - Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
+- Career & talent: no automatic promotion, AI ranking, automatic successor recommendation, external successors, movement workflow, compensation/bonus linkage, attrition prediction, workforce forecasting, succession simulation, advanced replacement chart, psychometrics, talent marketplace, employee-visible nomination or AI career recommendation.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -848,6 +849,26 @@ Full guide: [docs/recruitment.md](docs/recruitment.md). HRM → Recruitment.
 - **Hire is one transaction** through `createEmployeeWithTx` under row locks: accepted offer required, unique per
   candidate and application, headcount cap enforced, concurrent hires produce one employee. It creates **no user
   account and no payroll compensation**.
+
+## Career, talent and succession (Task 28)
+
+Full guide: [docs/career-talent-succession.md](docs/career-talent-succession.md). HRD → Career & talent.
+
+- **Decision support.** Facts (performance history, competency gaps, development, readiness) and people's recorded
+  judgments (potential, readiness, nomination). No ranking, no "promote", no "best", no automatic nomination.
+- **Career paths are possibilities**, job → job, defined by HR; requirements come from the job competency profile
+  (Task 24) and readiness is the Task 24 gap service against the target job — UNASSESSED is never a gap, and
+  "requirements met" is a fact about levels, not a promotion decision.
+- **Talent review** snapshots a finalized performance result; the rating → LOW/MEDIUM/HIGH mapping is per-cycle
+  configuration that must cover every rating exactly once. Potential is written once by the snapshotted direct-manager
+  reviewer on the organization's own three-level scale; the 9-box cell is a label with counts, never an order.
+- **Pools are filled by hand**, with reason and history; **succession** binds a position, freezes its job and
+  department, and records nominations with the nominator, a chosen readiness and the candidate's job as it was.
+- **Development handoff** creates a training need through Task 25's service by explicit action; no enrolment, no
+  competency change.
+- **Confidential by permission**: employees see only their own career page; comments and notes reach reviewers and
+  managers of the module only; EXECUTIVE has aggregate reports only; no payroll, disciplinary or recruitment data is
+  read anywhere in the module. Employees are not notified of pool membership or nomination.
 
 ## Pilot release
 

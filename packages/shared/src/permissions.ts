@@ -84,6 +84,14 @@ export const PERMISSIONS = {
   RECRUITMENT_INTERVIEW: 'recruitment.interview',
   RECRUITMENT_MANAGE_OFFERS: 'recruitment.manage_offers',
   RECRUITMENT_HIRE: 'recruitment.hire',
+  CAREER_VIEW: 'career.view',
+  CAREER_MANAGE: 'career.manage',
+  TALENT_VIEW: 'talent.view',
+  TALENT_ASSESS: 'talent.assess',
+  TALENT_MANAGE: 'talent.manage',
+  TALENT_VIEW_REPORTS: 'talent.view_reports',
+  SUCCESSION_VIEW: 'succession.view',
+  SUCCESSION_MANAGE: 'succession.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -175,6 +183,14 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.RECRUITMENT_INTERVIEW, module: 'recruitment', description: 'Give feedback on interviews you are assigned to' },
   { code: PERMISSIONS.RECRUITMENT_MANAGE_OFFERS, module: 'recruitment', description: 'Draft, submit and record the outcome of job offers, including compensation proposals' },
   { code: PERMISSIONS.RECRUITMENT_HIRE, module: 'recruitment', description: 'Convert an accepted candidate into an employee record' },
+  { code: PERMISSIONS.CAREER_VIEW, module: 'talent', description: 'See own career paths, target job requirements and competency readiness' },
+  { code: PERMISSIONS.CAREER_MANAGE, module: 'talent', description: 'Define career paths and job-to-job transitions' },
+  { code: PERMISSIONS.TALENT_VIEW, module: 'talent', description: 'See talent review outcomes and talent pools within the data scope' },
+  { code: PERMISSIONS.TALENT_ASSESS, module: 'talent', description: 'Submit a potential assessment as the assigned reviewer' },
+  { code: PERMISSIONS.TALENT_MANAGE, module: 'talent', description: 'Run talent review cycles, configure buckets, manage talent pools and create development actions' },
+  { code: PERMISSIONS.TALENT_VIEW_REPORTS, module: 'talent', description: 'Aggregate talent and succession reporting — counts only, never an individual' },
+  { code: PERMISSIONS.SUCCESSION_VIEW, module: 'talent', description: 'See succession plans and nominated successors' },
+  { code: PERMISSIONS.SUCCESSION_MANAGE, module: 'talent', description: 'Create succession plans, nominate successors and record readiness' },
 ];
 
 /**

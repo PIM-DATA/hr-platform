@@ -93,6 +93,14 @@ import { ApplicationsPage } from '@/features/recruitment/ApplicationsPage';
 import { InterviewsPage } from '@/features/recruitment/InterviewsPage';
 import { OffersPage } from '@/features/recruitment/OffersPage';
 import { RecruitmentReportsPage } from '@/features/recruitment/ReportsPage';
+import { TalentLayout } from '@/features/talent/talent-ui';
+import { MyCareerPage } from '@/features/talent/MyCareerPage';
+import { TeamCareerPage } from '@/features/talent/TeamCareerPage';
+import { CareerPathsPage } from '@/features/talent/CareerPathsPage';
+import { TalentReviewsPage } from '@/features/talent/TalentReviewsPage';
+import { TalentPoolsPage } from '@/features/talent/TalentPoolsPage';
+import { SuccessionPage } from '@/features/talent/SuccessionPage';
+import { TalentReportsPage } from '@/features/talent/TalentReportsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -306,6 +314,21 @@ export const router = createBrowserRouter([
                   children: [{ path: 'cases', element: <ErCasesPage /> }, { path: 'actions', element: <ErActionsPage /> }, { path: 'reports', element: <ErReportsPage /> }],
                 },
                 { element: <RequirePermission permission={PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE} />, children: [{ path: 'action-types', element: <ActionTypesPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Career, talent and succession (Task 28). An employee reaches only their own career page; talent and
+            // succession screens need their own permissions; reports are aggregate-only.
+            element: <RequirePermission permission={[PERMISSIONS.CAREER_VIEW, PERMISSIONS.TALENT_VIEW, PERMISSIONS.TALENT_MANAGE, PERMISSIONS.SUCCESSION_VIEW, PERMISSIONS.TALENT_VIEW_REPORTS]} />,
+            children: [{
+              path: 'hrd/career', element: <TalentLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.CAREER_VIEW} />, children: [{ index: true, element: <MyCareerPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.TALENT_VIEW, PERMISSIONS.TALENT_MANAGE]} />, children: [{ path: 'team', element: <TeamCareerPage /> }, { path: 'talent', element: <TalentReviewsPage /> }, { path: 'pools', element: <TalentPoolsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.CAREER_MANAGE} />, children: [{ path: 'paths', element: <CareerPathsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.SUCCESSION_VIEW, PERMISSIONS.SUCCESSION_MANAGE]} />, children: [{ path: 'succession', element: <SuccessionPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.TALENT_VIEW_REPORTS} />, children: [{ path: 'reports', element: <TalentReportsPage /> }] },
               ],
             }],
           },
