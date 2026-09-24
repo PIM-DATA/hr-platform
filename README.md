@@ -294,6 +294,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Performance: no 360 feedback, calibration, 9-box, forced ranking, competency scoring, bonus/payroll linkage, OKR tree, automatic achievement formulas, AI-written reviews, reopen after close or cycle scheduler.
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, certificate upload, full OJT workflow, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
+- Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -799,6 +800,29 @@ Full guide: [docs/training-development.md](docs/training-development.md). HRD �
 - **A development plan is more than courses**: OJT, coaching, mentoring, self-study and projects are activities too.
 - **Reporting states its definitions**: completion rate excludes cancelled and unfinished places; training hours count
   attended or completed places only; nothing claims a skill improved.
+
+## Employee relations (Task 26)
+
+Full guide: [docs/employee-relations.md](docs/employee-relations.md). HRM → Employee relations.
+
+- **An operational record, not a legal engine.** Cases record what was reported; actions record what a person
+  proposed and an approver decided. The system chooses no action, escalates nothing, counts no strikes and concludes
+  nothing about employment law — those are the customer's decisions under the customer's policy.
+- **Issued means frozen.** An action reaches ISSUED only through a final workflow approval (`module =
+  employee_relations`), at which point the letter becomes an immutable snapshot with its own number. A mistake is a
+  new action, not an edited one; a rejected proposal is finished and HR drafts again.
+- **Acknowledgement is receipt.** The statement the employee agrees to says it is not an admission, is shown before
+  the button and frozen onto the record. The employee is whoever is signed in — nothing in the request can
+  acknowledge for somebody else — and a second acknowledgement returns the first unchanged.
+- **Validity is a date, not a job.** Whether a warning is active or expired is derived from `validUntil` on read;
+  no scheduler, no mutation. The default validity is configuration and HR may override it per proposal.
+- **Confidential by permission, not by org chart.** Case screens need `employee_relations.view`/`.manage`, which
+  no manager holds by default; a team scope opens nothing. An employee sees only what was issued to them; an approver
+  sees a projection without internal notes; an executive sees nothing.
+- **Narratives stay in two tables** — the case and the issued letter. Audit payloads, notifications and logs carry
+  numbers and lengths, never the text. The personal-data export carries the letters issued to the subject and their
+  acknowledgements, and excludes case narratives and HR's internal notes.
+- **No side effects.** Nothing here deducts pay, lowers a performance score, or ends employment.
 
 ## Pilot release
 

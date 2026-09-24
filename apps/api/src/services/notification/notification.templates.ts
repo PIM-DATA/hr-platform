@@ -117,6 +117,15 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Development plan complete',
     body: `Your development plan${v.cycleName ? ` "${v.cycleName}"` : ''} has been completed.`,
   }),
+  // Employee relations: a document exists. Nothing about what it says — not the reason, not the action, not the case.
+  [NOTIFICATION_TYPES.DISCIPLINARY_ACTION_ISSUED]: () => ({
+    title: 'New employee relations document',
+    body: 'A new employee relations document has been issued to you. Please open the system to read it.',
+  }),
+  [NOTIFICATION_TYPES.DISCIPLINARY_ACTION_ACKNOWLEDGED]: () => ({
+    title: 'Document receipt acknowledged',
+    body: 'An employee has acknowledged receipt of an employee relations document. Open the case to see it.',
+  }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',
     body: `The ${v.leaveType ?? 'leave'} request${v.dateRange ? ` for ${v.dateRange}` : ''} was cancelled.`,

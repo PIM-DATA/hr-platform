@@ -39,31 +39,33 @@ model User {
   auditLogs AuditLog[]
 
   // workflow (Phase 2)
-  workflowDefinitionSteps WorkflowDefinitionStep[]
-  workflowRequests        WorkflowInstance[]          @relation("WorkflowRequesterUser")
-  workflowApproverSteps   WorkflowInstanceStep[]      @relation("WorkflowStepApproverUser")
-  workflowActedSteps      WorkflowInstanceStep[]      @relation("WorkflowStepActedBy")
-  workflowActions         WorkflowAction[]
-  leaveLedgerEntries      LeaveLedger[]
-  leaveRequestsCreated    LeaveRequest[]
-  onboardingImports       OnboardingImportRun[]
-  passwordResetTokens     PasswordResetToken[]        @relation("PasswordResetSubject")
-  passwordResetsIssued    PasswordResetToken[]        @relation("PasswordResetIssuer")
-  privacyRequestsSubject  PrivacyRequest[]            @relation("PrivacySubjectUser")
-  privacyRequestsCreated  PrivacyRequest[]            @relation("PrivacyRequestCreator")
-  privacyRequestsAssigned PrivacyRequest[]            @relation("PrivacyRequestAssignee")
-  attendanceSchedules     AttendanceSchedule[]        @relation("AttendanceScheduleCreator")
-  attendanceClockEvents   AttendanceClockEvent[]      @relation("AttendanceClockCreator")
-  attendanceCorrections   AttendanceCorrection[]      @relation("AttendanceCorrectionCreator")
-  overtimeRequestsCreated OvertimeRequest[]           @relation("OvertimeRequestCreator")
-  compensationsCreated    EmployeeCompensation[]      @relation("CompensationCreator")
-  payItemsCreated         EmployeePayItem[]           @relation("PayItemCreator")
-  payrollRunsStarted      PayrollRun[]                @relation("PayrollRunStarter")
-  payrollRunsClosed       PayrollRun[]                @relation("PayrollRunCloser")
-  performanceReviews      PerformancePlan[]           @relation("PerformancePlanReviewerUser")
-  competencyReviews       CompetencyAssessment[]      @relation("CompetencyAssessmentReviewerUser")
-  developmentPlansManaged IndividualDevelopmentPlan[] @relation("IdpManagerUser")
-  notifications           Notification[]
+  workflowDefinitionSteps       WorkflowDefinitionStep[]
+  workflowRequests              WorkflowInstance[]            @relation("WorkflowRequesterUser")
+  workflowApproverSteps         WorkflowInstanceStep[]        @relation("WorkflowStepApproverUser")
+  workflowActedSteps            WorkflowInstanceStep[]        @relation("WorkflowStepActedBy")
+  workflowActions               WorkflowAction[]
+  leaveLedgerEntries            LeaveLedger[]
+  leaveRequestsCreated          LeaveRequest[]
+  onboardingImports             OnboardingImportRun[]
+  passwordResetTokens           PasswordResetToken[]          @relation("PasswordResetSubject")
+  passwordResetsIssued          PasswordResetToken[]          @relation("PasswordResetIssuer")
+  privacyRequestsSubject        PrivacyRequest[]              @relation("PrivacySubjectUser")
+  privacyRequestsCreated        PrivacyRequest[]              @relation("PrivacyRequestCreator")
+  privacyRequestsAssigned       PrivacyRequest[]              @relation("PrivacyRequestAssignee")
+  attendanceSchedules           AttendanceSchedule[]          @relation("AttendanceScheduleCreator")
+  attendanceClockEvents         AttendanceClockEvent[]        @relation("AttendanceClockCreator")
+  attendanceCorrections         AttendanceCorrection[]        @relation("AttendanceCorrectionCreator")
+  overtimeRequestsCreated       OvertimeRequest[]             @relation("OvertimeRequestCreator")
+  compensationsCreated          EmployeeCompensation[]        @relation("CompensationCreator")
+  payItemsCreated               EmployeePayItem[]             @relation("PayItemCreator")
+  payrollRunsStarted            PayrollRun[]                  @relation("PayrollRunStarter")
+  payrollRunsClosed             PayrollRun[]                  @relation("PayrollRunCloser")
+  performanceReviews            PerformancePlan[]             @relation("PerformancePlanReviewerUser")
+  competencyReviews             CompetencyAssessment[]        @relation("CompetencyAssessmentReviewerUser")
+  developmentPlansManaged       IndividualDevelopmentPlan[]   @relation("IdpManagerUser")
+  employeeRelationCasesAssigned EmployeeRelationCase[]        @relation("ErCaseAssignee")
+  disciplinaryAcknowledgements  DisciplinaryAcknowledgement[]
+  notifications                 Notification[]
 
   @@map("users")
 }
@@ -151,18 +153,19 @@ model Organization {
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
-  departments       Department[]
-  employees         Employee[]
-  workCalendars     WorkCalendar[]     @relation("OrganizationCalendars")
-  leavePolicies     LeavePolicy[]
-  attendanceShifts  AttendanceShift[]
-  overtimePolicies  OvertimePolicy[]
-  overtimeRequests  OvertimeRequest[]
-  payrollPolicies   PayrollPolicy[]
-  payrollPeriods    PayrollPeriod[]
-  performanceCycles PerformanceCycle[]
-  performanceKpis   PerformanceKpi[]
-  trainingSessions  TrainingSession[]
+  departments          Department[]
+  employees            Employee[]
+  workCalendars        WorkCalendar[]       @relation("OrganizationCalendars")
+  leavePolicies        LeavePolicy[]
+  attendanceShifts     AttendanceShift[]
+  overtimePolicies     OvertimePolicy[]
+  overtimeRequests     OvertimeRequest[]
+  payrollPolicies      PayrollPolicy[]
+  payrollPeriods       PayrollPeriod[]
+  performanceCycles    PerformanceCycle[]
+  performanceKpis      PerformanceKpi[]
+  trainingSessions     TrainingSession[]
+  disciplinaryPolicies DisciplinaryPolicy[]
 
   @@map("organizations")
 }
@@ -262,32 +265,35 @@ model Employee {
   createdBy String?  @map("created_by") // users.id
   updatedBy String?  @map("updated_by") // users.id
 
-  user                    User?
-  headOfDepartments       Department[]                @relation("DepartmentHead")
-  positionHistory         EmployeePosition[]
-  managerHistory          EmployeeManager[]           @relation("ManagerHistoryEmployee")
-  managedHistory          EmployeeManager[]           @relation("ManagerHistoryManager")
-  workflowRequests        WorkflowInstance[]          @relation("WorkflowRequesterEmployee")
-  workflowApproverSteps   WorkflowInstanceStep[]      @relation("WorkflowStepApproverEmployee")
-  leaveEntitlements       LeaveEntitlement[]
-  leaveRequests           LeaveRequest[]
-  privacyRequests         PrivacyRequest[]
-  attendanceSchedules     AttendanceSchedule[]
-  attendanceClockEvents   AttendanceClockEvent[]
-  attendanceRecords       AttendanceRecord[]
-  attendanceCorrections   AttendanceCorrection[]
-  overtimeRequests        OvertimeRequest[]
-  compensations           EmployeeCompensation[]
-  payItems                EmployeePayItem[]
-  payrollResults          PayrollResult[]
-  performancePlans        PerformancePlan[]           @relation("PerformancePlanEmployee")
-  performanceReviews      PerformancePlan[]           @relation("PerformancePlanReviewer")
-  competencyAssessments   CompetencyAssessment[]      @relation("CompetencyAssessmentEmployee")
-  competencyReviews       CompetencyAssessment[]      @relation("CompetencyAssessmentReviewer")
-  trainingNeeds           TrainingNeed[]
-  trainingEnrollments     TrainingEnrollment[]
-  developmentPlans        IndividualDevelopmentPlan[] @relation("IdpEmployee")
-  developmentPlansManaged IndividualDevelopmentPlan[] @relation("IdpManager")
+  user                         User?
+  headOfDepartments            Department[]                  @relation("DepartmentHead")
+  positionHistory              EmployeePosition[]
+  managerHistory               EmployeeManager[]             @relation("ManagerHistoryEmployee")
+  managedHistory               EmployeeManager[]             @relation("ManagerHistoryManager")
+  workflowRequests             WorkflowInstance[]            @relation("WorkflowRequesterEmployee")
+  workflowApproverSteps        WorkflowInstanceStep[]        @relation("WorkflowStepApproverEmployee")
+  leaveEntitlements            LeaveEntitlement[]
+  leaveRequests                LeaveRequest[]
+  privacyRequests              PrivacyRequest[]
+  attendanceSchedules          AttendanceSchedule[]
+  attendanceClockEvents        AttendanceClockEvent[]
+  attendanceRecords            AttendanceRecord[]
+  attendanceCorrections        AttendanceCorrection[]
+  overtimeRequests             OvertimeRequest[]
+  compensations                EmployeeCompensation[]
+  payItems                     EmployeePayItem[]
+  payrollResults               PayrollResult[]
+  performancePlans             PerformancePlan[]             @relation("PerformancePlanEmployee")
+  performanceReviews           PerformancePlan[]             @relation("PerformancePlanReviewer")
+  competencyAssessments        CompetencyAssessment[]        @relation("CompetencyAssessmentEmployee")
+  competencyReviews            CompetencyAssessment[]        @relation("CompetencyAssessmentReviewer")
+  trainingNeeds                TrainingNeed[]
+  trainingEnrollments          TrainingEnrollment[]
+  developmentPlans             IndividualDevelopmentPlan[]   @relation("IdpEmployee")
+  developmentPlansManaged      IndividualDevelopmentPlan[]   @relation("IdpManager")
+  employeeRelationCases        EmployeeRelationCase[]
+  disciplinaryActions          DisciplinaryAction[]
+  disciplinaryAcknowledgements DisciplinaryAcknowledgement[]
 
   @@index([departmentId])
   @@index([managerId])
@@ -1841,4 +1847,226 @@ model IdpItem {
   @@index([idpId])
   @@index([trainingNeedId])
   @@map("idp_items")
+}
+
+// ---------------------------------------------------------------------------
+// Employee relations (Task 26)
+// ---------------------------------------------------------------------------
+
+/// What can be done. Configured by the customer: the codes are theirs, the order is for display, and nothing here is
+/// a ladder the system climbs on its own.
+model DisciplinaryActionType {
+  id                      String   @id @default(cuid())
+  code                    String   @unique
+  name                    String
+  description             String?
+  severityOrder           Int      @default(0) @map("severity_order")
+  requiresWarningLetter   Boolean  @default(true) @map("requires_warning_letter")
+  requiresAcknowledgement Boolean  @default(true) @map("requires_acknowledgement")
+  defaultValidityDays     Int?     @map("default_validity_days")
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  actions DisciplinaryAction[]
+
+  @@map("disciplinary_action_types")
+}
+
+model DisciplinaryCaseCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  cases EmployeeRelationCase[]
+
+  @@map("disciplinary_case_categories")
+}
+
+/// Operational defaults per organization: which approval workflow, how long an employee has to acknowledge. Not a
+/// rule engine, and it encodes no penalty.
+model DisciplinaryPolicy {
+  id                            String       @id @default(cuid())
+  organizationId                String       @map("organization_id")
+  organization                  Organization @relation(fields: [organizationId], references: [id])
+  name                          String
+  workflowDefinitionCode        String       @map("workflow_definition_code")
+  defaultAcknowledgementDueDays Int?         @map("default_acknowledgement_due_days")
+  effectiveFrom                 String       @map("effective_from")
+  effectiveTo                   String?      @map("effective_to")
+  isActive                      Boolean      @default(true) @map("is_active")
+  createdAt                     DateTime     @default(now()) @map("created_at")
+  updatedAt                     DateTime     @updatedAt @map("updated_at")
+
+  @@index([organizationId, isActive])
+  @@map("disciplinary_policies")
+}
+
+/// A letter template with allow-listed placeholders only. No expressions, nothing executable.
+model WarningLetterTemplate {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  subjectTemplate String   @map("subject_template")
+  bodyTemplate    String   @map("body_template")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("warning_letter_templates")
+}
+
+/// One counter row per year, taken under a row lock, so two cases opened at the same instant get different numbers.
+model EmployeeRelationCaseSequence {
+  year Int @id
+  next Int @default(1)
+
+  @@map("employee_relation_case_sequences")
+}
+
+/// A case: what was reported about whom, and what was decided. The organizational snapshot is frozen at creation —
+/// a later transfer does not move the record.
+model EmployeeRelationCase {
+  id         String   @id @default(cuid())
+  caseNumber String   @unique @map("case_number")
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  employeeCodeSnapshot String  @map("employee_code_snapshot")
+  employeeNameSnapshot String  @map("employee_name_snapshot")
+  organizationId       String? @map("organization_id")
+  organizationName     String? @map("organization_name")
+  departmentId         String? @map("department_id")
+  departmentName       String? @map("department_name")
+  positionId           String? @map("position_id")
+  positionTitle        String? @map("position_title")
+  jobId                String? @map("job_id")
+  jobTitle             String? @map("job_title")
+
+  incidentDate String   @map("incident_date") // YYYY-MM-DD
+  reportedAt   DateTime @default(now()) @map("reported_at")
+
+  categoryId           String?                   @map("category_id")
+  category             DisciplinaryCaseCategory? @relation(fields: [categoryId], references: [id])
+  categoryNameSnapshot String?                   @map("category_name_snapshot")
+
+  title         String
+  /// The narrative. It lives here and in the issued letter, and nowhere else — never in a log, an audit payload or a notification.
+  description   String
+  /// HR's own investigation notes: `employee_relations.manage` only.
+  internalNotes String? @map("internal_notes")
+
+  status      String    @default("DRAFT") // DRAFT | UNDER_REVIEW | PENDING_APPROVAL | ACTION_ISSUED | CLOSED | CANCELLED
+  closedAt    DateTime? @map("closed_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  createdByUserId  String   @map("created_by_user_id")
+  assignedToUserId String?  @map("assigned_to_user_id")
+  assignedTo       User?    @relation("ErCaseAssignee", fields: [assignedToUserId], references: [id])
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  actions DisciplinaryAction[]
+
+  @@index([employeeId, status])
+  @@index([departmentId])
+  @@index([incidentDate])
+  @@map("employee_relation_cases")
+}
+
+/// A proposed, approved or issued action on a case. Reaches ISSUED through a final workflow approval and no other way.
+model DisciplinaryAction {
+  id         String               @id @default(cuid())
+  caseId     String               @map("case_id")
+  case       EmployeeRelationCase @relation(fields: [caseId], references: [id])
+  employeeId String               @map("employee_id")
+  employee   Employee             @relation(fields: [employeeId], references: [id])
+
+  actionTypeId            String                 @map("action_type_id")
+  actionType              DisciplinaryActionType @relation(fields: [actionTypeId], references: [id])
+  actionTypeCodeSnapshot  String                 @map("action_type_code_snapshot")
+  actionTypeNameSnapshot  String                 @map("action_type_name_snapshot")
+  requiresWarningLetter   Boolean                @default(true) @map("requires_warning_letter")
+  requiresAcknowledgement Boolean                @default(true) @map("requires_acknowledgement")
+
+  reason        String
+  effectiveDate String? @map("effective_date")
+  validityDays  Int?    @map("validity_days")
+  issuedDate    String? @map("issued_date")
+  /// Frozen at issue from the validity that was submitted. Nothing recomputes it.
+  validUntil    String? @map("valid_until")
+
+  status             String  @default("DRAFT") // DRAFT | PENDING_APPROVAL | ISSUED | ACKNOWLEDGED | REJECTED | CANCELLED
+  workflowInstanceId String? @unique @map("workflow_instance_id")
+
+  letterTemplateId String? @map("letter_template_id")
+  letterSubject    String? @map("letter_subject")
+  letterBody       String? @map("letter_body")
+
+  acknowledgementDueDate String?   @map("acknowledgement_due_date")
+  acknowledgedAt         DateTime? @map("acknowledged_at")
+  declinedAt             DateTime? @map("declined_at")
+  declineNote            String?   @map("decline_note")
+
+  submittedAt     DateTime? @map("submitted_at")
+  approvedAt      DateTime? @map("approved_at")
+  issuedAt        DateTime? @map("issued_at")
+  issuedByUserId  String?   @map("issued_by_user_id")
+  rejectedAt      DateTime? @map("rejected_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+  createdByUserId String    @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  letter          WarningLetter?
+  acknowledgement DisciplinaryAcknowledgement?
+
+  @@index([caseId])
+  @@index([employeeId, status])
+  @@index([status, validUntil])
+  @@map("disciplinary_actions")
+}
+
+/// The letter as issued. Immutable: every field is a snapshot, and no endpoint updates this table.
+model WarningLetter {
+  id                          String             @id @default(cuid())
+  disciplinaryActionId        String             @unique @map("disciplinary_action_id")
+  action                      DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
+  letterNumber                String             @unique @map("letter_number")
+  subject                     String
+  employeeNameSnapshot        String             @map("employee_name_snapshot")
+  employeeCodeSnapshot        String             @map("employee_code_snapshot")
+  positionSnapshot            String?            @map("position_snapshot")
+  departmentSnapshot          String?            @map("department_snapshot")
+  organizationSnapshot        String?            @map("organization_snapshot")
+  incidentDateSnapshot        String             @map("incident_date_snapshot")
+  actionNameSnapshot          String             @map("action_name_snapshot")
+  bodySnapshot                String             @map("body_snapshot")
+  validUntilSnapshot          String?            @map("valid_until_snapshot")
+  acknowledgementTextSnapshot String             @map("acknowledgement_text_snapshot")
+  issuedAt                    DateTime           @map("issued_at")
+  createdAt                   DateTime           @default(now()) @map("created_at")
+
+  @@map("warning_letters")
+}
+
+/// Receipt, and only receipt. The statement the employee agreed to is frozen with it.
+model DisciplinaryAcknowledgement {
+  id                          String             @id @default(cuid())
+  actionId                    String             @unique @map("action_id")
+  action                      DisciplinaryAction @relation(fields: [actionId], references: [id])
+  employeeId                  String             @map("employee_id")
+  employee                    Employee           @relation(fields: [employeeId], references: [id])
+  userId                      String             @map("user_id")
+  user                        User               @relation(fields: [userId], references: [id])
+  acknowledgedAt              DateTime           @map("acknowledged_at")
+  acknowledgementTextSnapshot String             @map("acknowledgement_text_snapshot")
+  ipAddress                   String?            @map("ip_address")
+  userAgent                   String?            @map("user_agent")
+
+  @@unique([actionId, employeeId])
+  @@map("disciplinary_acknowledgements")
 }

@@ -17,6 +17,7 @@ import { payrollRouter } from './modules/payroll/payroll.routes';
 import { performanceRouter } from './modules/performance/performance.routes';
 import { competencyRouter } from './modules/competency/competency.routes';
 import { trainingRouter } from './modules/training/training.routes';
+import { employeeRelationsRouter } from './modules/employee-relations/er.routes';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
@@ -52,4 +53,5 @@ apiRouter.use('/payroll', payrollRouter);
 apiRouter.use('/performance', performanceRouter);
 apiRouter.use('/competency', competencyRouter);
 apiRouter.use('/training', trainingRouter);
+apiRouter.use('/employee-relations', employeeRelationsRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)

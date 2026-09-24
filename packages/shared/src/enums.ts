@@ -217,6 +217,33 @@ export type IdpItemStatus = (typeof IDP_ITEM_STATUSES)[number];
 export const DEVELOPMENT_TYPES = ['TRAINING', 'OJT', 'COACHING', 'MENTORING', 'SELF_STUDY', 'PROJECT', 'OTHER'] as const;
 export type DevelopmentType = (typeof DEVELOPMENT_TYPES)[number];
 
+// ---------- employee relations (Task 26) ----------
+/**
+ * A case's life. The record is operational — what was reported, what was proposed, what was decided — and none of
+ * these states is a legal conclusion about anybody.
+ */
+export const EMPLOYEE_RELATION_CASE_STATUSES = ['DRAFT', 'UNDER_REVIEW', 'PENDING_APPROVAL', 'ACTION_ISSUED', 'CLOSED', 'CANCELLED'] as const;
+export type EmployeeRelationCaseStatus = (typeof EMPLOYEE_RELATION_CASE_STATUSES)[number];
+
+/**
+ * A disciplinary action's life. REJECTED is terminal for that proposal: the approver said no, and HR drafts a new one
+ * rather than silently editing the one that was refused. Nothing moves to ISSUED except a final workflow approval.
+ */
+export const DISCIPLINARY_ACTION_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'ISSUED', 'ACKNOWLEDGED', 'REJECTED', 'CANCELLED'] as const;
+export type DisciplinaryActionStatus = (typeof DISCIPLINARY_ACTION_STATUSES)[number];
+
+/** Derived on read from `validUntil` — there is no scheduler and no row is mutated when a warning lapses. */
+export const DISCIPLINARY_VALIDITY_STATES = ['ACTIVE', 'EXPIRED', 'NOT_APPLICABLE'] as const;
+export type DisciplinaryValidityState = (typeof DISCIPLINARY_VALIDITY_STATES)[number];
+
+export const EMPLOYEE_RELATIONS_WORKFLOW = { module: 'employee_relations', entityType: 'DISCIPLINARY_ACTION' } as const;
+
+/**
+ * What acknowledging means, stated once and copied onto every acknowledgement: receipt of a document, and nothing
+ * more. It is never an admission.
+ */
+export const ACKNOWLEDGEMENT_STATEMENT = 'I confirm that I have received this document. Acknowledging receipt does not mean that I agree with its contents or admit to the matters described in it.';
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -245,6 +272,9 @@ export const NOTIFICATION_TYPES = {
   TRAINING_COMPLETED: 'TRAINING_COMPLETED',
   IDP_ACTIVATED: 'IDP_ACTIVATED',
   IDP_COMPLETED: 'IDP_COMPLETED',
+  /** Employee relations notifications say that a document exists, and nothing about what it says. */
+  DISCIPLINARY_ACTION_ISSUED: 'DISCIPLINARY_ACTION_ISSUED',
+  DISCIPLINARY_ACTION_ACKNOWLEDGED: 'DISCIPLINARY_ACTION_ACKNOWLEDGED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -262,7 +292,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -401,6 +431,21 @@ export const AUDIT_ACTIONS = {
   ACTIVATE_IDP: 'ACTIVATE_IDP',
   UPDATE_IDP_ITEM: 'UPDATE_IDP_ITEM',
   COMPLETE_IDP: 'COMPLETE_IDP',
+  CREATE_EMPLOYEE_RELATION_CASE: 'CREATE_EMPLOYEE_RELATION_CASE',
+  UPDATE_EMPLOYEE_RELATION_CASE: 'UPDATE_EMPLOYEE_RELATION_CASE',
+  CLOSE_EMPLOYEE_RELATION_CASE: 'CLOSE_EMPLOYEE_RELATION_CASE',
+  CREATE_DISCIPLINARY_ACTION: 'CREATE_DISCIPLINARY_ACTION',
+  UPDATE_DISCIPLINARY_ACTION: 'UPDATE_DISCIPLINARY_ACTION',
+  SUBMIT_DISCIPLINARY_ACTION: 'SUBMIT_DISCIPLINARY_ACTION',
+  APPROVE_DISCIPLINARY_ACTION: 'APPROVE_DISCIPLINARY_ACTION',
+  REJECT_DISCIPLINARY_ACTION: 'REJECT_DISCIPLINARY_ACTION',
+  ISSUE_DISCIPLINARY_ACTION: 'ISSUE_DISCIPLINARY_ACTION',
+  ISSUE_WARNING_LETTER: 'ISSUE_WARNING_LETTER',
+  ACKNOWLEDGE_DISCIPLINARY_ACTION: 'ACKNOWLEDGE_DISCIPLINARY_ACTION',
+  RECORD_ACKNOWLEDGEMENT_DECLINED: 'RECORD_ACKNOWLEDGEMENT_DECLINED',
+  CREATE_DISCIPLINARY_ACTION_TYPE: 'CREATE_DISCIPLINARY_ACTION_TYPE',
+  UPDATE_DISCIPLINARY_ACTION_TYPE: 'UPDATE_DISCIPLINARY_ACTION_TYPE',
+  UPDATE_DISCIPLINARY_POLICY: 'UPDATE_DISCIPLINARY_POLICY',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -463,6 +508,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   performance: 'Performance',
   competency: 'Competency',
   training: 'Training & development',
+  employee_relations: 'Employee relations',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

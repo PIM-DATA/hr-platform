@@ -194,7 +194,22 @@ export const privacyService = {
         ? await tx.auditLog.findMany({ where: { userId }, select: { action: true, module: true, recordType: true, recordId: true, createdAt: true, ipAddress: true }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS })
         : [];
 
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents };
+      // Employee relations: what was **issued to** the subject and what they acknowledged — the record as they received
+      // it. Case narratives, HR's internal notes, refused proposals and drafts are not the subject's copy of anything
+      // and stay out; so does every other person named anywhere in a case.
+      const employeeRelations = await tx.disciplinaryAction.findMany({
+        where: { employeeId: employee.id, status: { in: ['ISSUED', 'ACKNOWLEDGED'] } },
+        select: {
+          actionTypeNameSnapshot: true, issuedDate: true, validUntil: true, status: true, acknowledgedAt: true, acknowledgementDueDate: true,
+          case: { select: { caseNumber: true, incidentDate: true, categoryNameSnapshot: true } },
+          letter: { select: { letterNumber: true, subject: true, bodySnapshot: true, issuedAt: true, acknowledgementTextSnapshot: true } },
+          acknowledgement: { select: { acknowledgedAt: true, acknowledgementTextSnapshot: true } },
+        },
+        orderBy: { issuedAt: 'asc' },
+        take: MAX_ROWS,
+      });
+
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -218,6 +233,7 @@ export const privacyService = {
         { category: 'other people’s notifications', reason: 'Notifications sent to approvers or colleagues are their personal data, even when they concern this employee.' },
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
+        { category: 'employee relations case narratives and internal notes', reason: 'The case description and HR investigation notes are HR working records that may concern other people; the export carries the documents issued to the subject and their acknowledgements.' },
       ],
     };
 
@@ -230,6 +246,7 @@ export const privacyService = {
         counts: {
           leaveRequests: data.leaveRequests.length, entitlements: data.entitlements.length, ledger: data.ledger.length,
           workflows: data.workflows.length, notifications: data.notifications.length, auditEvents: data.auditEvents.length, privacyRequests: data.privacyRequests.length,
+          employeeRelations: data.employeeRelations.length,
         },
       },
     });

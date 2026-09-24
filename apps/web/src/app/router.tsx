@@ -76,6 +76,13 @@ import { CoursesPage } from '@/features/training/CoursesPage';
 import { SessionsPage } from '@/features/training/SessionsPage';
 import { IdpsPage } from '@/features/training/IdpsPage';
 import { TrainingReportsPage } from '@/features/training/TrainingReportsPage';
+import { ErLayout } from '@/features/employee-relations/er-ui';
+import { MyRecordsPage } from '@/features/employee-relations/MyRecordsPage';
+import { ApprovalsPage as ErApprovalsPage } from '@/features/employee-relations/ApprovalsPage';
+import { CasesPage as ErCasesPage } from '@/features/employee-relations/CasesPage';
+import { ActionsPage as ErActionsPage } from '@/features/employee-relations/ActionsPage';
+import { ActionTypesPage } from '@/features/employee-relations/ActionTypesPage';
+import { ErReportsPage } from '@/features/employee-relations/ErReportsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -272,6 +279,23 @@ export const router = createBrowserRouter([
                 { path: 'courses', element: <CoursesPage /> },
                 { path: 'sessions', element: <SessionsPage /> },
                 { element: <RequirePermission permission={PERMISSIONS.IDP_MANAGE} />, children: [{ path: 'idps', element: <IdpsPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Employee relations (Task 26). The most confidential module: case screens need a permission no manager
+            // holds by default, and an employee reaches only what was issued to them.
+            element: <RequirePermission permission={[PERMISSIONS.EMPLOYEE_RELATIONS_ACKNOWLEDGE, PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE]} />,
+            children: [{
+              path: 'hrm/employee-relations', element: <ErLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.EMPLOYEE_RELATIONS_ACKNOWLEDGE} />, children: [{ index: true, element: <MyRecordsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_APPROVE} />, children: [{ path: 'approvals', element: <ErApprovalsPage /> }] },
+                {
+                  element: <RequirePermission permission={[PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE]} />,
+                  children: [{ path: 'cases', element: <ErCasesPage /> }, { path: 'actions', element: <ErActionsPage /> }, { path: 'reports', element: <ErReportsPage /> }],
+                },
+                { element: <RequirePermission permission={PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE} />, children: [{ path: 'action-types', element: <ActionTypesPage /> }] },
               ],
             }],
           },

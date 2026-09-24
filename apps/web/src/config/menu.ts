@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote,
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -38,6 +38,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Attendance', path: '/hrm/attendance', icon: CalendarCheck, permission: [P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK] },
       { label: 'Leave', path: '/hrm/leave', icon: CalendarOff, permission: [P.LEAVE_VIEW, P.WORKFLOW_APPROVE] },
       { label: 'Payroll', path: '/hrm/payroll', icon: Banknote, permission: [P.PAYROLL_VIEW_OWN, P.PAYROLL_MANAGE, P.PAYROLL_RUN, P.PAYROLL_APPROVE] },
+      { label: 'Employee relations', path: '/hrm/employee-relations', icon: ShieldAlert, permission: [P.EMPLOYEE_RELATIONS_ACKNOWLEDGE, P.EMPLOYEE_RELATIONS_VIEW, P.EMPLOYEE_RELATIONS_MANAGE] },
       { label: 'Performance', path: '/hrm/performance', icon: Target, permission: P.PERFORMANCE_VIEW },
     ],
   },

@@ -73,6 +73,11 @@ export const PERMISSIONS = {
   TRAINING_RECORD_RESULT: 'training.record_result',
   IDP_VIEW: 'idp.view',
   IDP_MANAGE: 'idp.manage',
+
+  EMPLOYEE_RELATIONS_VIEW: 'employee_relations.view',
+  EMPLOYEE_RELATIONS_MANAGE: 'employee_relations.manage',
+  EMPLOYEE_RELATIONS_ISSUE: 'employee_relations.issue',
+  EMPLOYEE_RELATIONS_ACKNOWLEDGE: 'employee_relations.acknowledge',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -153,6 +158,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.TRAINING_RECORD_RESULT, module: 'training', description: 'Record training attendance and results' },
   { code: PERMISSIONS.IDP_VIEW, module: 'training', description: 'View your own development plan' },
   { code: PERMISSIONS.IDP_MANAGE, module: 'training', description: 'Create and manage individual development plans' },
+
+  { code: PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, module: 'employee_relations', description: 'View employee relations cases and disciplinary history' },
+  { code: PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE, module: 'employee_relations', description: 'Manage employee relations cases, actions and configuration' },
+  { code: PERMISSIONS.EMPLOYEE_RELATIONS_ISSUE, module: 'employee_relations', description: 'Submit disciplinary actions for approval and issue warning letters' },
+  { code: PERMISSIONS.EMPLOYEE_RELATIONS_ACKNOWLEDGE, module: 'employee_relations', description: 'Acknowledge receipt of a disciplinary document issued to you' },
 ];
 
 /**

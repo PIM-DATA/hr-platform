@@ -19,6 +19,7 @@ export * from './payroll';
 export * from './performance';
 export * from './competency';
 export * from './training';
+export * from './employee-relations';
 export * from './onboarding';
 export * from './account';
 export * from './privacy';
