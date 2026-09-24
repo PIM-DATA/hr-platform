@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2,
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -14,6 +14,8 @@ export interface MenuItem {
   permission?: PermissionCode | PermissionCode[];
   /** Not implemented yet → renders ComingSoonPage. */
   comingSoon?: boolean;
+  /** Hidden when the named optional feature is disabled on this installation (UX only; the API decides). */
+  feature?: 'copilot';
 }
 export interface MenuGroup {
   label?: string;
@@ -62,6 +64,7 @@ export const MENU: MenuGroup[] = [
     ],
   },
   { label: 'Analytics', items: [{ label: 'Executive dashboard', path: '/analytics/executive', icon: BarChart3, permission: P.ANALYTICS_VIEW_EXECUTIVE }] },
+  { label: 'Assistant', items: [{ label: 'HR Copilot', path: '/copilot', icon: Sparkles, permission: P.COPILOT_USE, feature: 'copilot' }] },
   {
     label: 'Administration',
     items: [

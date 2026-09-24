@@ -25,6 +25,7 @@ export * from './talent';
 export * from './analytics';
 export * from './documents';
 export * from './reports';
+export * from './copilot';
 export * from './onboarding';
 export * from './account';
 export * from './privacy';

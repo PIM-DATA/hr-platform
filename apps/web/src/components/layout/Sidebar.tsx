@@ -3,6 +3,8 @@ import { Building2, X } from 'lucide-react';
 import { MENU, type MenuItem } from '@/config/menu';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useCopilotStatus } from '@/features/copilot/copilot.api';
+import { PERMISSIONS } from '@hr/shared';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -13,8 +15,10 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   // Items with a `permission` are shown only when the user has it; groups without visible items disappear.
   // (UX only — every API endpoint enforces permissions itself.)
   const { hasPermission } = useAuth();
+  const copilot = useCopilotStatus(hasPermission(PERMISSIONS.COPILOT_USE));
   const allowed = (p: MenuItem['permission']) => !p || (Array.isArray(p) ? p.some(hasPermission) : hasPermission(p));
-  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.permission)) })).filter((g) => g.items.length > 0);
+  const featureOn = (f: MenuItem['feature']) => !f || (f === 'copilot' && copilot.data?.enabled === true);
+  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.permission) && featureOn(i.feature)) })).filter((g) => g.items.length > 0);
 
   return (
     <>

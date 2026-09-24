@@ -11,7 +11,7 @@ export const logger = pino({
   level: env.isTest ? (process.env.TEST_LOG_LEVEL ?? 'silent') : env.LOG_LEVEL,
   redact: {
     // never let secrets leak into logs, even by accident
-    paths: ['password', 'passwordHash', 'password_hash', 'token', 'tokenHash', 'cookie', 'req.headers.cookie', 'req.headers.authorization'],
+    paths: ['password', 'passwordHash', 'password_hash', 'token', 'tokenHash', 'cookie', 'req.headers.cookie', 'req.headers.authorization', 'apiKey', 'api_key', 'COPILOT_API_KEY', 'req.headers["x-api-key"]'],
     censor: '[REDACTED]',
   },
   // pretty transport only in development; production and tests write JSON lines in-process (tests: so vitest can capture them)

@@ -300,6 +300,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Employee 360 / analytics: no report builder, dashboard designer, scheduled/emailed reports, external BI, warehouse, predictive analytics, attrition scoring, employee ranking, custom KPI formulas, historical headcount trend, executive salary analytics by default, dossier export, or AI copilot.
 - Documents: local filesystem storage adapter only, no malware scanning, no OCR, no e-signature, no approval workflow, no retention automation, no content search, no external DMS, no PDF generation, no expiry reminders.
 - Reports: no arbitrary SQL, custom joins, calculated fields, pivots, charts, dashboard designer, scheduled/emailed reports, warehouse, BI connector, PDF designer or background export job.
+- HR Copilot: one provider adapter (Anthropic), no streaming, no conversation persistence, no embeddings/semantic search, pattern-based decision-boundary classifier, in-memory rate limiter, no proactive insights or actions; real-provider answers are non-deterministic (tests use the fake provider).
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -911,6 +912,29 @@ HRM → Documents; HRM → Reports.
 - **Production env:** `DOCUMENT_STORAGE_DIR` (required while `DOCUMENTS_ENABLED=true`), `DOCUMENT_MAX_FILE_MB`.
   **The database backup does not include document bytes — back up the storage directory with it** (see the
   operations runbook).
+
+## HR Copilot (Task 31)
+
+Guide: [docs/hr-copilot.md](docs/hr-copilot.md). Assistant → HR Copilot (shown only when enabled and the user holds
+`copilot.use`). Off by default; the application never depends on it.
+
+- **Grounded** — every fact comes from a server-run tool over an existing module (Employee 360, executive
+  analytics, leave, attendance, reports registry, document metadata…), and every answer carries the sources those
+  tools returned ("แหล่งข้อมูล" chips with as-of time and a deep link when permitted). No data → says so, never guesses.
+- **Permission-aware** — `copilot.use` grants no data; each tool opens with its source module's permission and
+  re-applies that module's scope. Managers see their team, executives aggregates only, employees themselves. No
+  individual salary (own closed payslips only), no ER narratives, no potential comments or succession notes, no
+  candidate names or feedback, no file contents. Arguments are strict: no scope, employee id, SQL, path or role can
+  be passed.
+- **Read-only** — no write tool exists. A report request produces a validated draft to open in the Report Center;
+  nothing is saved, shared or submitted by the copilot.
+- **No autonomous HR decisions** — hire/reject/fire/discipline/promote/pay/best/worst/successor questions get a
+  boundary notice and facts only; no ranking, no protected-attribute reasoning, no disciplinary→talent inference.
+- **Env:** `COPILOT_ENABLED`, `COPILOT_PROVIDER` (`anthropic` | `fake` — production refuses `fake`), `COPILOT_MODEL`,
+  `COPILOT_API_KEY` (required in production while enabled), `COPILOT_TIMEOUT_MS`, `COPILOT_MAX_TOOL_STEPS`,
+  `COPILOT_MAX_INPUT_CHARS`, `COPILOT_MAX_OUTPUT_TOKENS`, `COPILOT_RATE_LIMIT`. Questions and minimized tool results
+  are sent to the configured provider; the deployment owner reviews the provider's terms before enabling it.
+- **Not** an AI hiring, promotion, prediction or legal-advice tool; makes no PDPA or zero-retention claim.
 
 ## Pilot release
 

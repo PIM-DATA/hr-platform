@@ -16,4 +16,5 @@ export * from './recruitment';
 export * from './talent';
 export * from './documents';
 export * from './reports';
+export * from './copilot';
 export * from './schemas';

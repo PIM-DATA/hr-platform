@@ -192,6 +192,7 @@ From the moment it is used, the database backup described above is **not a compl
 - Restore the pair together. A database restored without the matching storage produces documents whose objects
   are missing (downloads answer `DOCUMENT_OBJECT_MISSING`); storage restored without the database produces orphaned
   files. Neither is silently corrected.
+- `npm run ops:check` reports `copilot: disabled | configured` from configuration only (the AI provider is never called by readiness; a provider outage surfaces as 503 `COPILOT_UNAVAILABLE` on the copilot endpoints and nowhere else).
 - `npm run ops:check` reports `documentStorage: ok | disabled | unavailable` from the readiness probe; `unavailable`
   (root missing or not writable) makes the API not ready. Production refuses to start with the document center
   enabled and no `DOCUMENT_STORAGE_DIR`, or with a temporary path.

@@ -373,7 +373,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -592,6 +592,8 @@ export const AUDIT_ACTIONS = {
   SHARE_REPORT: 'SHARE_REPORT',
   RUN_REPORT: 'RUN_REPORT',
   EXPORT_REPORT: 'EXPORT_REPORT',
+  // copilot (one summarized event per request; never prompt or answer text)
+  COPILOT_QUERY: 'COPILOT_QUERY',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -659,6 +661,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   talent: 'Career & talent',
   documents: 'Documents',
   reports: 'Reports',
+  copilot: 'HR Copilot',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

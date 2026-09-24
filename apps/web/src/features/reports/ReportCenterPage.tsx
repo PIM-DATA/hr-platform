@@ -18,6 +18,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LoadingBlock } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/hooks/useAuth';
+import { REPORT_DRAFT_KEY } from '@/features/copilot/copilot.api';
 import { errorMessage } from '@/features/organization/shared';
 import { exportAdHoc, exportSaved, useReportDatasets, useReportMutations, useReportTemplates, useRunReport, useSavedReport, useSavedReports } from './reports.api';
 
@@ -130,6 +131,16 @@ export function ReportBuilderPage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const editingId = params.get('saved') ?? routeId ?? null;
+  // A draft handed over by the HR Copilot: loaded once, never saved by itself — the user reviews and saves.
+  useEffect(() => {
+    if (params.get('draft') !== '1') return;
+    try {
+      const raw = sessionStorage.getItem(REPORT_DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as { datasetId: string; datasetName: string; definition: ReportDefinition };
+      setDataset(draft.datasetId); setDef(draft.definition); setName(`${draft.datasetName} (copilot draft)`); setPreviewOn(true);
+    } catch { /* an unreadable draft opens an empty builder */ }
+  }, [params]);
   useEffect(() => {
     const t = params.get('template');
     if (t && templates.data) { const tpl = templates.data.find((x) => x.id === t); if (tpl) { setDataset(tpl.datasetId); setDef(tpl.definition); setName(tpl.name); setDescription(tpl.description); setPreviewOn(true); } }

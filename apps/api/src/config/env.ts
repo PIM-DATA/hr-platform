@@ -39,6 +39,16 @@ const envSchema = z.object({
   DOCUMENTS_ENABLED: z.preprocess((v) => (v === undefined || v === '' ? true : v === true || v === 'true' || v === '1' ? true : v === false || v === 'false' || v === '0' ? false : v), z.boolean()),
   DOCUMENT_STORAGE_DIR: optional(z.string().min(1)),
   DOCUMENT_MAX_FILE_MB: z.coerce.number().int().min(1).max(500).default(20),
+  /** HR Copilot (Task 31). Off by default; the core application never depends on it. */
+  COPILOT_ENABLED: z.preprocess((v) => (v === undefined || v === '' ? false : v === true || v === 'true' || v === '1' ? true : v === false || v === 'false' || v === '0' ? false : v), z.boolean()),
+  COPILOT_PROVIDER: z.enum(['anthropic', 'fake']).default('anthropic'),
+  COPILOT_MODEL: z.string().default('claude-sonnet-5'),
+  COPILOT_API_KEY: optional(z.string().min(1)),
+  COPILOT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+  COPILOT_MAX_TOOL_STEPS: z.coerce.number().int().min(1).max(8).default(6),
+  COPILOT_MAX_INPUT_CHARS: z.coerce.number().int().min(500).max(50_000).default(12_000),
+  COPILOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8192).default(1024),
+  COPILOT_RATE_LIMIT: z.coerce.number().int().min(1).max(600).default(20),
   COOKIE_SECURE: z
     .string()
     .optional()
@@ -89,6 +99,8 @@ export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: z.infer<
   if (value.NODE_ENV === 'production') {
     // Fail fast: production never falls back to development defaults.
     if (!source.DATABASE_URL) errors.push('DATABASE_URL is required in production');
+    if (value.COPILOT_ENABLED && value.COPILOT_PROVIDER === 'fake') errors.push('COPILOT_PROVIDER=fake is a test double and cannot run in production');
+    if (value.COPILOT_ENABLED && value.COPILOT_PROVIDER === 'anthropic' && !source.COPILOT_API_KEY) errors.push('COPILOT_API_KEY is required in production while the copilot is enabled (set COPILOT_ENABLED=false to disable it)');
     if (value.DOCUMENTS_ENABLED && !source.DOCUMENT_STORAGE_DIR) errors.push('DOCUMENT_STORAGE_DIR is required in production while the document center is enabled (set DOCUMENTS_ENABLED=false to disable it)');
     if (source.DOCUMENT_STORAGE_DIR && /^\/(tmp|var\/tmp|dev\/shm)(\/|$)/.test(source.DOCUMENT_STORAGE_DIR)) errors.push('DOCUMENT_STORAGE_DIR must not be a temporary path in production');
     if (!source.CORS_ORIGIN) errors.push('CORS_ORIGIN is required in production (the browser origin that serves the app)');

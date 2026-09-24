@@ -1,4 +1,5 @@
 import { documentStorage, documentStorageConfigured } from '../documents/storage';
+import { copilotStatus } from '../copilot/provider';
 import { Router } from 'express';
 import { env } from '../../config/env';
 import { prisma } from '../../lib/prisma';
@@ -43,5 +44,5 @@ healthRouter.get('/ready', async (_req, res) => {
   // center that accepts metadata but cannot keep bytes is worse than one that refuses.
   const storage = await documentStorageHealth();
   const ready = ok && storage !== 'unavailable';
-  res.status(ready ? 200 : 503).json({ data: { ...base(), status: ready ? 'ready' : 'unavailable', database: ok ? 'ok' : 'unavailable', documentStorage: storage } });
+  res.status(ready ? 200 : 503).json({ data: { ...base(), status: ready ? 'ready' : 'unavailable', database: ok ? 'ok' : 'unavailable', documentStorage: storage, copilot: copilotStatus() } });
 });

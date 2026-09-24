@@ -103,6 +103,7 @@ export const PERMISSIONS = {
   REPORTS_CREATE: 'reports.create',
   REPORTS_SHARE: 'reports.share',
   REPORTS_MANAGE: 'reports.manage',
+  COPILOT_USE: 'copilot.use',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -213,6 +214,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.REPORTS_CREATE, module: 'reports', description: 'Save private report definitions' },
   { code: PERMISSIONS.REPORTS_SHARE, module: 'reports', description: 'Share saved reports with other report users (sharing never grants dataset access)' },
   { code: PERMISSIONS.REPORTS_MANAGE, module: 'reports', description: 'Edit or delete any saved report' },
+  { code: PERMISSIONS.COPILOT_USE, module: 'copilot', description: 'Open the HR Copilot. Grants no data: every answer is built from tools that re-check the source module\'s permission and scope' },
 ];
 
 /**

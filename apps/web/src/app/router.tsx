@@ -102,6 +102,7 @@ import { TalentPoolsPage } from '@/features/talent/TalentPoolsPage';
 import { SuccessionPage } from '@/features/talent/SuccessionPage';
 import { TalentReportsPage } from '@/features/talent/TalentReportsPage';
 import { ExecutiveDashboardPage } from '@/features/analytics/ExecutiveDashboardPage';
+import { CopilotPage } from '@/features/copilot/CopilotPage';
 import { DocumentsLayout } from '@/features/documents/documents-ui';
 import { MyDocumentsPage } from '@/features/documents/MyDocumentsPage';
 import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents/DocumentCenterPage';
@@ -371,6 +372,7 @@ export const router = createBrowserRouter([
             children: [{ path: 'hrm/reports', element: <ReportsLayout />, children: [{ index: true, element: <SavedReportsPage /> }, { path: 'builder', element: <ReportBuilderPage /> }, { path: 'builder/:id', element: <ReportBuilderPage /> }] }],
           },
           { element: <RequirePermission permission={PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE} />, children: [{ path: 'analytics/executive', element: <ExecutiveDashboardPage /> }] },
+          { element: <RequirePermission permission={PERMISSIONS.COPILOT_USE} />, children: [{ path: 'copilot', element: <CopilotPage /> }] },
           { element: <RequirePermission permission={PERMISSIONS.ONBOARDING_MANAGE} />, children: [{ path: 'admin/onboarding', element: <OnboardingPage /> }] },
           {
             // Privacy operations (Task 18). Each tab is guarded on its own permission, as the API is.

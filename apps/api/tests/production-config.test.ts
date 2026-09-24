@@ -49,6 +49,15 @@ describe('production environment validation', () => {
     expect(errorsOf(parseEnv({ ...PROD_BASE, DOCUMENT_STORAGE_DIR: '/tmp/docs' }))).toMatch(/temporary path/);
     expect(errorsOf(parseEnv({ ...PROD_BASE, DOCUMENT_STORAGE_DIR: undefined, DOCUMENTS_ENABLED: 'false' }))).not.toMatch(/DOCUMENT_STORAGE_DIR/);
   });
+  it('the copilot is off by default, refuses the fake provider in production and needs a credential when enabled (Task 31)', () => {
+    const off = parse();
+    expect(off.ok && off.value.COPILOT_ENABLED).toBe(false);
+    expect(errorsOf(parse({ COPILOT_ENABLED: 'true' }))).toMatch(/COPILOT_API_KEY is required/);
+    expect(errorsOf(parse({ COPILOT_ENABLED: 'true', COPILOT_PROVIDER: 'fake', COPILOT_API_KEY: 'x' }))).toMatch(/COPILOT_PROVIDER=fake/);
+    expect(errorsOf(parse({ COPILOT_ENABLED: 'true', COPILOT_API_KEY: 'sk-test-placeholder-value' }))).toBe('');
+    expect(errorsOf(parse({ COPILOT_ENABLED: 'false', COPILOT_PROVIDER: 'fake' }))).toBe('');
+    expect(errorsOf(parse({ COPILOT_ENABLED: 'true', COPILOT_API_KEY: 'k', COPILOT_TIMEOUT_MS: '500' }))).toMatch(/COPILOT_TIMEOUT_MS/);
+  });
   it('development placeholders and demo credentials are rejected in production', () => {
     expect(errorsOf(parse({ SEED_ADMIN_PASSWORD: 'change-me-locally' }))).toMatch(/development placeholder/);
     expect(errorsOf(parse({ SEED_DEMO_PASSWORD: 'anything-goes-here' }))).toMatch(/SEED_DEMO_PASSWORD must not be set/);
@@ -121,6 +130,7 @@ describe('password policy is one rule', () => {
           PUBLIC_APP_URL: 'https://hr.example.com',
           SEED_ADMIN_PASSWORD: '', // an empty value means "not set" (see env.ts), which is what a production host looks like
           SEED_DEMO_PASSWORD: '',
+          COPILOT_ENABLED: 'false', COPILOT_PROVIDER: 'anthropic', // a developer's .env may enable the fake copilot; production would not
           COOKIE_SECURE: 'true', // the developer .env sets false; production refuses that
           BOOTSTRAP_ADMIN_EMAIL: 'bootstrap-policy@example.com',
           BOOTSTRAP_ADMIN_PASSWORD: password,

@@ -35,8 +35,9 @@ async function main() {
   const version = (ready.body as { data?: { version?: string | null } } | null)?.data?.version ?? null;
   // Document storage is reported by the readiness probe: 'ok', 'disabled', or 'unavailable' (which already makes it 503).
   const documentStorage = (ready.body as { data?: { documentStorage?: string } } | null)?.data?.documentStorage ?? 'unknown';
+  const copilot = (ready.body as { data?: { copilot?: string } } | null)?.data?.copilot ?? 'unknown';
   opsLog(healthy ? 'ops_check_healthy' : 'ops_check_unhealthy', {
-    target: base, liveStatus: live.status, readyStatus: ready.status, version, documentStorage, durationMs: Date.now() - started,
+    target: base, liveStatus: live.status, readyStatus: ready.status, version, documentStorage, copilot, durationMs: Date.now() - started,
   });
   process.exit(healthy ? 0 : 1);
 }
