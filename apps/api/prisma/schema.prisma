@@ -40,26 +40,27 @@ model User {
 
   // workflow (Phase 2)
   workflowDefinitionSteps WorkflowDefinitionStep[]
-  workflowRequests        WorkflowInstance[]     @relation("WorkflowRequesterUser")
-  workflowApproverSteps   WorkflowInstanceStep[] @relation("WorkflowStepApproverUser")
-  workflowActedSteps      WorkflowInstanceStep[] @relation("WorkflowStepActedBy")
+  workflowRequests        WorkflowInstance[]       @relation("WorkflowRequesterUser")
+  workflowApproverSteps   WorkflowInstanceStep[]   @relation("WorkflowStepApproverUser")
+  workflowActedSteps      WorkflowInstanceStep[]   @relation("WorkflowStepActedBy")
   workflowActions         WorkflowAction[]
   leaveLedgerEntries      LeaveLedger[]
   leaveRequestsCreated    LeaveRequest[]
   onboardingImports       OnboardingImportRun[]
-  passwordResetTokens     PasswordResetToken[]   @relation("PasswordResetSubject")
-  passwordResetsIssued    PasswordResetToken[]   @relation("PasswordResetIssuer")
-  privacyRequestsSubject  PrivacyRequest[]       @relation("PrivacySubjectUser")
-  privacyRequestsCreated  PrivacyRequest[]       @relation("PrivacyRequestCreator")
-  privacyRequestsAssigned PrivacyRequest[]       @relation("PrivacyRequestAssignee")
-  attendanceSchedules     AttendanceSchedule[]   @relation("AttendanceScheduleCreator")
-  attendanceClockEvents   AttendanceClockEvent[] @relation("AttendanceClockCreator")
-  attendanceCorrections   AttendanceCorrection[] @relation("AttendanceCorrectionCreator")
-  overtimeRequestsCreated OvertimeRequest[]      @relation("OvertimeRequestCreator")
-  compensationsCreated    EmployeeCompensation[] @relation("CompensationCreator")
-  payItemsCreated         EmployeePayItem[]      @relation("PayItemCreator")
-  payrollRunsStarted      PayrollRun[]           @relation("PayrollRunStarter")
-  payrollRunsClosed       PayrollRun[]           @relation("PayrollRunCloser")
+  passwordResetTokens     PasswordResetToken[]     @relation("PasswordResetSubject")
+  passwordResetsIssued    PasswordResetToken[]     @relation("PasswordResetIssuer")
+  privacyRequestsSubject  PrivacyRequest[]         @relation("PrivacySubjectUser")
+  privacyRequestsCreated  PrivacyRequest[]         @relation("PrivacyRequestCreator")
+  privacyRequestsAssigned PrivacyRequest[]         @relation("PrivacyRequestAssignee")
+  attendanceSchedules     AttendanceSchedule[]     @relation("AttendanceScheduleCreator")
+  attendanceClockEvents   AttendanceClockEvent[]   @relation("AttendanceClockCreator")
+  attendanceCorrections   AttendanceCorrection[]   @relation("AttendanceCorrectionCreator")
+  overtimeRequestsCreated OvertimeRequest[]        @relation("OvertimeRequestCreator")
+  compensationsCreated    EmployeeCompensation[]   @relation("CompensationCreator")
+  payItemsCreated         EmployeePayItem[]        @relation("PayItemCreator")
+  payrollRunsStarted      PayrollRun[]             @relation("PayrollRunStarter")
+  payrollRunsClosed       PayrollRun[]             @relation("PayrollRunCloser")
+  performanceReviews      PerformancePlan[]        @relation("PerformancePlanReviewerUser")
   notifications           Notification[]
 
   @@map("users")
@@ -75,8 +76,8 @@ model Role {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  userRoles       UserRole[]
-  rolePermissions RolePermission[]
+  userRoles               UserRole[]
+  rolePermissions         RolePermission[]
   workflowDefinitionSteps WorkflowDefinitionStep[] // reserved for ROLE approvers (not enabled)
 
   @@map("roles")
@@ -136,27 +137,29 @@ model Session {
 // =====================================================================
 
 model Organization {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
+  id                String        @id @default(cuid())
+  code              String        @unique
+  name              String
   /// IANA timezone (e.g. Asia/Bangkok) — source of truth for business "today" in this organization
-  timezone  String   @default("Asia/Bangkok")
+  timezone          String        @default("Asia/Bangkok")
   /// Work calendar used for leave/attendance calculations unless an employee-level assignment exists (Phase 2B)
   defaultCalendarId String?       @map("default_calendar_id")
   defaultCalendar   WorkCalendar? @relation("OrganizationDefaultCalendar", fields: [defaultCalendarId], references: [id])
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  isActive          Boolean       @default(true) @map("is_active")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
-  departments   Department[]
-  employees     Employee[]
-  workCalendars WorkCalendar[] @relation("OrganizationCalendars")
-  leavePolicies LeavePolicy[]
-  attendanceShifts AttendanceShift[]
-  overtimePolicies OvertimePolicy[]
-  overtimeRequests OvertimeRequest[]
-  payrollPolicies  PayrollPolicy[]
-  payrollPeriods   PayrollPeriod[]
+  departments       Department[]
+  employees         Employee[]
+  workCalendars     WorkCalendar[]     @relation("OrganizationCalendars")
+  leavePolicies     LeavePolicy[]
+  attendanceShifts  AttendanceShift[]
+  overtimePolicies  OvertimePolicy[]
+  overtimeRequests  OvertimeRequest[]
+  payrollPolicies   PayrollPolicy[]
+  payrollPeriods    PayrollPeriod[]
+  performanceCycles PerformanceCycle[]
+  performanceKpis   PerformanceKpi[]
 
   @@map("organizations")
 }
@@ -255,11 +258,11 @@ model Employee {
   createdBy String?  @map("created_by") // users.id
   updatedBy String?  @map("updated_by") // users.id
 
-  user             User?
-  headOfDepartments Department[]       @relation("DepartmentHead")
-  positionHistory  EmployeePosition[]
-  managerHistory   EmployeeManager[]   @relation("ManagerHistoryEmployee")
-  managedHistory   EmployeeManager[]   @relation("ManagerHistoryManager")
+  user                  User?
+  headOfDepartments     Department[]           @relation("DepartmentHead")
+  positionHistory       EmployeePosition[]
+  managerHistory        EmployeeManager[]      @relation("ManagerHistoryEmployee")
+  managedHistory        EmployeeManager[]      @relation("ManagerHistoryManager")
   workflowRequests      WorkflowInstance[]     @relation("WorkflowRequesterEmployee")
   workflowApproverSteps WorkflowInstanceStep[] @relation("WorkflowStepApproverEmployee")
   leaveEntitlements     LeaveEntitlement[]
@@ -273,6 +276,8 @@ model Employee {
   compensations         EmployeeCompensation[]
   payItems              EmployeePayItem[]
   payrollResults        PayrollResult[]
+  performancePlans      PerformancePlan[]      @relation("PerformancePlanEmployee")
+  performanceReviews    PerformancePlan[]      @relation("PerformancePlanReviewer")
 
   @@index([departmentId])
   @@index([managerId])
@@ -321,8 +326,8 @@ model AuditLog {
   id         String   @id @default(cuid())
   userId     String?  @map("user_id") // actor; null for system actions
   user       User?    @relation(fields: [userId], references: [id])
-  action     String   // e.g. UPDATE_EMPLOYEE
-  module     String   // e.g. employees
+  action     String // e.g. UPDATE_EMPLOYEE
+  module     String // e.g. employees
   recordType String   @map("record_type") // e.g. Employee
   recordId   String?  @map("record_id")
   oldValue   String?  @map("old_value")
@@ -482,8 +487,8 @@ model WorkCalendar {
   createdBy      String?      @map("created_by")
   updatedBy      String?      @map("updated_by")
 
-  holidays          Holiday[]
-  defaultForOrgs    Organization[] @relation("OrganizationDefaultCalendar")
+  holidays       Holiday[]
+  defaultForOrgs Organization[] @relation("OrganizationDefaultCalendar")
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])
@@ -718,18 +723,18 @@ model NotificationDelivery {
 /// the entities it created are the real record); this row exists to answer "what was imported, by whom, when" and to
 /// make re-submitting the same file a no-op rather than a duplicate import.
 model OnboardingImportRun {
-  id              String   @id @default(cuid())
-  fileName        String   @map("file_name") // sanitised basename, never a path
-  fileHash        String   @unique @map("file_hash") // SHA-256 of the workbook: the idempotency key
-  templateVersion Int      @map("template_version")
-  organizationCount Int    @default(0) @map("organization_count")
-  departmentCount Int      @default(0) @map("department_count")
-  jobCount        Int      @default(0) @map("job_count")
-  positionCount   Int      @default(0) @map("position_count")
-  employeeCount   Int      @default(0) @map("employee_count")
-  createdByUserId String   @map("created_by_user_id")
-  createdBy       User     @relation(fields: [createdByUserId], references: [id])
-  createdAt       DateTime @default(now()) @map("created_at")
+  id                String   @id @default(cuid())
+  fileName          String   @map("file_name") // sanitised basename, never a path
+  fileHash          String   @unique @map("file_hash") // SHA-256 of the workbook: the idempotency key
+  templateVersion   Int      @map("template_version")
+  organizationCount Int      @default(0) @map("organization_count")
+  departmentCount   Int      @default(0) @map("department_count")
+  jobCount          Int      @default(0) @map("job_count")
+  positionCount     Int      @default(0) @map("position_count")
+  employeeCount     Int      @default(0) @map("employee_count")
+  createdByUserId   String   @map("created_by_user_id")
+  createdBy         User     @relation(fields: [createdByUserId], references: [id])
+  createdAt         DateTime @default(now()) @map("created_at")
 
   @@index([createdAt])
   @@map("onboarding_import_runs")
@@ -780,7 +785,6 @@ model PrivacyRequest {
   @@map("privacy_requests")
 }
 
-
 // ---------------------------------------------------------------------------
 // Time & Attendance (Task 20)
 // ---------------------------------------------------------------------------
@@ -788,21 +792,21 @@ model PrivacyRequest {
 /// A working pattern: when the day starts and ends, how long the unpaid break is, and how much lateness is forgiven.
 /// Times are `HH:mm` wall clock in the organization's timezone; the instants they mean are computed per date.
 model AttendanceShift {
-  id                     String   @id @default(cuid())
-  organizationId         String   @map("organization_id")
+  id                     String       @id @default(cuid())
+  organizationId         String       @map("organization_id")
   organization           Organization @relation(fields: [organizationId], references: [id])
   code                   String
   name                   String
-  startTime              String   @map("start_time") // HH:mm
-  endTime                String   @map("end_time") // HH:mm
-  breakMinutes           Int      @default(0) @map("break_minutes")
-  lateGraceMinutes       Int      @default(0) @map("late_grace_minutes")
-  earlyLeaveGraceMinutes Int      @default(0) @map("early_leave_grace_minutes")
+  startTime              String       @map("start_time") // HH:mm
+  endTime                String       @map("end_time") // HH:mm
+  breakMinutes           Int          @default(0) @map("break_minutes")
+  lateGraceMinutes       Int          @default(0) @map("late_grace_minutes")
+  earlyLeaveGraceMinutes Int          @default(0) @map("early_leave_grace_minutes")
   /// Derived from the times at write time (end <= start), stored so queries need not recompute it.
-  isOvernight            Boolean  @default(false) @map("is_overnight")
-  isActive               Boolean  @default(true) @map("is_active")
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
+  isOvernight            Boolean      @default(false) @map("is_overnight")
+  isActive               Boolean      @default(true) @map("is_active")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
 
   schedules AttendanceSchedule[]
   records   AttendanceRecord[]
@@ -907,7 +911,6 @@ model AttendanceCorrection {
   @@map("attendance_corrections")
 }
 
-
 // ---------------------------------------------------------------------------
 // Overtime (Task 21)
 // ---------------------------------------------------------------------------
@@ -915,22 +918,22 @@ model AttendanceCorrection {
 /// What overtime is worth on each kind of day, and the limits on a claim. Multipliers are ratios, not money: this
 /// release calculates no monetary overtime — payroll (Task 22) multiplies approved minutes by a salary basis.
 model OvertimePolicy {
-  id                           String   @id @default(cuid())
-  organizationId               String   @map("organization_id")
+  id                           String       @id @default(cuid())
+  organizationId               String       @map("organization_id")
   organization                 Organization @relation(fields: [organizationId], references: [id])
   name                         String
-  effectiveFrom                String   @map("effective_from") // YYYY-MM-DD
-  effectiveTo                  String?  @map("effective_to")
-  workdayMultiplier            Float    @map("workday_multiplier")
-  offDayMultiplier             Float    @map("off_day_multiplier")
-  holidayMultiplier            Float    @map("holiday_multiplier")
+  effectiveFrom                String       @map("effective_from") // YYYY-MM-DD
+  effectiveTo                  String?      @map("effective_to")
+  workdayMultiplier            Float        @map("workday_multiplier")
+  offDayMultiplier             Float        @map("off_day_multiplier")
+  holidayMultiplier            Float        @map("holiday_multiplier")
   /// A claim below this is not overtime. A threshold, never a rounding rule.
-  minimumEligibleMinutes       Int?     @map("minimum_eligible_minutes")
-  maximumApprovedMinutesPerDay Int?     @map("maximum_approved_minutes_per_day")
-  workflowDefinitionCode       String   @map("workflow_definition_code")
-  isActive                     Boolean  @default(true) @map("is_active")
-  createdAt                    DateTime @default(now()) @map("created_at")
-  updatedAt                    DateTime @updatedAt @map("updated_at")
+  minimumEligibleMinutes       Int?         @map("minimum_eligible_minutes")
+  maximumApprovedMinutesPerDay Int?         @map("maximum_approved_minutes_per_day")
+  workflowDefinitionCode       String       @map("workflow_definition_code")
+  isActive                     Boolean      @default(true) @map("is_active")
+  createdAt                    DateTime     @default(now()) @map("created_at")
+  updatedAt                    DateTime     @updatedAt @map("updated_at")
 
   requests OvertimeRequest[]
 
@@ -941,34 +944,34 @@ model OvertimePolicy {
 /// One claim for one day. Everything that decides what it is eventually worth — day type, eligible minutes, the
 /// multiplier and the policy — is snapshotted when it is submitted, so a later policy edit cannot rewrite history.
 model OvertimeRequest {
-  id                     String          @id @default(cuid())
-  employeeId             String          @map("employee_id")
-  employee               Employee        @relation(fields: [employeeId], references: [id])
-  attendanceDate         String          @map("attendance_date")
-  claimedMinutes         Int             @map("claimed_minutes")
+  id                      String          @id @default(cuid())
+  employeeId              String          @map("employee_id")
+  employee                Employee        @relation(fields: [employeeId], references: [id])
+  attendanceDate          String          @map("attendance_date")
+  claimedMinutes          Int             @map("claimed_minutes")
   /// What the day allowed at submit. Kept so a later change in attendance is visible rather than silent.
-  eligibleMinutesSnapshot Int?           @map("eligible_minutes_snapshot")
-  approvedMinutes        Int?            @map("approved_minutes")
-  dayType                String?         @map("day_type") // WORKDAY | OFF_DAY | HOLIDAY
-  rateMultiplierSnapshot Float?          @map("rate_multiplier_snapshot")
-  policyId               String?         @map("policy_id")
-  policy                 OvertimePolicy? @relation(fields: [policyId], references: [id])
-  reason                 String?
-  status                 String          @default("DRAFT") // DRAFT | PENDING | APPROVED | REJECTED | CANCELLED
-  workflowInstanceId     String?         @unique @map("workflow_instance_id")
-  submittedAt            DateTime?       @map("submitted_at")
-  approvedAt             DateTime?       @map("approved_at")
-  rejectedAt             DateTime?       @map("rejected_at")
-  cancelledAt            DateTime?       @map("cancelled_at")
+  eligibleMinutesSnapshot Int?            @map("eligible_minutes_snapshot")
+  approvedMinutes         Int?            @map("approved_minutes")
+  dayType                 String?         @map("day_type") // WORKDAY | OFF_DAY | HOLIDAY
+  rateMultiplierSnapshot  Float?          @map("rate_multiplier_snapshot")
+  policyId                String?         @map("policy_id")
+  policy                  OvertimePolicy? @relation(fields: [policyId], references: [id])
+  reason                  String?
+  status                  String          @default("DRAFT") // DRAFT | PENDING | APPROVED | REJECTED | CANCELLED
+  workflowInstanceId      String?         @unique @map("workflow_instance_id")
+  submittedAt             DateTime?       @map("submitted_at")
+  approvedAt              DateTime?       @map("approved_at")
+  rejectedAt              DateTime?       @map("rejected_at")
+  cancelledAt             DateTime?       @map("cancelled_at")
   /// Snapshot of where the employee sat when the claim was submitted (reporting keeps working after a transfer).
-  organizationId         String?         @map("organization_id")
-  organization           Organization?   @relation(fields: [organizationId], references: [id])
-  departmentId           String?         @map("department_id")
-  positionId             String?         @map("position_id")
-  createdAt              DateTime        @default(now()) @map("created_at")
-  updatedAt              DateTime        @updatedAt @map("updated_at")
-  createdByUserId        String          @map("created_by_user_id")
-  createdBy              User            @relation("OvertimeRequestCreator", fields: [createdByUserId], references: [id])
+  organizationId          String?         @map("organization_id")
+  organization            Organization?   @relation(fields: [organizationId], references: [id])
+  departmentId            String?         @map("department_id")
+  positionId              String?         @map("position_id")
+  createdAt               DateTime        @default(now()) @map("created_at")
+  updatedAt               DateTime        @updatedAt @map("updated_at")
+  createdByUserId         String          @map("created_by_user_id")
+  createdBy               User            @relation("OvertimeRequestCreator", fields: [createdByUserId], references: [id])
 
   @@index([employeeId, attendanceDate])
   @@index([employeeId, status])
@@ -977,7 +980,6 @@ model OvertimeRequest {
   @@index([policyId])
   @@map("overtime_requests")
 }
-
 
 // ---------------------------------------------------------------------------
 // Payroll (Task 22)
@@ -989,19 +991,19 @@ model OvertimeRequest {
 /// Salary history. A change closes the current row with an end date and opens a new one, so a payroll run that has
 /// already used a salary can never be re-priced by editing it.
 model EmployeeCompensation {
-  id              String    @id @default(cuid())
-  employeeId      String    @map("employee_id")
-  employee        Employee  @relation(fields: [employeeId], references: [id])
-  effectiveFrom   String    @map("effective_from") // YYYY-MM-DD
-  effectiveTo     String?   @map("effective_to")
-  salaryType      String    @default("MONTHLY") @map("salary_type")
-  baseSalary      Decimal   @map("base_salary") @db.Decimal(18, 2)
-  currencyCode    String    @default("THB") @map("currency_code")
+  id              String   @id @default(cuid())
+  employeeId      String   @map("employee_id")
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  effectiveFrom   String   @map("effective_from") // YYYY-MM-DD
+  effectiveTo     String?  @map("effective_to")
+  salaryType      String   @default("MONTHLY") @map("salary_type")
+  baseSalary      Decimal  @map("base_salary") @db.Decimal(18, 2)
+  currencyCode    String   @default("THB") @map("currency_code")
   note            String?
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  createdByUserId String    @map("created_by_user_id")
-  createdBy       User      @relation("CompensationCreator", fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdByUserId String   @map("created_by_user_id")
+  createdBy       User     @relation("CompensationCreator", fields: [createdByUserId], references: [id])
 
   payrollResults PayrollResult[]
 
@@ -1082,22 +1084,22 @@ model PayrollPolicy {
 /// One month of payroll for one organization. The attendance window is separate from the salary window, because a
 /// cut-off on the 20th is normal and assuming otherwise would silently pay the wrong days.
 model PayrollPeriod {
-  id             String        @id @default(cuid())
-  organizationId String        @map("organization_id")
-  organization   Organization  @relation(fields: [organizationId], references: [id])
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  organization   Organization   @relation(fields: [organizationId], references: [id])
   year           Int
   month          Int
-  periodStart    String        @map("period_start")
-  periodEnd      String        @map("period_end")
-  attendanceFrom String        @map("attendance_from")
-  attendanceTo   String        @map("attendance_to")
-  paymentDate    String?       @map("payment_date")
-  status         String        @default("OPEN") // OPEN | PROCESSING | REVIEW | APPROVED | CLOSED
-  currencyCode   String        @default("THB") @map("currency_code")
-  policyId       String?       @map("policy_id")
+  periodStart    String         @map("period_start")
+  periodEnd      String         @map("period_end")
+  attendanceFrom String         @map("attendance_from")
+  attendanceTo   String         @map("attendance_to")
+  paymentDate    String?        @map("payment_date")
+  status         String         @default("OPEN") // OPEN | PROCESSING | REVIEW | APPROVED | CLOSED
+  currencyCode   String         @default("THB") @map("currency_code")
+  policyId       String?        @map("policy_id")
   policy         PayrollPolicy? @relation(fields: [policyId], references: [id])
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   runs PayrollRun[]
 
@@ -1140,36 +1142,36 @@ model PayrollRun {
 
 /// One employee's payroll for one run, with the identity and inputs snapshotted so a payslip never changes meaning.
 model PayrollResult {
-  id                 String                @id @default(cuid())
-  runId              String                @map("run_id")
-  run                PayrollRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
-  employeeId         String                @map("employee_id")
-  employee           Employee              @relation(fields: [employeeId], references: [id])
-  employeeCode       String                @map("employee_code")
-  employeeName       String                @map("employee_name")
-  organizationId     String?               @map("organization_id")
-  departmentId       String?               @map("department_id")
-  departmentName     String?               @map("department_name")
-  positionId         String?               @map("position_id")
-  positionTitle      String?               @map("position_title")
-  compensationId     String?               @map("compensation_id")
-  compensation       EmployeeCompensation? @relation(fields: [compensationId], references: [id])
-  baseSalary         Decimal               @map("base_salary") @db.Decimal(18, 2)
+  id                String                @id @default(cuid())
+  runId             String                @map("run_id")
+  run               PayrollRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeId        String                @map("employee_id")
+  employee          Employee              @relation(fields: [employeeId], references: [id])
+  employeeCode      String                @map("employee_code")
+  employeeName      String                @map("employee_name")
+  organizationId    String?               @map("organization_id")
+  departmentId      String?               @map("department_id")
+  departmentName    String?               @map("department_name")
+  positionId        String?               @map("position_id")
+  positionTitle     String?               @map("position_title")
+  compensationId    String?               @map("compensation_id")
+  compensation      EmployeeCompensation? @relation(fields: [compensationId], references: [id])
+  baseSalary        Decimal               @map("base_salary") @db.Decimal(18, 2)
   /// Derived rates, kept at six places so a minute rate multiplied back does not drift.
-  dailyRate          Decimal               @map("daily_rate") @db.Decimal(18, 6)
-  minuteRate         Decimal               @map("minute_rate") @db.Decimal(18, 6)
-  grossPay           Decimal               @map("gross_pay") @db.Decimal(18, 2)
-  totalDeductions    Decimal               @map("total_deductions") @db.Decimal(18, 2)
-  netPay             Decimal               @map("net_pay") @db.Decimal(18, 2)
-  currencyCode       String                @default("THB") @map("currency_code")
+  dailyRate         Decimal               @map("daily_rate") @db.Decimal(18, 6)
+  minuteRate        Decimal               @map("minute_rate") @db.Decimal(18, 6)
+  grossPay          Decimal               @map("gross_pay") @db.Decimal(18, 2)
+  totalDeductions   Decimal               @map("total_deductions") @db.Decimal(18, 2)
+  netPay            Decimal               @map("net_pay") @db.Decimal(18, 2)
+  currencyCode      String                @default("THB") @map("currency_code")
   // the inputs this money was derived from, frozen at calculation
-  absentDays         Decimal               @default(0) @map("absent_days") @db.Decimal(8, 2)
-  lateMinutes        Int                   @default(0) @map("late_minutes")
-  unpaidLeaveUnits   Decimal               @default(0) @map("unpaid_leave_units") @db.Decimal(8, 2)
-  approvedOtMinutes  Int                   @default(0) @map("approved_ot_minutes")
-  proratedDays       Decimal?              @map("prorated_days") @db.Decimal(8, 2)
-  createdAt          DateTime              @default(now()) @map("created_at")
-  updatedAt          DateTime              @updatedAt @map("updated_at")
+  absentDays        Decimal               @default(0) @map("absent_days") @db.Decimal(8, 2)
+  lateMinutes       Int                   @default(0) @map("late_minutes")
+  unpaidLeaveUnits  Decimal               @default(0) @map("unpaid_leave_units") @db.Decimal(8, 2)
+  approvedOtMinutes Int                   @default(0) @map("approved_ot_minutes")
+  proratedDays      Decimal?              @map("prorated_days") @db.Decimal(8, 2)
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
 
   items PayrollResultItem[]
 
@@ -1205,4 +1207,171 @@ model PayrollResultItem {
   @@index([payrollResultId])
   @@index([referenceType, referenceId])
   @@map("payroll_result_items")
+}
+
+// ---------------------------------------------------------------------------
+// Performance (Task 23)
+// ---------------------------------------------------------------------------
+
+/// One appraisal round: a period, optional review windows, a score scale and the bands that name a score.
+model PerformanceCycle {
+  id                 String        @id @default(cuid())
+  code               String        @unique
+  name               String
+  description        String?
+  organizationId     String?       @map("organization_id")
+  organization       Organization? @relation(fields: [organizationId], references: [id])
+  periodStart        String        @map("period_start") // YYYY-MM-DD
+  periodEnd          String        @map("period_end")
+  selfReviewStart    String?       @map("self_review_start")
+  selfReviewEnd      String?       @map("self_review_end")
+  managerReviewStart String?       @map("manager_review_start")
+  managerReviewEnd   String?       @map("manager_review_end")
+  /// Not every employer asks people to appraise themselves.
+  selfReviewRequired Boolean       @default(true) @map("self_review_required")
+  /// The score scale is the customer's: nothing assumes 1–5.
+  minScore           Decimal       @default(1) @map("min_score") @db.Decimal(6, 2)
+  maxScore           Decimal       @default(5) @map("max_score") @db.Decimal(6, 2)
+  scoreStep          Decimal       @default(0.1) @map("score_step") @db.Decimal(6, 2)
+  status             String        @default("DRAFT") // DRAFT | ACTIVE | REVIEW | CLOSED
+  activatedAt        DateTime?     @map("activated_at")
+  reviewOpenedAt     DateTime?     @map("review_opened_at")
+  closedAt           DateTime?     @map("closed_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  createdByUserId    String?       @map("created_by_user_id")
+
+  ratingBands PerformanceRatingBand[]
+  plans       PerformancePlan[]
+
+  @@index([status])
+  @@index([organizationId])
+  @@map("performance_cycles")
+}
+
+/// What a score is called. Inclusive at both ends, no overlaps, and the whole scale must be covered before a cycle
+/// can be activated — a finalized score with no band would have no rating to show.
+model PerformanceRatingBand {
+  id       String           @id @default(cuid())
+  cycleId  String           @map("cycle_id")
+  cycle    PerformanceCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  code     String
+  label    String
+  minScore Decimal          @map("min_score") @db.Decimal(6, 2)
+  maxScore Decimal          @map("max_score") @db.Decimal(6, 2)
+
+  @@unique([cycleId, code])
+  @@index([cycleId])
+  @@map("performance_rating_bands")
+}
+
+/// A reusable KPI definition. What an employee was actually measured on is snapshotted onto their plan, so editing
+/// the library never rewrites a finished review.
+model PerformanceKpi {
+  id              String        @id @default(cuid())
+  code            String        @unique
+  name            String
+  description     String?
+  category        String?
+  measurementType String        @map("measurement_type") // NUMBER | PERCENTAGE | BOOLEAN | MILESTONE | QUALITATIVE
+  unit            String?
+  defaultWeight   Decimal?      @map("default_weight") @db.Decimal(6, 2)
+  organizationId  String?       @map("organization_id")
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  createdByUserId String?       @map("created_by_user_id")
+
+  planItems PerformancePlanItem[]
+
+  @@index([isActive])
+  @@index([category])
+  @@map("performance_kpis")
+}
+
+/// One employee's plan for one cycle. The organizational snapshot and the reviewer are frozen when the plan is
+/// created: a transfer or a change of manager half way through a cycle must not rewrite who was reviewed by whom.
+model PerformancePlan {
+  id         String           @id @default(cuid())
+  cycleId    String           @map("cycle_id")
+  cycle      PerformanceCycle @relation(fields: [cycleId], references: [id])
+  employeeId String           @map("employee_id")
+  employee   Employee         @relation("PerformancePlanEmployee", fields: [employeeId], references: [id])
+
+  // snapshots, taken when the plan is created
+  employeeCodeSnapshot String  @map("employee_code_snapshot")
+  employeeNameSnapshot String  @map("employee_name_snapshot")
+  organizationId       String? @map("organization_id")
+  organizationName     String? @map("organization_name")
+  departmentId         String? @map("department_id")
+  departmentName       String? @map("department_name")
+  positionId           String? @map("position_id")
+  positionTitle        String? @map("position_title")
+  jobId                String? @map("job_id")
+  jobTitle             String? @map("job_title")
+
+  /// Who reviews this plan. Frozen at creation; only an explicit reassignment changes it.
+  reviewerEmployeeId   String?   @map("reviewer_employee_id")
+  reviewerEmployee     Employee? @relation("PerformancePlanReviewer", fields: [reviewerEmployeeId], references: [id])
+  reviewerUserId       String?   @map("reviewer_user_id")
+  reviewerUser         User?     @relation("PerformancePlanReviewerUser", fields: [reviewerUserId], references: [id])
+  reviewerNameSnapshot String?   @map("reviewer_name_snapshot")
+
+  status             String    @default("DRAFT") // DRAFT | ACTIVE | SELF_REVIEW | MANAGER_REVIEW | FINALIZED
+  selfSubmittedAt    DateTime? @map("self_submitted_at")
+  managerSubmittedAt DateTime? @map("manager_submitted_at")
+  finalizedAt        DateTime? @map("finalized_at")
+
+  /// Calculated once, when the manager submits: SUM(managerScore × weight / 100).
+  weightedScore       Decimal? @map("weighted_score") @db.Decimal(6, 2)
+  ratingCode          String?  @map("rating_code")
+  ratingLabelSnapshot String?  @map("rating_label_snapshot")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items PerformancePlanItem[]
+
+  @@unique([cycleId, employeeId])
+  @@index([employeeId])
+  @@index([reviewerUserId])
+  @@index([cycleId, status])
+  @@map("performance_plans")
+}
+
+/// One measured thing on one plan. The KPI's code, name and measurement are snapshotted here.
+model PerformancePlanItem {
+  id                  String          @id @default(cuid())
+  planId              String          @map("plan_id")
+  plan                PerformancePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  kpiId               String?         @map("kpi_id")
+  kpi                 PerformanceKpi? @relation(fields: [kpiId], references: [id])
+  kpiCodeSnapshot     String          @map("kpi_code_snapshot")
+  kpiNameSnapshot     String          @map("kpi_name_snapshot")
+  descriptionSnapshot String?         @map("description_snapshot")
+  measurementType     String          @map("measurement_type")
+
+  /// Percentage points. A plan's items must add up to exactly 100 before anybody reviews it.
+  weight          Decimal  @db.Decimal(6, 2)
+  targetValue     Decimal? @map("target_value") @db.Decimal(18, 2)
+  targetText      String?  @map("target_text")
+  actualValue     Decimal? @map("actual_value") @db.Decimal(18, 2)
+  actualText      String?  @map("actual_text")
+  progressPercent Int?     @map("progress_percent")
+
+  /// Review comments are sensitive HR data: they never appear in logs, notifications or audit payloads.
+  employeeComment String?  @map("employee_comment")
+  managerComment  String?  @map("manager_comment")
+  selfScore       Decimal? @map("self_score") @db.Decimal(6, 2)
+  managerScore    Decimal? @map("manager_score") @db.Decimal(6, 2)
+  /// What the weighted score was actually calculated from, frozen at finalization.
+  finalScore      Decimal? @map("final_score") @db.Decimal(6, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([planId])
+  @@index([kpiId])
+  @@map("performance_plan_items")
 }

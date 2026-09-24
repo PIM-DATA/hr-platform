@@ -108,6 +108,41 @@ export type ProrationBasis = (typeof PRORATION_BASES)[number];
 
 export const PAYROLL_WORKFLOW = { module: 'payroll', entityType: 'PAYROLL_RUN' } as const;
 
+// ---------- performance (Task 23) ----------
+/**
+ * How a KPI is measured. It decides how a target and an actual are *displayed and entered* — it does not decide a
+ * score. Turning "sold 92 of 100" into a rating needs rules nobody has agreed yet (higher-better, lower-better,
+ * thresholds, ranges), so this release lets a reviewer judge it instead of guessing.
+ */
+export const KPI_MEASUREMENT_TYPES = ['NUMBER', 'PERCENTAGE', 'BOOLEAN', 'MILESTONE', 'QUALITATIVE'] as const;
+export type KpiMeasurementType = (typeof KPI_MEASUREMENT_TYPES)[number];
+
+/**
+ * A cycle's own state, which is not a plan's state.
+ *
+ *   DRAFT  — configuration and plan structure can still change
+ *   ACTIVE — employees record progress against their plans
+ *   REVIEW — self and manager assessments happen
+ *   CLOSED — history; nothing inside it ever changes again
+ */
+export const PERFORMANCE_CYCLE_STATUSES = ['DRAFT', 'ACTIVE', 'REVIEW', 'CLOSED'] as const;
+export type PerformanceCycleStatus = (typeof PERFORMANCE_CYCLE_STATUSES)[number];
+
+/**
+ * One plan's state. Deliberately linear and non-overlapping: a plan is somebody's to act on at every moment, and
+ * exactly one person's.
+ *
+ *   DRAFT → ACTIVE → SELF_REVIEW → MANAGER_REVIEW → FINALIZED
+ *
+ * A cycle whose `selfReviewRequired` is false goes ACTIVE → MANAGER_REVIEW: not every employer asks people to
+ * appraise themselves, and one that does not should not be made to.
+ */
+export const PERFORMANCE_PLAN_STATUSES = ['DRAFT', 'ACTIVE', 'SELF_REVIEW', 'MANAGER_REVIEW', 'FINALIZED'] as const;
+export type PerformancePlanStatus = (typeof PERFORMANCE_PLAN_STATUSES)[number];
+
+/** Weights are percentage points and a plan's must add up to exactly this before anybody reviews it. */
+export const PERFORMANCE_TOTAL_WEIGHT = '100.00';
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -120,6 +155,11 @@ export const NOTIFICATION_TYPES = {
   OVERTIME_APPROVED: 'OVERTIME_APPROVED',
   OVERTIME_REJECTED: 'OVERTIME_REJECTED',
   PAYSLIP_AVAILABLE: 'PAYSLIP_AVAILABLE',
+  /** Performance notifications carry a cycle and a name — never a score, a rating or a review comment. */
+  PERFORMANCE_REVIEW_OPENED: 'PERFORMANCE_REVIEW_OPENED',
+  PERFORMANCE_SELF_REVIEW_SUBMITTED: 'PERFORMANCE_SELF_REVIEW_SUBMITTED',
+  PERFORMANCE_MANAGER_REVIEW_REQUIRED: 'PERFORMANCE_MANAGER_REVIEW_REQUIRED',
+  PERFORMANCE_FINALIZED: 'PERFORMANCE_FINALIZED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -137,7 +177,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -234,6 +274,18 @@ export const AUDIT_ACTIONS = {
   APPROVE_PAYROLL_RUN: 'APPROVE_PAYROLL_RUN',
   REJECT_PAYROLL_RUN: 'REJECT_PAYROLL_RUN',
   CLOSE_PAYROLL_RUN: 'CLOSE_PAYROLL_RUN',
+  CREATE_PERFORMANCE_CYCLE: 'CREATE_PERFORMANCE_CYCLE',
+  UPDATE_PERFORMANCE_CYCLE: 'UPDATE_PERFORMANCE_CYCLE',
+  ACTIVATE_PERFORMANCE_CYCLE: 'ACTIVATE_PERFORMANCE_CYCLE',
+  OPEN_PERFORMANCE_REVIEW: 'OPEN_PERFORMANCE_REVIEW',
+  CLOSE_PERFORMANCE_CYCLE: 'CLOSE_PERFORMANCE_CYCLE',
+  CREATE_PERFORMANCE_KPI: 'CREATE_PERFORMANCE_KPI',
+  UPDATE_PERFORMANCE_KPI: 'UPDATE_PERFORMANCE_KPI',
+  ASSIGN_PERFORMANCE_PLAN: 'ASSIGN_PERFORMANCE_PLAN',
+  UPDATE_PERFORMANCE_PLAN: 'UPDATE_PERFORMANCE_PLAN',
+  SUBMIT_SELF_REVIEW: 'SUBMIT_SELF_REVIEW',
+  SUBMIT_MANAGER_REVIEW: 'SUBMIT_MANAGER_REVIEW',
+  FINALIZE_PERFORMANCE_PLAN: 'FINALIZE_PERFORMANCE_PLAN',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -293,6 +345,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   attendance: 'Attendance',
   ot: 'Overtime',
   payroll: 'Payroll',
+  performance: 'Performance',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

@@ -8,4 +8,5 @@ export * from './leave-overlap';
 export * from './attendance';
 export * from './overtime';
 export * from './payroll';
+export * from './performance';
 export * from './schemas';

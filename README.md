@@ -291,6 +291,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Attendance: web clock only — no GPS, biometric devices, multiple punches or payroll posting.
 - Overtime: claim-based after the fact, minutes and multipliers only — no rounding rule or approved-claim reversal.
 - Payroll: no tax, social security, provident fund, bank file or GL posting; monthly only, one currency, one run per period, no off-cycle or retroactive run, no reopen after closing.
+- Performance: no 360 feedback, calibration, 9-box, forced ranking, competency scoring, bonus/payroll linkage, OKR tree, automatic achievement formulas, AI-written reviews, reopen after close or cycle scheduler.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -733,6 +734,30 @@ Full guide: [docs/payroll.md](docs/payroll.md). HRM → Payroll.
   approval endpoint, no self-approval. Closing is final: no recalculation, no adjustment, **no reopen**.
 - **Confidentiality**: `payroll.view_own` shows your own payslips for closed runs only; everything else needs a
   payroll permission. A manager's data scope grants nothing, and EXECUTIVE has no payroll permission at all.
+
+## Performance (Task 23)
+
+Full guide: [docs/performance.md](docs/performance.md). HRM → Performance.
+
+- **A review is not a pay decision.** No bonus, increase or pay component comes out of a rating; the link between
+  performance and money is a company decision and is not automated here.
+- **The manager's score is the score.** A target and an actual are evidence a reviewer reads, not a formula: "sold 92
+  of 100" means different things for a sales target, a defect count and a range, and guessing would produce numbers
+  that look authoritative and are wrong.
+- **Weights are exact**: percentage points as decimal strings that must add up to exactly 100.00, so 33.33 + 33.33 +
+  33.34 is a valid plan. `weightedScore = SUM(managerScore × weight / 100)`, two places, half-up, rounded once, on the
+  server.
+- **Nothing assumes 1–5**: the score scale, its step and the rating bands are configured per cycle, must not overlap
+  and must cover the scale before the cycle can be activated.
+- **A plan is a snapshot**: employee, department, position, job and reviewer are frozen when it is created, and the
+  KPI's code and name are frozen on each item. A transfer, a change of manager or a renamed KPI never rewrites a
+  finished review, and reports count people where their plan was written.
+- **Authority is the reviewer snapshot, not the org chart**: writing an assessment needs `reviewerUserId == you`, so a
+  manager cannot take over a review assigned to somebody else and HR does not review on their behalf.
+- **Review comments are the most sensitive text here**: they live on the plan and nowhere else — never in a
+  notification, a report, a list or an audit payload, which records only that comments exist.
+- **Reading one person's review** needs to be that person, their reviewer, or a cycle manager. A data scope grants
+  nothing. Reports are aggregate-only, which is what makes `performance.view` safe for an executive.
 
 ## Pilot release
 

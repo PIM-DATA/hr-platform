@@ -54,6 +54,12 @@ import { CompensationPage } from '@/features/payroll/CompensationPage';
 import { PayComponentsPage } from '@/features/payroll/PayComponentsPage';
 import { RecurringItemsPage } from '@/features/payroll/RecurringItemsPage';
 import { PayrollPoliciesPage } from '@/features/payroll/PayrollPoliciesPage';
+import { PerformanceLayout } from '@/features/performance/performance-ui';
+import { MyPerformancePage } from '@/features/performance/MyPerformancePage';
+import { TeamReviewsPage } from '@/features/performance/TeamReviewsPage';
+import { CyclesPage } from '@/features/performance/CyclesPage';
+import { KpiLibraryPage } from '@/features/performance/KpiLibraryPage';
+import { PerformanceReportsPage } from '@/features/performance/PerformanceReportsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -194,6 +200,24 @@ export const router = createBrowserRouter([
                     { path: 'recurring', element: <RecurringItemsPage /> },
                   ],
                 },
+              ],
+            }],
+          },
+          {
+            // Performance (Task 23). `performance.view` is your own plan plus aggregate reporting; reading somebody
+            // else's review needs to be their snapshot reviewer or to manage the cycle, which the API enforces.
+            element: <RequirePermission permission={PERMISSIONS.PERFORMANCE_VIEW} />,
+            children: [{
+              path: 'hrm/performance', element: <PerformanceLayout />,
+              children: [
+                { index: true, element: <MyPerformancePage /> },
+                { element: <RequirePermission permission={PERMISSIONS.PERFORMANCE_REVIEW} />, children: [{ path: 'reviews', element: <TeamReviewsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.PERFORMANCE_MANAGE_CYCLES} />, children: [{ path: 'cycles', element: <CyclesPage /> }] },
+                {
+                  element: <RequirePermission permission={[PERMISSIONS.PERFORMANCE_MANAGE_KPIS, PERMISSIONS.PERFORMANCE_MANAGE_CYCLES]} />,
+                  children: [{ path: 'kpis', element: <KpiLibraryPage /> }],
+                },
+                { path: 'reports', element: <PerformanceReportsPage /> },
               ],
             }],
           },

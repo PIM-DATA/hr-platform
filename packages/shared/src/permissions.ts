@@ -57,6 +57,11 @@ export const PERMISSIONS = {
   PAYROLL_MANAGE: 'payroll.manage',
   PAYROLL_RUN: 'payroll.run',
   PAYROLL_APPROVE: 'payroll.approve',
+
+  PERFORMANCE_VIEW: 'performance.view',
+  PERFORMANCE_REVIEW: 'performance.review',
+  PERFORMANCE_MANAGE_CYCLES: 'performance.manage_cycles',
+  PERFORMANCE_MANAGE_KPIS: 'performance.manage_kpis',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -121,6 +126,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.PAYROLL_MANAGE, module: 'payroll', description: 'Manage compensation, pay components and payroll configuration' },
   { code: PERMISSIONS.PAYROLL_RUN, module: 'payroll', description: 'Calculate and close payroll runs' },
   { code: PERMISSIONS.PAYROLL_APPROVE, module: 'payroll', description: 'Decide payroll runs' },
+
+  { code: PERMISSIONS.PERFORMANCE_VIEW, module: 'performance', description: 'View your own performance plan and aggregate performance reports' },
+  { code: PERMISSIONS.PERFORMANCE_REVIEW, module: 'performance', description: 'Review the performance plans you are the assigned reviewer for' },
+  { code: PERMISSIONS.PERFORMANCE_MANAGE_CYCLES, module: 'performance', description: 'Manage performance cycles and the plans inside them' },
+  { code: PERMISSIONS.PERFORMANCE_MANAGE_KPIS, module: 'performance', description: 'Manage the KPI library' },
 ];
 
 /**

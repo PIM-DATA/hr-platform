@@ -14,6 +14,7 @@ import { accountAdminRouter, accountRouter } from './modules/account/account.rou
 import { privacyRouter } from './modules/privacy/privacy.routes';
 import { attendanceRouter } from './modules/attendance/attendance.routes';
 import { payrollRouter } from './modules/payroll/payroll.routes';
+import { performanceRouter } from './modules/performance/performance.routes';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
@@ -46,4 +47,5 @@ apiRouter.use('/admin/users', accountAdminRouter);
 apiRouter.use('/privacy', privacyRouter);
 apiRouter.use('/attendance', attendanceRouter);
 apiRouter.use('/payroll', payrollRouter);
+apiRouter.use('/performance', performanceRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)

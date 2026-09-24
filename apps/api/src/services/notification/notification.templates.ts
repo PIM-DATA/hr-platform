@@ -17,6 +17,8 @@ export interface TemplateVars {
   date?: string;
   /** A formatted duration, e.g. `2h 30m` — never an amount of money. */
   minutes?: string;
+  /** A performance cycle's name. Never a score, a rating or a review comment. */
+  cycleName?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -56,6 +58,24 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.PAYSLIP_AVAILABLE]: (v) => ({
     title: 'Payslip available',
     body: `Your payslip${v.date ? ` for ${v.date}` : ''} is available. Amounts are never included in a notification — open the payslip to see it.`,
+  }),
+  // Performance: a cycle and a name at most. Scores, ratings and review comments stay behind the plan's own
+  // authorization — a notification is delivered to an inbox and quoted in support tickets.
+  [NOTIFICATION_TYPES.PERFORMANCE_REVIEW_OPENED]: (v) => ({
+    title: 'Performance review open',
+    body: `The review stage of ${v.cycleName ?? 'your performance cycle'} is open. Open your plan to complete it.`,
+  }),
+  [NOTIFICATION_TYPES.PERFORMANCE_SELF_REVIEW_SUBMITTED]: (v) => ({
+    title: 'Self review submitted',
+    body: `${v.employeeName ?? 'An employee'} submitted their self review${v.cycleName ? ` for ${v.cycleName}` : ''}.`,
+  }),
+  [NOTIFICATION_TYPES.PERFORMANCE_MANAGER_REVIEW_REQUIRED]: (v) => ({
+    title: 'Performance review required',
+    body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your review.`,
+  }),
+  [NOTIFICATION_TYPES.PERFORMANCE_FINALIZED]: (v) => ({
+    title: 'Performance review complete',
+    body: `Your review${v.cycleName ? ` for ${v.cycleName}` : ''} is complete. Open your plan to see the result.`,
   }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',

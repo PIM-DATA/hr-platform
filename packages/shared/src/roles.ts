@@ -36,14 +36,14 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Employee',
     description: 'Employee self service: own profile and organization view',
     dataScope: DATA_SCOPES.SELF,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST, P.PAYROLL_VIEW_OWN],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST, P.PAYROLL_VIEW_OWN, P.PERFORMANCE_VIEW],
   },
   {
     code: ROLES.MANAGER,
     name: 'Manager',
     description: 'Manager self service: own team',
     dataScope: DATA_SCOPES.TEAM,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST, P.PAYROLL_VIEW_OWN],
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.ATTENDANCE_CLOCK, P.OT_VIEW, P.OT_REQUEST, P.PAYROLL_VIEW_OWN, P.PERFORMANCE_VIEW, P.PERFORMANCE_REVIEW],
   },
   {
     code: ROLES.HR,
@@ -67,6 +67,7 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.OT_VIEW,
       P.PAYROLL_VIEW_OWN,
       P.PAYROLL_MANAGE,
+      P.PERFORMANCE_VIEW,
     ],
   },
   {
@@ -114,6 +115,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       P.PAYROLL_MANAGE,
       P.PAYROLL_RUN,
       P.PAYROLL_APPROVE,
+      P.PERFORMANCE_VIEW,
+      P.PERFORMANCE_REVIEW,
+      P.PERFORMANCE_MANAGE_CYCLES,
+      P.PERFORMANCE_MANAGE_KPIS,
     ],
   },
   {
@@ -121,7 +126,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'Executive',
     description: 'Executive: read-only organization-wide view and dashboards',
     dataScope: DATA_SCOPES.ALL,
-    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.OT_VIEW],
+    // `performance.view` shows an executive their own plan and the **aggregate** reports — never an individual's
+    // scores or comments, which need to be that employee, their snapshot reviewer, or a cycle manager.
+    permissions: [P.DASHBOARD_VIEW, P.EMPLOYEES_VIEW, P.ORGANIZATION_VIEW, P.WORKFLOW_APPROVE, P.LEAVE_VIEW, P.LEAVE_REQUEST, P.ATTENDANCE_VIEW, P.OT_VIEW, P.PERFORMANCE_VIEW],
   },
   {
     code: ROLES.SYSTEM_ADMIN,
