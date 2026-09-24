@@ -19,6 +19,8 @@ export interface TemplateVars {
   minutes?: string;
   /** A performance cycle's name. Never a score, a rating or a review comment. */
   cycleName?: string;
+  /** A course title, for training notifications. Never a score, a result or a development comment. */
+  courseTitle?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -93,6 +95,27 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.COMPETENCY_ASSESSMENT_FINALIZED]: (v) => ({
     title: 'Competency assessment complete',
     body: `Your competency assessment${v.cycleName ? ` for ${v.cycleName}` : ''} is complete. Open it to see your levels and any gaps.`,
+  }),
+  // Training and development: a course, a date, a plan. Results and development comments stay on the record.
+  [NOTIFICATION_TYPES.TRAINING_ENROLLED]: (v) => ({
+    title: 'Training booked',
+    body: `You are booked on ${v.courseTitle ?? 'a training course'}${v.date ? ` on ${v.date}` : ''}.`,
+  }),
+  [NOTIFICATION_TYPES.TRAINING_SESSION_UPDATED]: (v) => ({
+    title: 'Training session changed',
+    body: `${v.courseTitle ?? 'A training session'}${v.date ? ` on ${v.date}` : ''} has changed. Open it to see the details.`,
+  }),
+  [NOTIFICATION_TYPES.TRAINING_COMPLETED]: (v) => ({
+    title: 'Training recorded',
+    body: `Your record for ${v.courseTitle ?? 'a training course'} has been updated. Open your training history to see it.`,
+  }),
+  [NOTIFICATION_TYPES.IDP_ACTIVATED]: (v) => ({
+    title: 'Development plan active',
+    body: `Your development plan${v.cycleName ? ` "${v.cycleName}"` : ''} is active. Open it to see what is planned.`,
+  }),
+  [NOTIFICATION_TYPES.IDP_COMPLETED]: (v) => ({
+    title: 'Development plan complete',
+    body: `Your development plan${v.cycleName ? ` "${v.cycleName}"` : ''} has been completed.`,
   }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',

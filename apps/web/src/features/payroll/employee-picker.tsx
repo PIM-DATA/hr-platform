@@ -19,16 +19,18 @@ export interface PayrollEmployeeOption {
  * It uses payroll's own employee lookup rather than leave's: a payroll administrator holds `payroll.manage` and need
  * hold no leave permission at all, so borrowing leave's endpoint would fail for exactly the people who need this.
  */
-export function EmployeePicker({ label = 'Employee', value, onChange }: {
+export function EmployeePicker({ label = 'Employee', value, onChange, endpoint = '/payroll/employee-options' }: {
   label?: string;
   value: PayrollEmployeeOption | null;
   onChange: (employee: PayrollEmployeeOption | null) => void;
+  /** Each module that needs a picker exposes its own lookup behind its own permission; the caller says which. */
+  endpoint?: string;
 }) {
   const [term, setTerm] = useState('');
   const search = useDebounce(term, 250);
   const options = useQuery({
-    queryKey: ['payroll', 'employee-options', search],
-    queryFn: () => api.get<PayrollEmployeeOption[]>(`/payroll/employee-options?search=${encodeURIComponent(search)}&limit=20`).then((r) => r.data),
+    queryKey: ['employee-options', endpoint, search],
+    queryFn: () => api.get<PayrollEmployeeOption[]>(`${endpoint}?search=${encodeURIComponent(search)}&limit=20`).then((r) => r.data),
     enabled: !value && search.trim().length > 0,
   });
 

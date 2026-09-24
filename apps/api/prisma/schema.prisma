@@ -40,28 +40,29 @@ model User {
 
   // workflow (Phase 2)
   workflowDefinitionSteps WorkflowDefinitionStep[]
-  workflowRequests        WorkflowInstance[]       @relation("WorkflowRequesterUser")
-  workflowApproverSteps   WorkflowInstanceStep[]   @relation("WorkflowStepApproverUser")
-  workflowActedSteps      WorkflowInstanceStep[]   @relation("WorkflowStepActedBy")
+  workflowRequests        WorkflowInstance[]          @relation("WorkflowRequesterUser")
+  workflowApproverSteps   WorkflowInstanceStep[]      @relation("WorkflowStepApproverUser")
+  workflowActedSteps      WorkflowInstanceStep[]      @relation("WorkflowStepActedBy")
   workflowActions         WorkflowAction[]
   leaveLedgerEntries      LeaveLedger[]
   leaveRequestsCreated    LeaveRequest[]
   onboardingImports       OnboardingImportRun[]
-  passwordResetTokens     PasswordResetToken[]     @relation("PasswordResetSubject")
-  passwordResetsIssued    PasswordResetToken[]     @relation("PasswordResetIssuer")
-  privacyRequestsSubject  PrivacyRequest[]         @relation("PrivacySubjectUser")
-  privacyRequestsCreated  PrivacyRequest[]         @relation("PrivacyRequestCreator")
-  privacyRequestsAssigned PrivacyRequest[]         @relation("PrivacyRequestAssignee")
-  attendanceSchedules     AttendanceSchedule[]     @relation("AttendanceScheduleCreator")
-  attendanceClockEvents   AttendanceClockEvent[]   @relation("AttendanceClockCreator")
-  attendanceCorrections   AttendanceCorrection[]   @relation("AttendanceCorrectionCreator")
-  overtimeRequestsCreated OvertimeRequest[]        @relation("OvertimeRequestCreator")
-  compensationsCreated    EmployeeCompensation[]   @relation("CompensationCreator")
-  payItemsCreated         EmployeePayItem[]        @relation("PayItemCreator")
-  payrollRunsStarted      PayrollRun[]             @relation("PayrollRunStarter")
-  payrollRunsClosed       PayrollRun[]             @relation("PayrollRunCloser")
-  performanceReviews      PerformancePlan[]        @relation("PerformancePlanReviewerUser")
-  competencyReviews       CompetencyAssessment[]   @relation("CompetencyAssessmentReviewerUser")
+  passwordResetTokens     PasswordResetToken[]        @relation("PasswordResetSubject")
+  passwordResetsIssued    PasswordResetToken[]        @relation("PasswordResetIssuer")
+  privacyRequestsSubject  PrivacyRequest[]            @relation("PrivacySubjectUser")
+  privacyRequestsCreated  PrivacyRequest[]            @relation("PrivacyRequestCreator")
+  privacyRequestsAssigned PrivacyRequest[]            @relation("PrivacyRequestAssignee")
+  attendanceSchedules     AttendanceSchedule[]        @relation("AttendanceScheduleCreator")
+  attendanceClockEvents   AttendanceClockEvent[]      @relation("AttendanceClockCreator")
+  attendanceCorrections   AttendanceCorrection[]      @relation("AttendanceCorrectionCreator")
+  overtimeRequestsCreated OvertimeRequest[]           @relation("OvertimeRequestCreator")
+  compensationsCreated    EmployeeCompensation[]      @relation("CompensationCreator")
+  payItemsCreated         EmployeePayItem[]           @relation("PayItemCreator")
+  payrollRunsStarted      PayrollRun[]                @relation("PayrollRunStarter")
+  payrollRunsClosed       PayrollRun[]                @relation("PayrollRunCloser")
+  performanceReviews      PerformancePlan[]           @relation("PerformancePlanReviewerUser")
+  competencyReviews       CompetencyAssessment[]      @relation("CompetencyAssessmentReviewerUser")
+  developmentPlansManaged IndividualDevelopmentPlan[] @relation("IdpManagerUser")
   notifications           Notification[]
 
   @@map("users")
@@ -161,6 +162,7 @@ model Organization {
   payrollPeriods    PayrollPeriod[]
   performanceCycles PerformanceCycle[]
   performanceKpis   PerformanceKpi[]
+  trainingSessions  TrainingSession[]
 
   @@map("organizations")
 }
@@ -260,28 +262,32 @@ model Employee {
   createdBy String?  @map("created_by") // users.id
   updatedBy String?  @map("updated_by") // users.id
 
-  user                  User?
-  headOfDepartments     Department[]           @relation("DepartmentHead")
-  positionHistory       EmployeePosition[]
-  managerHistory        EmployeeManager[]      @relation("ManagerHistoryEmployee")
-  managedHistory        EmployeeManager[]      @relation("ManagerHistoryManager")
-  workflowRequests      WorkflowInstance[]     @relation("WorkflowRequesterEmployee")
-  workflowApproverSteps WorkflowInstanceStep[] @relation("WorkflowStepApproverEmployee")
-  leaveEntitlements     LeaveEntitlement[]
-  leaveRequests         LeaveRequest[]
-  privacyRequests       PrivacyRequest[]
-  attendanceSchedules   AttendanceSchedule[]
-  attendanceClockEvents AttendanceClockEvent[]
-  attendanceRecords     AttendanceRecord[]
-  attendanceCorrections AttendanceCorrection[]
-  overtimeRequests      OvertimeRequest[]
-  compensations         EmployeeCompensation[]
-  payItems              EmployeePayItem[]
-  payrollResults        PayrollResult[]
-  performancePlans      PerformancePlan[]      @relation("PerformancePlanEmployee")
-  performanceReviews    PerformancePlan[]      @relation("PerformancePlanReviewer")
-  competencyAssessments CompetencyAssessment[] @relation("CompetencyAssessmentEmployee")
-  competencyReviews     CompetencyAssessment[] @relation("CompetencyAssessmentReviewer")
+  user                    User?
+  headOfDepartments       Department[]                @relation("DepartmentHead")
+  positionHistory         EmployeePosition[]
+  managerHistory          EmployeeManager[]           @relation("ManagerHistoryEmployee")
+  managedHistory          EmployeeManager[]           @relation("ManagerHistoryManager")
+  workflowRequests        WorkflowInstance[]          @relation("WorkflowRequesterEmployee")
+  workflowApproverSteps   WorkflowInstanceStep[]      @relation("WorkflowStepApproverEmployee")
+  leaveEntitlements       LeaveEntitlement[]
+  leaveRequests           LeaveRequest[]
+  privacyRequests         PrivacyRequest[]
+  attendanceSchedules     AttendanceSchedule[]
+  attendanceClockEvents   AttendanceClockEvent[]
+  attendanceRecords       AttendanceRecord[]
+  attendanceCorrections   AttendanceCorrection[]
+  overtimeRequests        OvertimeRequest[]
+  compensations           EmployeeCompensation[]
+  payItems                EmployeePayItem[]
+  payrollResults          PayrollResult[]
+  performancePlans        PerformancePlan[]           @relation("PerformancePlanEmployee")
+  performanceReviews      PerformancePlan[]           @relation("PerformancePlanReviewer")
+  competencyAssessments   CompetencyAssessment[]      @relation("CompetencyAssessmentEmployee")
+  competencyReviews       CompetencyAssessment[]      @relation("CompetencyAssessmentReviewer")
+  trainingNeeds           TrainingNeed[]
+  trainingEnrollments     TrainingEnrollment[]
+  developmentPlans        IndividualDevelopmentPlan[] @relation("IdpEmployee")
+  developmentPlansManaged IndividualDevelopmentPlan[] @relation("IdpManager")
 
   @@index([departmentId])
   @@index([managerId])
@@ -1448,6 +1454,9 @@ model Competency {
   indicators      CompetencyLevelIndicator[]
   requirements    JobCompetencyRequirement[]
   assessmentItems CompetencyAssessmentItem[]
+  trainingNeeds   TrainingNeed[]
+  courses         TrainingCourseCompetency[]
+  idpItems        IdpItem[]
 
   @@index([categoryId])
   @@index([isActive])
@@ -1593,4 +1602,243 @@ model CompetencyAssessmentItem {
   @@index([assessmentId])
   @@index([competencyId])
   @@map("competency_assessment_items")
+}
+
+// ---------------------------------------------------------------------------
+// Training and development (Task 25)
+// ---------------------------------------------------------------------------
+
+/// Something somebody needs to develop. A gap-based need freezes the numbers it came from: a job's requirement can
+/// move next month, and a need that quietly re-described itself could never explain why anybody was sent on a course.
+model TrainingNeed {
+  id         String   @id @default(cuid())
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  source      String // COMPETENCY_GAP | MANUAL
+  title       String
+  description String?
+
+  competencyId           String?     @map("competency_id")
+  competency             Competency? @relation(fields: [competencyId], references: [id])
+  competencyCodeSnapshot String?     @map("competency_code_snapshot")
+  competencyNameSnapshot String?     @map("competency_name_snapshot")
+
+  /// The gap exactly as it stood when the need was raised.
+  currentLevelSnapshot  Int? @map("current_level_snapshot")
+  requiredLevelSnapshot Int? @map("required_level_snapshot")
+  gapSnapshot           Int? @map("gap_snapshot")
+
+  employeeCodeSnapshot   String  @map("employee_code_snapshot")
+  employeeNameSnapshot   String  @map("employee_name_snapshot")
+  jobId                  String? @map("job_id")
+  jobTitleSnapshot       String? @map("job_title_snapshot")
+  departmentId           String? @map("department_id")
+  departmentNameSnapshot String? @map("department_name_snapshot")
+
+  sourceAssessmentDate DateTime? @map("source_assessment_date")
+  priority             String    @default("NORMAL") // NORMAL | HIGH
+  status               String    @default("OPEN") // OPEN | PLANNED | IN_PROGRESS | FULFILLED | CANCELLED
+  fulfilledAt          DateTime? @map("fulfilled_at")
+
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  enrollments TrainingEnrollment[]
+  idpItems    IdpItem[]
+
+  @@index([employeeId, status])
+  @@index([competencyId])
+  @@index([departmentId])
+  @@map("training_needs")
+}
+
+/// A course in the catalogue. No content is hosted here: this is the record that a course exists, what it develops
+/// and how long it takes.
+model TrainingCourse {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  title           String
+  description     String?
+  category        String?
+  deliveryMethod  String   @map("delivery_method") // CLASSROOM | VIRTUAL | SELF_STUDY | BLENDED | OTHER
+  durationMinutes Int?     @map("duration_minutes")
+  providerName    String?  @map("provider_name")
+  providerType    String   @default("INTERNAL") @map("provider_type") // INTERNAL | EXTERNAL
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdByUserId String?  @map("created_by_user_id")
+
+  competencies TrainingCourseCompetency[]
+  sessions     TrainingSession[]
+  idpItems     IdpItem[]
+
+  @@index([isActive])
+  @@map("training_courses")
+}
+
+/// "This course is relevant to developing this competency." It is **not** a promise that finishing it puts anybody at
+/// `targetLevel` — only a competency assessment decides a level.
+model TrainingCourseCompetency {
+  id           String         @id @default(cuid())
+  courseId     String         @map("course_id")
+  course       TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  competencyId String         @map("competency_id")
+  competency   Competency     @relation(fields: [competencyId], references: [id])
+  targetLevel  Int?           @map("target_level")
+
+  @@unique([courseId, competencyId])
+  @@index([competencyId])
+  @@map("training_course_competencies")
+}
+
+/// One scheduled run of a course. Instants are UTC; `timezone` is how they are read back.
+model TrainingSession {
+  id                  String         @id @default(cuid())
+  courseId            String         @map("course_id")
+  course              TrainingCourse @relation(fields: [courseId], references: [id])
+  courseCodeSnapshot  String         @map("course_code_snapshot")
+  courseTitleSnapshot String         @map("course_title_snapshot")
+  organizationId      String?        @map("organization_id")
+  organization        Organization?  @relation(fields: [organizationId], references: [id])
+
+  startAt  DateTime @map("start_at")
+  endAt    DateTime @map("end_at")
+  /// IANA zone, e.g. Asia/Bangkok. Never a fixed offset.
+  timezone String
+
+  location       String?
+  meetingUrl     String? @map("meeting_url")
+  capacity       Int?
+  instructorName String? @map("instructor_name")
+
+  status      String    @default("DRAFT") // DRAFT | OPEN | IN_PROGRESS | COMPLETED | CANCELLED
+  completedAt DateTime? @map("completed_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdByUserId String?  @map("created_by_user_id")
+
+  enrollments TrainingEnrollment[]
+
+  @@index([courseId])
+  @@index([status, startAt])
+  @@map("training_sessions")
+}
+
+/// One person on one session. A session being complete says nothing about any individual: one attendee may have
+/// completed it, another failed it, and a third never turned up.
+model TrainingEnrollment {
+  id         String          @id @default(cuid())
+  sessionId  String          @map("session_id")
+  session    TrainingSession @relation(fields: [sessionId], references: [id])
+  employeeId String          @map("employee_id")
+  employee   Employee        @relation(fields: [employeeId], references: [id])
+
+  employeeCodeSnapshot   String  @map("employee_code_snapshot")
+  employeeNameSnapshot   String  @map("employee_name_snapshot")
+  departmentNameSnapshot String? @map("department_name_snapshot")
+
+  /// Why this person is here, so a training record explains itself later.
+  source         String        @default("MANUAL") // MANUAL | TNA | IDP
+  trainingNeedId String?       @map("training_need_id")
+  trainingNeed   TrainingNeed? @relation(fields: [trainingNeedId], references: [id])
+  idpItemId      String?       @map("idp_item_id")
+  idpItem        IdpItem?      @relation(fields: [idpItemId], references: [id])
+
+  status       String    @default("ENROLLED") // ENROLLED | ATTENDED | COMPLETED | FAILED | NO_SHOW | CANCELLED
+  enrolledAt   DateTime  @default(now()) @map("enrolled_at")
+  completionAt DateTime? @map("completion_at")
+  score        Decimal?  @db.Decimal(6, 2)
+  resultNote   String?   @map("result_note")
+
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([sessionId, employeeId])
+  @@index([employeeId, status])
+  @@index([trainingNeedId])
+  @@map("training_enrollments")
+}
+
+/// An individual development plan: what somebody is going to do about their development this period.
+model IndividualDevelopmentPlan {
+  id         String   @id @default(cuid())
+  employeeId String   @map("employee_id")
+  employee   Employee @relation("IdpEmployee", fields: [employeeId], references: [id])
+
+  employeeCodeSnapshot   String  @map("employee_code_snapshot")
+  employeeNameSnapshot   String  @map("employee_name_snapshot")
+  departmentNameSnapshot String? @map("department_name_snapshot")
+
+  title       String
+  periodStart String @map("period_start") // YYYY-MM-DD
+  periodEnd   String @map("period_end")
+
+  managerEmployeeId   String?   @map("manager_employee_id")
+  managerEmployee     Employee? @relation("IdpManager", fields: [managerEmployeeId], references: [id])
+  managerUserId       String?   @map("manager_user_id")
+  managerUser         User?     @relation("IdpManagerUser", fields: [managerUserId], references: [id])
+  managerNameSnapshot String?   @map("manager_name_snapshot")
+
+  status      String    @default("DRAFT") // DRAFT | ACTIVE | COMPLETED | CANCELLED
+  activatedAt DateTime? @map("activated_at")
+  completedAt DateTime? @map("completed_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  items IdpItem[]
+
+  @@index([employeeId, status])
+  @@map("individual_development_plans")
+}
+
+/// One thing somebody is going to do. Training is one development type of several — that is the point of a plan.
+model IdpItem {
+  id    String                    @id @default(cuid())
+  idpId String                    @map("idp_id")
+  idp   IndividualDevelopmentPlan @relation(fields: [idpId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String?
+  developmentType String  @map("development_type") // TRAINING | OJT | COACHING | MENTORING | SELF_STUDY | PROJECT | OTHER
+
+  trainingNeedId         String?       @map("training_need_id")
+  trainingNeed           TrainingNeed? @relation(fields: [trainingNeedId], references: [id])
+  competencyId           String?       @map("competency_id")
+  competency             Competency?   @relation(fields: [competencyId], references: [id])
+  /// Frozen so a renamed competency never makes an old plan unreadable.
+  competencyCodeSnapshot String?       @map("competency_code_snapshot")
+  competencyNameSnapshot String?       @map("competency_name_snapshot")
+
+  linkedCourseId  String?         @map("linked_course_id")
+  linkedCourse    TrainingCourse? @relation(fields: [linkedCourseId], references: [id])
+  linkedSessionId String?         @map("linked_session_id")
+
+  targetDate      String? @map("target_date") // YYYY-MM-DD
+  status          String  @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
+  progressPercent Int     @default(0) @map("progress_percent")
+
+  /// Development comments are HR data. `hrComment` is HR's alone; the others follow the visibility documented in
+  /// docs/training-development.md. None of them ever reaches a log, a notification or an audit payload.
+  employeeComment String? @map("employee_comment")
+  managerComment  String? @map("manager_comment")
+  hrComment       String? @map("hr_comment")
+
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  enrollments TrainingEnrollment[]
+
+  @@index([idpId])
+  @@index([trainingNeedId])
+  @@map("idp_items")
 }

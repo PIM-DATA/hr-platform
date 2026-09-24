@@ -18,6 +18,7 @@ export * from './overtime';
 export * from './payroll';
 export * from './performance';
 export * from './competency';
+export * from './training';
 export * from './onboarding';
 export * from './account';
 export * from './privacy';

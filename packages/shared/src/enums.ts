@@ -169,6 +169,54 @@ export type CompetencyAssessmentStatus = (typeof COMPETENCY_ASSESSMENT_STATUSES)
 export const GAP_STATUSES = ['UNASSESSED', 'GAP', 'NO_GAP', 'EXCEEDS_REQUIREMENT'] as const;
 export type GapStatus = (typeof GAP_STATUSES)[number];
 
+// ---------- training and development (Task 25) ----------
+/** Why a development need exists. A gap-based need carries the numbers it was created from. */
+export const TRAINING_NEED_SOURCES = ['COMPETENCY_GAP', 'MANUAL'] as const;
+export type TrainingNeedSource = (typeof TRAINING_NEED_SOURCES)[number];
+
+/**
+ * A need's life. FULFILLED means somebody completed the development that was planned for it — **not** that their
+ * competency level has changed, which only a competency assessment can do.
+ */
+export const TRAINING_NEED_STATUSES = ['OPEN', 'PLANNED', 'IN_PROGRESS', 'FULFILLED', 'CANCELLED'] as const;
+export type TrainingNeedStatus = (typeof TRAINING_NEED_STATUSES)[number];
+
+/** User-chosen, deliberately coarse: no severity is inferred from the size of a gap. */
+export const TRAINING_NEED_PRIORITIES = ['NORMAL', 'HIGH'] as const;
+export type TrainingNeedPriority = (typeof TRAINING_NEED_PRIORITIES)[number];
+
+export const TRAINING_DELIVERY_METHODS = ['CLASSROOM', 'VIRTUAL', 'SELF_STUDY', 'BLENDED', 'OTHER'] as const;
+export type TrainingDeliveryMethod = (typeof TRAINING_DELIVERY_METHODS)[number];
+
+export const TRAINING_PROVIDER_TYPES = ['INTERNAL', 'EXTERNAL'] as const;
+export type TrainingProviderType = (typeof TRAINING_PROVIDER_TYPES)[number];
+
+export const TRAINING_SESSION_STATUSES = ['DRAFT', 'OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
+export type TrainingSessionStatus = (typeof TRAINING_SESSION_STATUSES)[number];
+
+/**
+ * One person's place on one session. A session being complete says nothing about any individual: one attendee may
+ * have completed it, another failed it and a third never turned up.
+ */
+export const TRAINING_ENROLLMENT_STATUSES = ['ENROLLED', 'ATTENDED', 'COMPLETED', 'FAILED', 'NO_SHOW', 'CANCELLED'] as const;
+export type TrainingEnrollmentStatus = (typeof TRAINING_ENROLLMENT_STATUSES)[number];
+/** Once one of these is recorded the enrolment is finished; there is no correction workflow in this release. */
+export const TRAINING_ENROLLMENT_TERMINAL: readonly TrainingEnrollmentStatus[] = ['COMPLETED', 'FAILED', 'NO_SHOW', 'CANCELLED'];
+
+/** Why somebody was enrolled — so a training record can explain itself later. */
+export const TRAINING_ENROLLMENT_SOURCES = ['MANUAL', 'TNA', 'IDP'] as const;
+export type TrainingEnrollmentSource = (typeof TRAINING_ENROLLMENT_SOURCES)[number];
+
+export const IDP_STATUSES = ['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED'] as const;
+export type IdpStatus = (typeof IDP_STATUSES)[number];
+
+export const IDP_ITEM_STATUSES = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
+export type IdpItemStatus = (typeof IDP_ITEM_STATUSES)[number];
+
+/** How somebody develops. Training is one way of several, which is the point of a development plan. */
+export const DEVELOPMENT_TYPES = ['TRAINING', 'OJT', 'COACHING', 'MENTORING', 'SELF_STUDY', 'PROJECT', 'OTHER'] as const;
+export type DevelopmentType = (typeof DEVELOPMENT_TYPES)[number];
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -191,6 +239,12 @@ export const NOTIFICATION_TYPES = {
   COMPETENCY_SELF_ASSESSMENT_SUBMITTED: 'COMPETENCY_SELF_ASSESSMENT_SUBMITTED',
   COMPETENCY_MANAGER_ASSESSMENT_REQUIRED: 'COMPETENCY_MANAGER_ASSESSMENT_REQUIRED',
   COMPETENCY_ASSESSMENT_FINALIZED: 'COMPETENCY_ASSESSMENT_FINALIZED',
+  /** Training and development notifications name a course, a session date or a plan — never a result or a comment. */
+  TRAINING_ENROLLED: 'TRAINING_ENROLLED',
+  TRAINING_SESSION_UPDATED: 'TRAINING_SESSION_UPDATED',
+  TRAINING_COMPLETED: 'TRAINING_COMPLETED',
+  IDP_ACTIVATED: 'IDP_ACTIVATED',
+  IDP_COMPLETED: 'IDP_COMPLETED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -208,7 +262,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -331,6 +385,22 @@ export const AUDIT_ACTIONS = {
   SUBMIT_COMPETENCY_SELF_ASSESSMENT: 'SUBMIT_COMPETENCY_SELF_ASSESSMENT',
   SUBMIT_COMPETENCY_MANAGER_ASSESSMENT: 'SUBMIT_COMPETENCY_MANAGER_ASSESSMENT',
   FINALIZE_COMPETENCY_ASSESSMENT: 'FINALIZE_COMPETENCY_ASSESSMENT',
+  CREATE_TRAINING_NEED: 'CREATE_TRAINING_NEED',
+  UPDATE_TRAINING_NEED: 'UPDATE_TRAINING_NEED',
+  GENERATE_TNA: 'GENERATE_TNA',
+  CREATE_TRAINING_COURSE: 'CREATE_TRAINING_COURSE',
+  UPDATE_TRAINING_COURSE: 'UPDATE_TRAINING_COURSE',
+  CREATE_TRAINING_SESSION: 'CREATE_TRAINING_SESSION',
+  UPDATE_TRAINING_SESSION: 'UPDATE_TRAINING_SESSION',
+  ENROLL_TRAINING: 'ENROLL_TRAINING',
+  CANCEL_TRAINING_ENROLLMENT: 'CANCEL_TRAINING_ENROLLMENT',
+  RECORD_TRAINING_ATTENDANCE: 'RECORD_TRAINING_ATTENDANCE',
+  RECORD_TRAINING_RESULT: 'RECORD_TRAINING_RESULT',
+  CREATE_IDP: 'CREATE_IDP',
+  UPDATE_IDP: 'UPDATE_IDP',
+  ACTIVATE_IDP: 'ACTIVATE_IDP',
+  UPDATE_IDP_ITEM: 'UPDATE_IDP_ITEM',
+  COMPLETE_IDP: 'COMPLETE_IDP',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -392,6 +462,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   payroll: 'Payroll',
   performance: 'Performance',
   competency: 'Competency',
+  training: 'Training & development',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

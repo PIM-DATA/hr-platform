@@ -68,6 +68,14 @@ import { ScalesPage } from '@/features/competency/ScalesPage';
 import { JobProfilesPage } from '@/features/competency/JobProfilesPage';
 import { CompetencyCyclesPage } from '@/features/competency/CompetencyCyclesPage';
 import { SkillGapReportPage } from '@/features/competency/SkillGapReportPage';
+import { TrainingLayout } from '@/features/training/training-ui';
+import { MyDevelopmentPage } from '@/features/training/MyDevelopmentPage';
+import { TeamDevelopmentPage } from '@/features/training/TeamDevelopmentPage';
+import { TrainingNeedsPage } from '@/features/training/TrainingNeedsPage';
+import { CoursesPage } from '@/features/training/CoursesPage';
+import { SessionsPage } from '@/features/training/SessionsPage';
+import { IdpsPage } from '@/features/training/IdpsPage';
+import { TrainingReportsPage } from '@/features/training/TrainingReportsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -248,6 +256,22 @@ export const router = createBrowserRouter([
                   ],
                 },
                 { path: 'gaps', element: <SkillGapReportPage /> },
+              ],
+            }],
+          },
+          {
+            // Training and development (Task 25). `training.view` is your own record and the catalogue; managing
+            // needs, courses, sessions and plans needs the training permissions, never a data scope.
+            element: <RequirePermission permission={PERMISSIONS.TRAINING_VIEW} />,
+            children: [{
+              path: 'hrd/training', element: <TrainingLayout />,
+              children: [
+                { index: true, element: <MyDevelopmentPage /> },
+                { path: 'team', element: <TeamDevelopmentPage /> },
+                { element: <RequirePermission permission={PERMISSIONS.TRAINING_MANAGE} />, children: [{ path: 'needs', element: <TrainingNeedsPage /> }, { path: 'reports', element: <TrainingReportsPage /> }] },
+                { path: 'courses', element: <CoursesPage /> },
+                { path: 'sessions', element: <SessionsPage /> },
+                { element: <RequirePermission permission={PERMISSIONS.IDP_MANAGE} />, children: [{ path: 'idps', element: <IdpsPage /> }] },
               ],
             }],
           },

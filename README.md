@@ -292,7 +292,8 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Overtime: claim-based after the fact, minutes and multipliers only — no rounding rule or approved-claim reversal.
 - Payroll: no tax, social security, provident fund, bank file or GL posting; monthly only, one currency, one run per period, no off-cycle or retroactive run, no reopen after closing.
 - Performance: no 360 feedback, calibration, 9-box, forced ranking, competency scoring, bonus/payroll linkage, OKR tree, automatic achievement formulas, AI-written reviews, reopen after close or cycle scheduler.
-- Competency: no training catalogue, TNA, IDP, certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
+- Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
+- Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, certificate upload, full OJT workflow, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -780,6 +781,24 @@ Full guide: [docs/competency.md](docs/competency.md). HRD → Competency.
 - **One definition of a gap**: `getSkillGapsForDevelopment(...)` (and `GET /competency/skill-gaps`) is what development
   planning reads, so nothing downstream recomputes gaps from raw tables.
 - **Assessment comments** live on the assessment alone — never in a notification, report, list or audit payload.
+
+## Training and development (Task 25)
+
+Full guide: [docs/training-development.md](docs/training-development.md). HRD → Training & development.
+
+- **Completing a course is not becoming more capable.** A completed enrolment fulfils the need it came from and
+  completes the plan activity it was booked against — and leaves the competency level exactly where the assessment
+  put it. Only a competency assessment moves a level.
+- **TNA consumes the competency module's gap service**, never its tables. One need per real gap; a competency nobody
+  has assessed is reported as *assessment required*, never turned into a need the size of the requirement.
+- **A need freezes the gap it came from** — level, requirement, gap, job, date — so it still explains itself when the
+  job's requirement moves. What the gap is today is shown beside it, live, and never acted on automatically.
+- **A session completing completes nothing for anybody**: each attendee's attendance and result are recorded on their
+  own, and a recorded outcome is final. Capacity is enforced under a row lock; one place per person per session.
+- **Course ↔ competency mapping is a pointer, not a promise**: it drives suggestions and never a level.
+- **A development plan is more than courses**: OJT, coaching, mentoring, self-study and projects are activities too.
+- **Reporting states its definitions**: completion rate excludes cancelled and unfinished places; training hours count
+  attended or completed places only; nothing claims a skill improved.
 
 ## Pilot release
 

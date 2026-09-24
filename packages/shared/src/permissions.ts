@@ -66,6 +66,13 @@ export const PERMISSIONS = {
   COMPETENCY_VIEW: 'competency.view',
   COMPETENCY_ASSESS: 'competency.assess',
   COMPETENCY_MANAGE: 'competency.manage',
+
+  TRAINING_VIEW: 'training.view',
+  TRAINING_MANAGE: 'training.manage',
+  TRAINING_ENROLL: 'training.enroll',
+  TRAINING_RECORD_RESULT: 'training.record_result',
+  IDP_VIEW: 'idp.view',
+  IDP_MANAGE: 'idp.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -139,6 +146,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.COMPETENCY_VIEW, module: 'competency', description: 'View your own competency profile and aggregate competency reports' },
   { code: PERMISSIONS.COMPETENCY_ASSESS, module: 'competency', description: 'Assess the competency assessments you are the assigned reviewer for' },
   { code: PERMISSIONS.COMPETENCY_MANAGE, module: 'competency', description: 'Manage the competency framework, job profiles and assessment cycles' },
+
+  { code: PERMISSIONS.TRAINING_VIEW, module: 'training', description: 'View the course catalogue and your own training record' },
+  { code: PERMISSIONS.TRAINING_MANAGE, module: 'training', description: 'Manage training needs, courses and sessions' },
+  { code: PERMISSIONS.TRAINING_ENROLL, module: 'training', description: 'Enrol employees on training sessions' },
+  { code: PERMISSIONS.TRAINING_RECORD_RESULT, module: 'training', description: 'Record training attendance and results' },
+  { code: PERMISSIONS.IDP_VIEW, module: 'training', description: 'View your own development plan' },
+  { code: PERMISSIONS.IDP_MANAGE, module: 'training', description: 'Create and manage individual development plans' },
 ];
 
 /**
