@@ -92,6 +92,9 @@ export const PERMISSIONS = {
   TALENT_VIEW_REPORTS: 'talent.view_reports',
   SUCCESSION_VIEW: 'succession.view',
   SUCCESSION_MANAGE: 'succession.manage',
+  EMPLOYEE360_VIEW: 'employee360.view',
+  ANALYTICS_VIEW_EXECUTIVE: 'analytics.view_executive',
+  ANALYTICS_VIEW_PAYROLL_AGGREGATE: 'analytics.view_payroll_aggregate',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -191,6 +194,9 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.TALENT_VIEW_REPORTS, module: 'talent', description: 'Aggregate talent and succession reporting — counts only, never an individual' },
   { code: PERMISSIONS.SUCCESSION_VIEW, module: 'talent', description: 'See succession plans and nominated successors' },
   { code: PERMISSIONS.SUCCESSION_MANAGE, module: 'talent', description: 'Create succession plans, nominate successors and record readiness' },
+  { code: PERMISSIONS.EMPLOYEE360_VIEW, module: 'analytics', description: 'Open the Employee 360 view; every section still needs its own source-module permission' },
+  { code: PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE, module: 'analytics', description: 'Executive HR dashboard — organization-level aggregates only, never an individual' },
+  { code: PERMISSIONS.ANALYTICS_VIEW_PAYROLL_AGGREGATE, module: 'analytics', description: 'Organization-level payroll totals on the executive dashboard (gross, deductions, net, headcount paid)' },
 ];
 
 /**

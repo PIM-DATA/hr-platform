@@ -59,7 +59,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Succession', path: '/hrod/succession', icon: GitBranch, comingSoon: true },
     ],
   },
-  { items: [{ label: 'Analytics', path: '/analytics', icon: BarChart3, comingSoon: true }] },
+  { label: 'Analytics', items: [{ label: 'Executive dashboard', path: '/analytics/executive', icon: BarChart3, permission: P.ANALYTICS_VIEW_EXECUTIVE }] },
   {
     label: 'Administration',
     items: [

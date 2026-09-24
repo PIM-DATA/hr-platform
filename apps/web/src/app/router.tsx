@@ -101,6 +101,7 @@ import { TalentReviewsPage } from '@/features/talent/TalentReviewsPage';
 import { TalentPoolsPage } from '@/features/talent/TalentPoolsPage';
 import { SuccessionPage } from '@/features/talent/SuccessionPage';
 import { TalentReportsPage } from '@/features/talent/TalentReportsPage';
+import { ExecutiveDashboardPage } from '@/features/analytics/ExecutiveDashboardPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -349,6 +350,7 @@ export const router = createBrowserRouter([
               ],
             }],
           },
+          { element: <RequirePermission permission={PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE} />, children: [{ path: 'analytics/executive', element: <ExecutiveDashboardPage /> }] },
           { element: <RequirePermission permission={PERMISSIONS.ONBOARDING_MANAGE} />, children: [{ path: 'admin/onboarding', element: <OnboardingPage /> }] },
           {
             // Privacy operations (Task 18). Each tab is guarded on its own permission, as the API is.

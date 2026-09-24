@@ -21,20 +21,39 @@ import { useDirectReports, useEmployee, useEmployeeMutations, useManagerHistory,
 import { EmployeeFormModal } from './EmployeeFormModal';
 import { ChangePositionModal } from './ChangePositionModal';
 import { ChangeManagerModal } from './ChangeManagerModal';
+import { useAuth } from '@/hooks/useAuth';
+import { useEmployee360 } from '@/features/analytics/analytics.api';
+import { CareerTalentSection, DevelopmentSection, OverviewCards, PerformanceSection, RelationsSection, TimeLeaveSection, TimelineSection } from '@/features/analytics/Employee360Sections';
 
-type Tab = 'overview' | 'employment' | 'positions' | 'managers';
-const TABS: { key: Tab; label: string }[] = [
+type Tab = 'overview' | 'employment' | 'positions' | 'managers' | 'time' | 'performance' | 'development' | 'career' | 'relations';
+const BASE_TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'employment', label: 'Employment' },
   { key: 'positions', label: 'Position history' },
   { key: 'managers', label: 'Manager history' },
 ];
+/** Employee 360 tabs (Task 29) appear only for the sections the server returned — the API decides, not the browser. */
+const TAB_FOR_SECTION: { key: Tab; label: string; sections: string[] }[] = [
+  { key: 'time', label: 'Time & leave', sections: ['leave', 'attendance', 'overtime', 'payroll'] },
+  { key: 'performance', label: 'Performance', sections: ['performance'] },
+  { key: 'development', label: 'Development', sections: ['competency', 'development'] },
+  { key: 'career', label: 'Career & talent', sections: ['career', 'talent'] },
+  { key: 'relations', label: 'Relations', sections: ['employeeRelations', 'recruitment'] },
+];
+
+function useAuthEmployeeId() { return useAuth().user?.employee?.id ?? null; }
 
 export function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const employee = useEmployee(id);
   const [tab, setTab] = useState<Tab>('overview');
+  const { hasPermission: has360 } = useAuth();
+  const three60 = useEmployee360(id, has360(PERMISSIONS.EMPLOYEE360_VIEW));
+  const visible = three60.data?.visibleSections ?? [];
+  const tabs = [...BASE_TABS, ...TAB_FOR_SECTION.filter((t) => t.sections.some((s) => visible.includes(s)))];
+  const myEmployeeId = useAuthEmployeeId();
+  const selfLinks = !!three60.data && three60.data.profile.id === myEmployeeId;
   const [editOpen, setEditOpen] = useState(false);
   const [positionOpen, setPositionOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -86,12 +105,18 @@ export function EmployeeDetailPage() {
       />
 
       <div className="mb-5 -mb-px flex gap-1 overflow-x-auto border-b border-slate-200">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)} className={cn('whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium', tab === t.key ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-700')}>{t.label}</button>
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab e={e} />}
+      {tab === 'overview' && <><OverviewTab e={e} />{three60.data && <div className="mt-4"><OverviewCards d={three60.data} /></div>}</>}
+      {tab === 'employment' && three60.data?.sections.employment && <div className="mb-4"><TimelineSection e={three60.data.sections.employment} /></div>}
+      {tab === 'time' && three60.data && <TimeLeaveSection s={three60.data.sections} selfLinks={selfLinks} />}
+      {tab === 'performance' && three60.data?.sections.performance && <PerformanceSection p={three60.data.sections.performance} />}
+      {tab === 'development' && three60.data && <DevelopmentSection s={three60.data.sections} selfLinks={selfLinks} />}
+      {tab === 'career' && three60.data && <CareerTalentSection s={three60.data.sections} selfLinks={selfLinks} />}
+      {tab === 'relations' && three60.data && <RelationsSection s={three60.data.sections} />}
       {tab === 'employment' && <EmploymentTab e={e} onChangePosition={() => setPositionOpen(true)} onChangeManager={() => setManagerOpen(true)} />}
       {tab === 'positions' && <PositionHistoryTab id={e.id} />}
       {tab === 'managers' && <ManagerHistoryTab id={e.id} />}

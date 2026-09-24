@@ -297,6 +297,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
 - Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
 - Career & talent: no automatic promotion, AI ranking, automatic successor recommendation, external successors, movement workflow, compensation/bonus linkage, attrition prediction, workforce forecasting, succession simulation, advanced replacement chart, psychometrics, talent marketplace, employee-visible nomination or AI career recommendation.
+- Employee 360 / analytics: no report builder, dashboard designer, scheduled/emailed reports, external BI, warehouse, predictive analytics, attrition scoring, employee ranking, custom KPI formulas, historical headcount trend, executive salary analytics by default, dossier export, or AI copilot.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -869,6 +870,26 @@ Full guide: [docs/career-talent-succession.md](docs/career-talent-succession.md)
 - **Confidential by permission**: employees see only their own career page; comments and notes reach reviewers and
   managers of the module only; EXECUTIVE has aggregate reports only; no payroll, disciplinary or recruitment data is
   read anywhere in the module. Employees are not notified of pool membership or nomination.
+
+## Employee 360 and executive HR analytics (Task 29)
+
+Guides: [docs/employee-360.md](docs/employee-360.md), [docs/hr-analytics.md](docs/hr-analytics.md).
+Employees → Employee detail (360 tabs); Analytics → Executive dashboard.
+
+- **A projection layer.** Employee 360 and the executive dashboard store nothing and calculate nothing new: each
+  section is the source module's own projection or report, called through its service, and nothing is written back.
+- **Section-level authorization.** `employee360.view` opens the page; every section follows the source module's
+  rule and an unauthorized section is absent from the payload. A manager's TEAM scope never unlocks payroll, an
+  employee-relations summary or a potential judgment; an employee never sees talent, succession, ER or recruitment
+  internals about themselves.
+- **Aggregate-only analytics.** `analytics.view_executive` (EXECUTIVE, HR_ADMIN) returns counts, rates and
+  distributions with no employee-level rows (a test walks the response); payroll totals need
+  `analytics.view_payroll_aggregate` and are organization-level only. Every figure has a definition in the metric
+  dictionary naming its source module, attribution and population; historical domains keep their snapshot
+  semantics rather than being forced onto today's department.
+- **CSV export** of the aggregate tables with formula escaping; no dossier export (the Privacy module's audited
+  personal-data export remains the only one).
+- No prediction, no ranking, no AI.
 
 ## Pilot release
 
