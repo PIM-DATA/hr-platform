@@ -244,6 +244,40 @@ export const EMPLOYEE_RELATIONS_WORKFLOW = { module: 'employee_relations', entit
  */
 export const ACKNOWLEDGEMENT_STATEMENT = 'I confirm that I have received this document. Acknowledging receipt does not mean that I agree with its contents or admit to the matters described in it.';
 
+// ---------- recruitment (Task 27) ----------
+export const REQUISITION_REASONS = ['NEW_HEADCOUNT', 'REPLACEMENT', 'TEMPORARY', 'OTHER'] as const;
+export type RequisitionReason = (typeof REQUISITION_REASONS)[number];
+export const REQUISITION_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED', 'CLOSED'] as const;
+export type RequisitionStatus = (typeof REQUISITION_STATUSES)[number];
+/** OPEN means the opening takes applications inside the ATS. Nothing is published anywhere. */
+export const OPENING_STATUSES = ['DRAFT', 'OPEN', 'ON_HOLD', 'CLOSED', 'CANCELLED'] as const;
+export type OpeningStatus = (typeof OPENING_STATUSES)[number];
+export const CANDIDATE_SOURCES = ['MANUAL', 'REFERRAL', 'AGENCY', 'JOB_BOARD', 'CAREER_SITE', 'OTHER'] as const;
+export type CandidateSource = (typeof CANDIDATE_SOURCES)[number];
+export const CANDIDATE_STATUSES = ['ACTIVE', 'HIRED', 'ARCHIVED'] as const;
+export type CandidateStatus = (typeof CANDIDATE_STATUSES)[number];
+/**
+ * The pipeline. Forward moves are explicit human actions with a reason; nothing advances on its own — not when an
+ * interview completes, not when feedback says PROCEED, not when an offer is accepted. HIRED is reached only by the
+ * hire action, which creates the employee.
+ */
+export const APPLICATION_STAGES = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN'] as const;
+export type ApplicationStage = (typeof APPLICATION_STAGES)[number];
+export const APPLICATION_ACTIVE_STAGES: readonly ApplicationStage[] = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER'];
+export const APPLICATION_STAGE_ORDER: readonly ApplicationStage[] = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'HIRED'];
+/** A rejection is a person's decision and carries a reason. The codes are for reporting; the note is for the file. */
+export const REJECTION_REASONS = ['NOT_A_FIT', 'EXPERIENCE', 'COMPENSATION', 'POSITION_FILLED', 'NO_RESPONSE', 'OTHER'] as const;
+export type RejectionReason = (typeof REJECTION_REASONS)[number];
+export const INTERVIEW_STATUSES = ['SCHEDULED', 'COMPLETED', 'CANCELLED'] as const;
+export type InterviewStatus = (typeof INTERVIEW_STATUSES)[number];
+/** Feedback informs a person. It never ranks a candidate or picks a winner. */
+export const INTERVIEW_RECOMMENDATIONS = ['PROCEED', 'HOLD', 'DO_NOT_PROCEED'] as const;
+export type InterviewRecommendation = (typeof INTERVIEW_RECOMMENDATIONS)[number];
+/** SENT and ACCEPTED/DECLINED are HR-recorded facts: there is no candidate portal and no delivery channel. */
+export const OFFER_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT', 'ACCEPTED', 'DECLINED', 'WITHDRAWN'] as const;
+export type OfferStatus = (typeof OFFER_STATUSES)[number];
+export const RECRUITMENT_WORKFLOW = { module: 'recruitment', requisition: 'RECRUITMENT_REQUISITION', offer: 'JOB_OFFER' } as const;
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -275,6 +309,10 @@ export const NOTIFICATION_TYPES = {
   /** Employee relations notifications say that a document exists, and nothing about what it says. */
   DISCIPLINARY_ACTION_ISSUED: 'DISCIPLINARY_ACTION_ISSUED',
   DISCIPLINARY_ACTION_ACKNOWLEDGED: 'DISCIPLINARY_ACTION_ACKNOWLEDGED',
+  /** Recruitment notifications carry an opening title and a time — never a candidate's details, feedback or a salary. */
+  INTERVIEW_ASSIGNED: 'INTERVIEW_ASSIGNED',
+  INTERVIEW_FEEDBACK_REQUIRED: 'INTERVIEW_FEEDBACK_REQUIRED',
+  HIRING_COMPLETED: 'HIRING_COMPLETED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -292,7 +330,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -446,6 +484,36 @@ export const AUDIT_ACTIONS = {
   CREATE_DISCIPLINARY_ACTION_TYPE: 'CREATE_DISCIPLINARY_ACTION_TYPE',
   UPDATE_DISCIPLINARY_ACTION_TYPE: 'UPDATE_DISCIPLINARY_ACTION_TYPE',
   UPDATE_DISCIPLINARY_POLICY: 'UPDATE_DISCIPLINARY_POLICY',
+  CREATE_RECRUITMENT_REQUISITION: 'CREATE_RECRUITMENT_REQUISITION',
+  UPDATE_RECRUITMENT_REQUISITION: 'UPDATE_RECRUITMENT_REQUISITION',
+  SUBMIT_RECRUITMENT_REQUISITION: 'SUBMIT_RECRUITMENT_REQUISITION',
+  APPROVE_RECRUITMENT_REQUISITION: 'APPROVE_RECRUITMENT_REQUISITION',
+  REJECT_RECRUITMENT_REQUISITION: 'REJECT_RECRUITMENT_REQUISITION',
+  CREATE_RECRUITMENT_OPENING: 'CREATE_RECRUITMENT_OPENING',
+  UPDATE_RECRUITMENT_OPENING: 'UPDATE_RECRUITMENT_OPENING',
+  OPEN_RECRUITMENT_OPENING: 'OPEN_RECRUITMENT_OPENING',
+  CLOSE_RECRUITMENT_OPENING: 'CLOSE_RECRUITMENT_OPENING',
+  CREATE_CANDIDATE: 'CREATE_CANDIDATE',
+  UPDATE_CANDIDATE: 'UPDATE_CANDIDATE',
+  CREATE_APPLICATION: 'CREATE_APPLICATION',
+  MOVE_APPLICATION_STAGE: 'MOVE_APPLICATION_STAGE',
+  REJECT_APPLICATION: 'REJECT_APPLICATION',
+  WITHDRAW_APPLICATION: 'WITHDRAW_APPLICATION',
+  SCHEDULE_INTERVIEW: 'SCHEDULE_INTERVIEW',
+  UPDATE_INTERVIEW: 'UPDATE_INTERVIEW',
+  SUBMIT_INTERVIEW_FEEDBACK: 'SUBMIT_INTERVIEW_FEEDBACK',
+  CREATE_JOB_OFFER: 'CREATE_JOB_OFFER',
+  UPDATE_JOB_OFFER: 'UPDATE_JOB_OFFER',
+  SUBMIT_JOB_OFFER: 'SUBMIT_JOB_OFFER',
+  APPROVE_JOB_OFFER: 'APPROVE_JOB_OFFER',
+  REJECT_JOB_OFFER: 'REJECT_JOB_OFFER',
+  MARK_JOB_OFFER_SENT: 'MARK_JOB_OFFER_SENT',
+  RECORD_JOB_OFFER_ACCEPTED: 'RECORD_JOB_OFFER_ACCEPTED',
+  RECORD_JOB_OFFER_DECLINED: 'RECORD_JOB_OFFER_DECLINED',
+  WITHDRAW_JOB_OFFER: 'WITHDRAW_JOB_OFFER',
+  HIRE_CANDIDATE: 'HIRE_CANDIDATE',
+  UPDATE_RECRUITMENT_POLICY: 'UPDATE_RECRUITMENT_POLICY',
+  EXPORT_CANDIDATE_PERSONAL_DATA: 'EXPORT_CANDIDATE_PERSONAL_DATA',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -509,6 +577,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   competency: 'Competency',
   training: 'Training & development',
   employee_relations: 'Employee relations',
+  recruitment: 'Recruitment',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

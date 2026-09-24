@@ -21,6 +21,8 @@ export interface TemplateVars {
   cycleName?: string;
   /** A course title, for training notifications. Never a score, a result or a development comment. */
   courseTitle?: string;
+  /** An opening's title, for recruitment notifications. Never a candidate's name, feedback or an offer figure. */
+  openingTitle?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -125,6 +127,19 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.DISCIPLINARY_ACTION_ACKNOWLEDGED]: () => ({
     title: 'Document receipt acknowledged',
     body: 'An employee has acknowledged receipt of an employee relations document. Open the case to see it.',
+  }),
+  // Recruitment: an opening title and a date. Candidates are named only inside the ATS, where access is purpose-specific.
+  [NOTIFICATION_TYPES.INTERVIEW_ASSIGNED]: (v) => ({
+    title: 'Interview assigned',
+    body: `You are an interviewer for ${v.openingTitle ?? 'an opening'}${v.date ? ` on ${v.date}` : ''}. Open the interview to see the details.`,
+  }),
+  [NOTIFICATION_TYPES.INTERVIEW_FEEDBACK_REQUIRED]: (v) => ({
+    title: 'Interview feedback needed',
+    body: `Your feedback for an interview for ${v.openingTitle ?? 'an opening'}${v.date ? ` on ${v.date}` : ''} has not been submitted.`,
+  }),
+  [NOTIFICATION_TYPES.HIRING_COMPLETED]: (v) => ({
+    title: 'Hire recorded',
+    body: `A candidate for ${v.openingTitle ?? 'an opening'} has been hired and an employee record created. Open the application to see it.`,
   }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',

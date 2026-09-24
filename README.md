@@ -295,6 +295,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, certificate upload, full OJT workflow, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
+- Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -823,6 +824,30 @@ Full guide: [docs/employee-relations.md](docs/employee-relations.md). HRM → Em
   numbers and lengths, never the text. The personal-data export carries the letters issued to the subject and their
   acknowledgements, and excludes case narratives and HR's internal notes.
 - **No side effects.** Nothing here deducts pay, lowers a performance score, or ends employment.
+
+## Recruitment (Task 27)
+
+Full guide: [docs/recruitment.md](docs/recruitment.md). HRM → Recruitment.
+
+- **A record of decisions, not a decision engine.** No scoring, ranking, screening or model of any kind; nothing is
+  hired or rejected automatically. Every stage move is an explicit action with an append-only history of who, when
+  and why; backwards moves need a reason.
+- **Approval through the shared workflow** (`module = recruitment`): requisitions (`RECRUITMENT_REQUISITION`) and
+  offers (`JOB_OFFER`) use the workflows named in the organization's recruitment policy. Masters are snapshotted at
+  submit; an approved offer is frozen; a rejected requisition is terminal.
+- **Openings come from approved headcount only** and never exceed it. "Open" takes applications inside the ATS —
+  nothing is published anywhere. `filledCount` is counted from HIRED applications on read; closing is a person's call.
+- **Candidates are PII-minimized**: name, contact, current role, source, summary. No national id, birth date or any
+  protected attribute — such fields are refused, not stripped. Exact-match duplicates are flagged, never merged.
+  Candidates are archived, never deleted.
+- **Purpose-specific access.** `recruitment.view` reaches only what the caller is named on (hiring manager,
+  interviewer); `recruitment.manage` is the recruiter's desk; salary figures reach only `recruitment.manage_offers`
+  and the offer's approver; `recruitment.hire` alone creates employees; EXECUTIVE has none. No data scope applies.
+- **Feedback informs, never ranks.** One submission per interviewer per interview, shown side by side; no average,
+  no total. Feedback text, candidate names and offer figures never reach audit payloads, notifications or logs.
+- **Hire is one transaction** through `createEmployeeWithTx` under row locks: accepted offer required, unique per
+  candidate and application, headcount cap enforced, concurrent hires produce one employee. It creates **no user
+  account and no payroll compensation**.
 
 ## Pilot release
 

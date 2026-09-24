@@ -78,6 +78,12 @@ export const PERMISSIONS = {
   EMPLOYEE_RELATIONS_MANAGE: 'employee_relations.manage',
   EMPLOYEE_RELATIONS_ISSUE: 'employee_relations.issue',
   EMPLOYEE_RELATIONS_ACKNOWLEDGE: 'employee_relations.acknowledge',
+
+  RECRUITMENT_VIEW: 'recruitment.view',
+  RECRUITMENT_MANAGE: 'recruitment.manage',
+  RECRUITMENT_INTERVIEW: 'recruitment.interview',
+  RECRUITMENT_MANAGE_OFFERS: 'recruitment.manage_offers',
+  RECRUITMENT_HIRE: 'recruitment.hire',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -163,6 +169,12 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE, module: 'employee_relations', description: 'Manage employee relations cases, actions and configuration' },
   { code: PERMISSIONS.EMPLOYEE_RELATIONS_ISSUE, module: 'employee_relations', description: 'Submit disciplinary actions for approval and issue warning letters' },
   { code: PERMISSIONS.EMPLOYEE_RELATIONS_ACKNOWLEDGE, module: 'employee_relations', description: 'Acknowledge receipt of a disciplinary document issued to you' },
+
+  { code: PERMISSIONS.RECRUITMENT_VIEW, module: 'recruitment', description: 'View the requisitions, openings and applications you are the hiring manager or an interviewer for' },
+  { code: PERMISSIONS.RECRUITMENT_MANAGE, module: 'recruitment', description: 'Manage requisitions, openings, candidates, applications and interviews' },
+  { code: PERMISSIONS.RECRUITMENT_INTERVIEW, module: 'recruitment', description: 'Give feedback on interviews you are assigned to' },
+  { code: PERMISSIONS.RECRUITMENT_MANAGE_OFFERS, module: 'recruitment', description: 'Draft, submit and record the outcome of job offers, including compensation proposals' },
+  { code: PERMISSIONS.RECRUITMENT_HIRE, module: 'recruitment', description: 'Convert an accepted candidate into an employee record' },
 ];
 
 /**

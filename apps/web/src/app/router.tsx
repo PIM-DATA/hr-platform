@@ -83,6 +83,16 @@ import { CasesPage as ErCasesPage } from '@/features/employee-relations/CasesPag
 import { ActionsPage as ErActionsPage } from '@/features/employee-relations/ActionsPage';
 import { ActionTypesPage } from '@/features/employee-relations/ActionTypesPage';
 import { ErReportsPage } from '@/features/employee-relations/ErReportsPage';
+import { RecruitmentLayout } from '@/features/recruitment/recruitment-ui';
+import { RecruitmentDashboardPage } from '@/features/recruitment/DashboardPage';
+import { RecruitmentApprovalsPage } from '@/features/recruitment/ApprovalsPage';
+import { RequisitionsPage } from '@/features/recruitment/RequisitionsPage';
+import { OpeningsPage } from '@/features/recruitment/OpeningsPage';
+import { CandidatesPage } from '@/features/recruitment/CandidatesPage';
+import { ApplicationsPage } from '@/features/recruitment/ApplicationsPage';
+import { InterviewsPage } from '@/features/recruitment/InterviewsPage';
+import { OffersPage } from '@/features/recruitment/OffersPage';
+import { RecruitmentReportsPage } from '@/features/recruitment/ReportsPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -296,6 +306,23 @@ export const router = createBrowserRouter([
                   children: [{ path: 'cases', element: <ErCasesPage /> }, { path: 'actions', element: <ErActionsPage /> }, { path: 'reports', element: <ErReportsPage /> }],
                 },
                 { element: <RequirePermission permission={PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE} />, children: [{ path: 'action-types', element: <ActionTypesPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Recruitment (Task 27). Purpose-specific access: a hiring manager or interviewer reaches only their own
+            // requisitions, openings, applications and interviews; the API applies the same scope.
+            element: <RequirePermission permission={[PERMISSIONS.RECRUITMENT_VIEW, PERMISSIONS.RECRUITMENT_MANAGE, PERMISSIONS.RECRUITMENT_INTERVIEW]} />,
+            children: [{
+              path: 'hrm/recruitment', element: <RecruitmentLayout />,
+              children: [
+                { element: <RequirePermission permission={[PERMISSIONS.RECRUITMENT_VIEW, PERMISSIONS.RECRUITMENT_MANAGE]} />, children: [
+                  { index: true, element: <RecruitmentDashboardPage /> }, { path: 'requisitions', element: <RequisitionsPage /> }, { path: 'openings', element: <OpeningsPage /> },
+                  { path: 'candidates', element: <CandidatesPage /> }, { path: 'applications', element: <ApplicationsPage /> }, { path: 'offers', element: <OffersPage /> },
+                ] },
+                { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_APPROVE} />, children: [{ path: 'approvals', element: <RecruitmentApprovalsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.RECRUITMENT_INTERVIEW, PERMISSIONS.RECRUITMENT_MANAGE]} />, children: [{ path: 'interviews', element: <InterviewsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.RECRUITMENT_MANAGE} />, children: [{ path: 'reports', element: <RecruitmentReportsPage /> }] },
               ],
             }],
           },

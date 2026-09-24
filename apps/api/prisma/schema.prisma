@@ -40,30 +40,32 @@ model User {
 
   // workflow (Phase 2)
   workflowDefinitionSteps       WorkflowDefinitionStep[]
-  workflowRequests              WorkflowInstance[]            @relation("WorkflowRequesterUser")
-  workflowApproverSteps         WorkflowInstanceStep[]        @relation("WorkflowStepApproverUser")
-  workflowActedSteps            WorkflowInstanceStep[]        @relation("WorkflowStepActedBy")
+  workflowRequests              WorkflowInstance[]             @relation("WorkflowRequesterUser")
+  workflowApproverSteps         WorkflowInstanceStep[]         @relation("WorkflowStepApproverUser")
+  workflowActedSteps            WorkflowInstanceStep[]         @relation("WorkflowStepActedBy")
   workflowActions               WorkflowAction[]
   leaveLedgerEntries            LeaveLedger[]
   leaveRequestsCreated          LeaveRequest[]
   onboardingImports             OnboardingImportRun[]
-  passwordResetTokens           PasswordResetToken[]          @relation("PasswordResetSubject")
-  passwordResetsIssued          PasswordResetToken[]          @relation("PasswordResetIssuer")
-  privacyRequestsSubject        PrivacyRequest[]              @relation("PrivacySubjectUser")
-  privacyRequestsCreated        PrivacyRequest[]              @relation("PrivacyRequestCreator")
-  privacyRequestsAssigned       PrivacyRequest[]              @relation("PrivacyRequestAssignee")
-  attendanceSchedules           AttendanceSchedule[]          @relation("AttendanceScheduleCreator")
-  attendanceClockEvents         AttendanceClockEvent[]        @relation("AttendanceClockCreator")
-  attendanceCorrections         AttendanceCorrection[]        @relation("AttendanceCorrectionCreator")
-  overtimeRequestsCreated       OvertimeRequest[]             @relation("OvertimeRequestCreator")
-  compensationsCreated          EmployeeCompensation[]        @relation("CompensationCreator")
-  payItemsCreated               EmployeePayItem[]             @relation("PayItemCreator")
-  payrollRunsStarted            PayrollRun[]                  @relation("PayrollRunStarter")
-  payrollRunsClosed             PayrollRun[]                  @relation("PayrollRunCloser")
-  performanceReviews            PerformancePlan[]             @relation("PerformancePlanReviewerUser")
-  competencyReviews             CompetencyAssessment[]        @relation("CompetencyAssessmentReviewerUser")
-  developmentPlansManaged       IndividualDevelopmentPlan[]   @relation("IdpManagerUser")
-  employeeRelationCasesAssigned EmployeeRelationCase[]        @relation("ErCaseAssignee")
+  passwordResetTokens           PasswordResetToken[]           @relation("PasswordResetSubject")
+  passwordResetsIssued          PasswordResetToken[]           @relation("PasswordResetIssuer")
+  privacyRequestsSubject        PrivacyRequest[]               @relation("PrivacySubjectUser")
+  privacyRequestsCreated        PrivacyRequest[]               @relation("PrivacyRequestCreator")
+  privacyRequestsAssigned       PrivacyRequest[]               @relation("PrivacyRequestAssignee")
+  attendanceSchedules           AttendanceSchedule[]           @relation("AttendanceScheduleCreator")
+  attendanceClockEvents         AttendanceClockEvent[]         @relation("AttendanceClockCreator")
+  attendanceCorrections         AttendanceCorrection[]         @relation("AttendanceCorrectionCreator")
+  overtimeRequestsCreated       OvertimeRequest[]              @relation("OvertimeRequestCreator")
+  compensationsCreated          EmployeeCompensation[]         @relation("CompensationCreator")
+  payItemsCreated               EmployeePayItem[]              @relation("PayItemCreator")
+  payrollRunsStarted            PayrollRun[]                   @relation("PayrollRunStarter")
+  payrollRunsClosed             PayrollRun[]                   @relation("PayrollRunCloser")
+  performanceReviews            PerformancePlan[]              @relation("PerformancePlanReviewerUser")
+  competencyReviews             CompetencyAssessment[]         @relation("CompetencyAssessmentReviewerUser")
+  developmentPlansManaged       IndividualDevelopmentPlan[]    @relation("IdpManagerUser")
+  employeeRelationCasesAssigned EmployeeRelationCase[]         @relation("ErCaseAssignee")
+  interviewerAssignments        RecruitmentInterviewer[]
+  interviewFeedback             RecruitmentInterviewFeedback[]
   disciplinaryAcknowledgements  DisciplinaryAcknowledgement[]
   notifications                 Notification[]
 
@@ -155,7 +157,7 @@ model Organization {
 
   departments          Department[]
   employees            Employee[]
-  workCalendars        WorkCalendar[]       @relation("OrganizationCalendars")
+  workCalendars        WorkCalendar[]           @relation("OrganizationCalendars")
   leavePolicies        LeavePolicy[]
   attendanceShifts     AttendanceShift[]
   overtimePolicies     OvertimePolicy[]
@@ -163,6 +165,8 @@ model Organization {
   payrollPolicies      PayrollPolicy[]
   payrollPeriods       PayrollPeriod[]
   performanceCycles    PerformanceCycle[]
+  recruitmentPolicies  RecruitmentPolicy[]
+  requisitions         RecruitmentRequisition[]
   performanceKpis      PerformanceKpi[]
   trainingSessions     TrainingSession[]
   disciplinaryPolicies DisciplinaryPolicy[]
@@ -207,6 +211,8 @@ model Job {
 
   positions              Position[]
   competencyRequirements JobCompetencyRequirement[]
+  requisitions           RecruitmentRequisition[]
+  openings               RecruitmentOpening[]
 
   @@map("jobs")
 }
@@ -293,6 +299,8 @@ model Employee {
   developmentPlansManaged      IndividualDevelopmentPlan[]   @relation("IdpManager")
   employeeRelationCases        EmployeeRelationCase[]
   disciplinaryActions          DisciplinaryAction[]
+  hiringRequisitions           RecruitmentRequisition[]      @relation("RequisitionHiringManager")
+  interviewerAssignments       RecruitmentInterviewer[]
   disciplinaryAcknowledgements DisciplinaryAcknowledgement[]
 
   @@index([departmentId])
@@ -2069,4 +2077,293 @@ model DisciplinaryAcknowledgement {
 
   @@unique([actionId, employeeId])
   @@map("disciplinary_acknowledgements")
+}
+
+// ---------------------------------------------------------------------------
+// Recruitment (Task 27)
+// ---------------------------------------------------------------------------
+
+/// Which workflow approves a requisition and which approves an offer, per organization.
+model RecruitmentPolicy {
+  id                      String       @id @default(cuid())
+  organizationId          String       @unique @map("organization_id")
+  organization            Organization @relation(fields: [organizationId], references: [id])
+  requisitionWorkflowCode String       @map("requisition_workflow_code")
+  offerWorkflowCode       String       @map("offer_workflow_code")
+  createdAt               DateTime     @default(now()) @map("created_at")
+  updatedAt               DateTime     @updatedAt @map("updated_at")
+
+  @@map("recruitment_policies")
+}
+
+/// One counter per document kind and year, taken under a row lock, so two records created at once never collide.
+model RecruitmentSequence {
+  kind String
+  year Int
+  next Int    @default(1)
+
+  @@id([kind, year])
+  @@map("recruitment_sequences")
+}
+
+/// A request for headcount, approved through the shared workflow. Masters are referenced, and what the approver saw
+/// is snapshotted at submit.
+model RecruitmentRequisition {
+  id                String       @id @default(cuid())
+  requisitionNumber String       @unique @map("requisition_number")
+  organizationId    String       @map("organization_id")
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  departmentId      String?      @map("department_id")
+  jobId             String       @map("job_id")
+  job               Job          @relation(fields: [jobId], references: [id])
+  positionId        String?      @map("position_id")
+
+  hiringManagerEmployeeId String?   @map("hiring_manager_employee_id")
+  hiringManagerEmployee   Employee? @relation("RequisitionHiringManager", fields: [hiringManagerEmployeeId], references: [id])
+  hiringManagerUserId     String?   @map("hiring_manager_user_id")
+
+  requestedOpenings Int     @map("requested_openings")
+  employmentType    String? @map("employment_type")
+  reason            String // NEW_HEADCOUNT | REPLACEMENT | TEMPORARY | OTHER
+  desiredStartDate  String? @map("desired_start_date")
+  justification     String?
+
+  // snapshots, taken at submit
+  organizationNameSnapshot  String? @map("organization_name_snapshot")
+  departmentNameSnapshot    String? @map("department_name_snapshot")
+  jobTitleSnapshot          String? @map("job_title_snapshot")
+  positionTitleSnapshot     String? @map("position_title_snapshot")
+  hiringManagerNameSnapshot String? @map("hiring_manager_name_snapshot")
+
+  status             String    @default("DRAFT") // DRAFT | PENDING_APPROVAL | APPROVED | REJECTED | CANCELLED | CLOSED
+  workflowInstanceId String?   @unique @map("workflow_instance_id")
+  submittedAt        DateTime? @map("submitted_at")
+  approvedAt         DateTime? @map("approved_at")
+  rejectedAt         DateTime? @map("rejected_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  closedAt           DateTime? @map("closed_at")
+  createdByUserId    String    @map("created_by_user_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  openings RecruitmentOpening[]
+
+  @@index([status])
+  @@index([hiringManagerUserId])
+  @@index([organizationId])
+  @@map("recruitment_requisitions")
+}
+
+/// A vacancy that takes applications inside the ATS. OPEN publishes nothing anywhere.
+model RecruitmentOpening {
+  id            String                 @id @default(cuid())
+  openingNumber String                 @unique @map("opening_number")
+  requisitionId String                 @map("requisition_id")
+  requisition   RecruitmentRequisition @relation(fields: [requisitionId], references: [id])
+  jobId         String                 @map("job_id")
+  job           Job                    @relation(fields: [jobId], references: [id])
+  positionId    String?                @map("position_id")
+
+  titleSnapshot             String  @map("title_snapshot")
+  departmentNameSnapshot    String? @map("department_name_snapshot")
+  organizationNameSnapshot  String? @map("organization_name_snapshot")
+  hiringManagerUserId       String? @map("hiring_manager_user_id")
+  hiringManagerEmployeeId   String? @map("hiring_manager_employee_id")
+  hiringManagerNameSnapshot String? @map("hiring_manager_name_snapshot")
+
+  description      String?
+  requirementsText String?   @map("requirements_text")
+  openingsCount    Int       @map("openings_count")
+  openedAt         DateTime? @map("opened_at")
+  targetCloseDate  String?   @map("target_close_date")
+  status           String    @default("DRAFT") // DRAFT | OPEN | ON_HOLD | CLOSED | CANCELLED
+  closedAt         DateTime? @map("closed_at")
+  createdByUserId  String    @map("created_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  applications RecruitmentApplication[]
+
+  @@index([status])
+  @@index([requisitionId])
+  @@index([hiringManagerUserId])
+  @@map("recruitment_openings")
+}
+
+/// A person who has applied, or been approached. The minimum a recruiter needs and nothing protected.
+model RecruitmentCandidate {
+  id              String   @id @default(cuid())
+  candidateNumber String   @unique @map("candidate_number")
+  firstName       String   @map("first_name")
+  lastName        String   @map("last_name")
+  email           String?
+  /// Lower-cased and trimmed, for exact duplicate detection. Nothing fuzzy.
+  emailNormalized String?  @map("email_normalized")
+  phone           String?
+  phoneNormalized String?  @map("phone_normalized")
+  currentCompany  String?  @map("current_company")
+  currentTitle    String?  @map("current_title")
+  locationText    String?  @map("location_text")
+  source          String   @default("MANUAL")
+  sourceDetail    String?  @map("source_detail")
+  summary         String?
+  status          String   @default("ACTIVE") // ACTIVE | HIRED | ARCHIVED
+  hiredEmployeeId String?  @unique @map("hired_employee_id")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  applications RecruitmentApplication[]
+
+  @@index([emailNormalized])
+  @@index([phoneNormalized])
+  @@index([status])
+  @@map("recruitment_candidates")
+}
+
+/// One candidate against one opening. The stage is where they are; the history says who moved them and when.
+model RecruitmentApplication {
+  id                     String               @id @default(cuid())
+  applicationNumber      String               @unique @map("application_number")
+  candidateId            String               @map("candidate_id")
+  candidate              RecruitmentCandidate @relation(fields: [candidateId], references: [id])
+  openingId              String               @map("opening_id")
+  opening                RecruitmentOpening   @relation(fields: [openingId], references: [id])
+  appliedAt              String               @map("applied_at") // YYYY-MM-DD
+  stage                  String               @default("APPLIED")
+  recruiterUserId        String?              @map("recruiter_user_id")
+  hiringManagerUserId    String?              @map("hiring_manager_user_id")
+  sourceSnapshot         String               @map("source_snapshot")
+  departmentNameSnapshot String?              @map("department_name_snapshot")
+  jobTitleSnapshot       String               @map("job_title_snapshot")
+
+  rejectionReasonCode String?   @map("rejection_reason_code")
+  rejectionNote       String?   @map("rejection_note")
+  rejectedAt          DateTime? @map("rejected_at")
+  withdrawnNote       String?   @map("withdrawn_note")
+  withdrawnAt         DateTime? @map("withdrawn_at")
+  hiredEmployeeId     String?   @unique @map("hired_employee_id")
+  hiredAt             DateTime? @map("hired_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  stageHistory RecruitmentApplicationStageHistory[]
+  interviews   RecruitmentInterview[]
+  offers       RecruitmentOffer[]
+
+  @@unique([candidateId, openingId])
+  @@index([openingId, stage])
+  @@index([candidateId])
+  @@index([hiringManagerUserId])
+  @@map("recruitment_applications")
+}
+
+/// Append-only. Never edited, never deleted: the answer to "who moved this candidate, and when".
+model RecruitmentApplicationStageHistory {
+  id              String                 @id @default(cuid())
+  applicationId   String                 @map("application_id")
+  application     RecruitmentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage       String?                @map("from_stage")
+  toStage         String                 @map("to_stage")
+  changedByUserId String                 @map("changed_by_user_id")
+  changedAt       DateTime               @default(now()) @map("changed_at")
+  reason          String?
+
+  @@index([applicationId, changedAt])
+  @@map("recruitment_application_stage_history")
+}
+
+/// A scheduled conversation. UTC instants, an IANA zone, and no calendar invite goes anywhere.
+model RecruitmentInterview {
+  id              String                 @id @default(cuid())
+  applicationId   String                 @map("application_id")
+  application     RecruitmentApplication @relation(fields: [applicationId], references: [id])
+  roundNumber     Int?                   @map("round_number")
+  title           String
+  scheduledStart  DateTime               @map("scheduled_start")
+  scheduledEnd    DateTime               @map("scheduled_end")
+  timezone        String
+  location        String?
+  meetingUrl      String?                @map("meeting_url")
+  status          String                 @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED
+  completedAt     DateTime?              @map("completed_at")
+  cancelledAt     DateTime?              @map("cancelled_at")
+  createdByUserId String                 @map("created_by_user_id")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  interviewers RecruitmentInterviewer[]
+  feedback     RecruitmentInterviewFeedback[]
+
+  @@index([applicationId])
+  @@index([scheduledStart])
+  @@map("recruitment_interviews")
+}
+
+/// Being on this table is what gives somebody purpose-specific access to one interview and its application.
+model RecruitmentInterviewer {
+  id          String               @id @default(cuid())
+  interviewId String               @map("interview_id")
+  interview   RecruitmentInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  employeeId  String?              @map("employee_id")
+  employee    Employee?            @relation(fields: [employeeId], references: [id])
+  userId      String               @map("user_id")
+  user        User                 @relation(fields: [userId], references: [id])
+  roleLabel   String?              @map("role_label")
+
+  @@unique([interviewId, userId])
+  @@index([userId])
+  @@map("recruitment_interviewers")
+}
+
+/// One interviewer's view. It informs a person; nothing adds these up into a ranking.
+model RecruitmentInterviewFeedback {
+  id                String               @id @default(cuid())
+  interviewId       String               @map("interview_id")
+  interview         RecruitmentInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  interviewerUserId String               @map("interviewer_user_id")
+  interviewer       User                 @relation(fields: [interviewerUserId], references: [id])
+  recommendation    String // PROCEED | HOLD | DO_NOT_PROCEED
+  overallScore      Int?                 @map("overall_score")
+  strengths         String?
+  concerns          String?
+  comments          String?
+  submittedAt       DateTime             @default(now()) @map("submitted_at")
+
+  @@unique([interviewId, interviewerUserId])
+  @@map("recruitment_interview_feedback")
+}
+
+/// A proposal to a candidate, approved through the shared workflow. The salary is a recruitment figure, not a
+/// payroll record: payroll learns nothing from this table.
+model RecruitmentOffer {
+  id                      String                 @id @default(cuid())
+  offerNumber             String                 @unique @map("offer_number")
+  applicationId           String                 @map("application_id")
+  application             RecruitmentApplication @relation(fields: [applicationId], references: [id])
+  status                  String                 @default("DRAFT") // DRAFT | PENDING_APPROVAL | APPROVED | SENT | ACCEPTED | DECLINED | WITHDRAWN
+  proposedStartDate       String                 @map("proposed_start_date")
+  employmentTypeSnapshot  String?                @map("employment_type_snapshot")
+  positionId              String?                @map("position_id")
+  positionTitleSnapshot   String?                @map("position_title_snapshot")
+  baseSalaryProposal      Decimal?               @map("base_salary_proposal") @db.Decimal(18, 2)
+  currencyCode            String                 @default("THB") @map("currency_code")
+  otherTermsText          String?                @map("other_terms_text")
+  workflowInstanceId      String?                @unique @map("workflow_instance_id")
+  createdByUserId         String                 @map("created_by_user_id")
+  submittedAt             DateTime?              @map("submitted_at")
+  approvedAt              DateTime?              @map("approved_at")
+  rejectedAt              DateTime?              @map("rejected_at")
+  sentAt                  DateTime?              @map("sent_at")
+  acceptedAt              DateTime?              @map("accepted_at")
+  declinedAt              DateTime?              @map("declined_at")
+  withdrawnAt             DateTime?              @map("withdrawn_at")
+  outcomeRecordedByUserId String?                @map("outcome_recorded_by_user_id")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
+
+  @@index([applicationId])
+  @@index([status])
+  @@map("recruitment_offers")
 }

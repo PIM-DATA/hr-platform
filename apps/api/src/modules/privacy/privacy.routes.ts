@@ -5,6 +5,7 @@ import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
 import { requestMeta } from '../../services/audit/audit.service';
 import { privacyService } from './privacy.service';
+import { candidateExportService } from '../recruitment/candidate-export.service';
 
 /**
  * Privacy operations. Two permissions, deliberately separate: recording and tracking requests
@@ -35,6 +36,16 @@ privacyRouter.get('/employee-options', exportData, async (req, res) => res.json(
 privacyRouter.post('/employees/:employeeId/export', exportData, async (req, res) => {
   const result = await privacyService.exportEmployee(req.params.employeeId as string, actor(req));
   const safeName = `personal-data-${result.subject.employeeCode.replace(/[^A-Za-z0-9._-]/g, '_')}-${result.generatedAt.slice(0, 10)}.json`;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(JSON.stringify(result, null, 2));
+});
+
+/** A recruitment candidate's personal data — same permission, same shape of answer, same audit discipline. */
+privacyRouter.post('/candidates/:candidateId/export', exportData, async (req, res) => {
+  const result = await candidateExportService.exportCandidate(req.params.candidateId as string, actor(req));
+  const safeName = `candidate-data-${result.subject.candidateNumber.replace(/[^A-Za-z0-9._-]/g, '_')}-${result.generatedAt.slice(0, 10)}.json`;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
   res.setHeader('Cache-Control', 'no-store');
