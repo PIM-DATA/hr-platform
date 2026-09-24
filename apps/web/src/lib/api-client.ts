@@ -67,5 +67,7 @@ export const api = {
   get: <T>(path: string, options?: RequestOptions) => request<{ data: T; meta?: ApiListMeta }>('GET', path, undefined, options),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<{ data: T }>('POST', path, body, options),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) => request<{ data: T }>('PATCH', path, body, options),
+  /** For endpoints whose semantics are "make it so" rather than "change this bit" — e.g. a job's competency requirement. */
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) => request<{ data: T }>('PUT', path, body, options),
   delete: <T>(path: string, options?: RequestOptions) => request<{ data: T }>('DELETE', path, undefined, options),
 };

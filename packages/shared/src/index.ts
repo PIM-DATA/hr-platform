@@ -9,4 +9,5 @@ export * from './attendance';
 export * from './overtime';
 export * from './payroll';
 export * from './performance';
+export * from './competency';
 export * from './schemas';

@@ -98,6 +98,15 @@ export async function resetDatabase() {
   await prisma.workflowDefinition.deleteMany();
   await prisma.employeeManager.deleteMany();
   await prisma.employeePosition.deleteMany();
+  await prisma.competencyAssessmentItem.deleteMany();
+  await prisma.competencyAssessment.deleteMany();
+  await prisma.competencyAssessmentCycle.deleteMany();
+  await prisma.jobCompetencyRequirement.deleteMany();
+  await prisma.competencyLevelIndicator.deleteMany();
+  await prisma.competency.deleteMany();
+  await prisma.competencyScaleLevel.deleteMany();
+  await prisma.competencyScale.deleteMany();
+  await prisma.competencyCategory.deleteMany();
   await prisma.performancePlanItem.deleteMany();
   await prisma.performancePlan.deleteMany();
   await prisma.performanceRatingBand.deleteMany();

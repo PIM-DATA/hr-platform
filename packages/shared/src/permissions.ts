@@ -62,6 +62,10 @@ export const PERMISSIONS = {
   PERFORMANCE_REVIEW: 'performance.review',
   PERFORMANCE_MANAGE_CYCLES: 'performance.manage_cycles',
   PERFORMANCE_MANAGE_KPIS: 'performance.manage_kpis',
+
+  COMPETENCY_VIEW: 'competency.view',
+  COMPETENCY_ASSESS: 'competency.assess',
+  COMPETENCY_MANAGE: 'competency.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -131,6 +135,10 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.PERFORMANCE_REVIEW, module: 'performance', description: 'Review the performance plans you are the assigned reviewer for' },
   { code: PERMISSIONS.PERFORMANCE_MANAGE_CYCLES, module: 'performance', description: 'Manage performance cycles and the plans inside them' },
   { code: PERMISSIONS.PERFORMANCE_MANAGE_KPIS, module: 'performance', description: 'Manage the KPI library' },
+
+  { code: PERMISSIONS.COMPETENCY_VIEW, module: 'competency', description: 'View your own competency profile and aggregate competency reports' },
+  { code: PERMISSIONS.COMPETENCY_ASSESS, module: 'competency', description: 'Assess the competency assessments you are the assigned reviewer for' },
+  { code: PERMISSIONS.COMPETENCY_MANAGE, module: 'competency', description: 'Manage the competency framework, job profiles and assessment cycles' },
 ];
 
 /**

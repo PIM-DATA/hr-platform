@@ -44,7 +44,7 @@ export const MENU: MenuGroup[] = [
   {
     label: 'HRD',
     items: [
-      { label: 'Competency', path: '/hrd/competency', icon: Award, comingSoon: true },
+      { label: 'Competency', path: '/hrd/competency', icon: Award, permission: P.COMPETENCY_VIEW },
       { label: 'Training', path: '/hrd/training', icon: GraduationCap, comingSoon: true },
       { label: 'IDP', path: '/hrd/idp', icon: Route, comingSoon: true },
     ],

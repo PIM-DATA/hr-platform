@@ -61,6 +61,7 @@ model User {
   payrollRunsStarted      PayrollRun[]             @relation("PayrollRunStarter")
   payrollRunsClosed       PayrollRun[]             @relation("PayrollRunCloser")
   performanceReviews      PerformancePlan[]        @relation("PerformancePlanReviewerUser")
+  competencyReviews       CompetencyAssessment[]   @relation("CompetencyAssessmentReviewerUser")
   notifications           Notification[]
 
   @@map("users")
@@ -199,7 +200,8 @@ model Job {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  positions Position[]
+  positions              Position[]
+  competencyRequirements JobCompetencyRequirement[]
 
   @@map("jobs")
 }
@@ -278,6 +280,8 @@ model Employee {
   payrollResults        PayrollResult[]
   performancePlans      PerformancePlan[]      @relation("PerformancePlanEmployee")
   performanceReviews    PerformancePlan[]      @relation("PerformancePlanReviewer")
+  competencyAssessments CompetencyAssessment[] @relation("CompetencyAssessmentEmployee")
+  competencyReviews     CompetencyAssessment[] @relation("CompetencyAssessmentReviewer")
 
   @@index([departmentId])
   @@index([managerId])
@@ -1374,4 +1378,219 @@ model PerformancePlanItem {
   @@index([planId])
   @@index([kpiId])
   @@map("performance_plan_items")
+}
+
+// ---------------------------------------------------------------------------
+// Competency (Task 24)
+// ---------------------------------------------------------------------------
+
+/// How competencies are grouped — core, leadership, functional, technical. The names are the customer's.
+model CompetencyCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  competencies Competency[]
+
+  @@map("competency_categories")
+}
+
+/// A proficiency scale. Nothing assumes 1–5: how many levels there are and what they are called is configuration.
+model CompetencyScale {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  levels       CompetencyScaleLevel[]
+  competencies Competency[]
+
+  @@map("competency_scales")
+}
+
+/// One rung of a scale. The level is the number that gets recorded; the label is what it means.
+model CompetencyScaleLevel {
+  id          String          @id @default(cuid())
+  scaleId     String          @map("scale_id")
+  scale       CompetencyScale @relation(fields: [scaleId], references: [id], onDelete: Cascade)
+  level       Int
+  label       String
+  description String?
+
+  @@unique([scaleId, level])
+  @@index([scaleId])
+  @@map("competency_scale_levels")
+}
+
+/// A competency: something somebody can be more or less good at, measured on one scale.
+model Competency {
+  id              String             @id @default(cuid())
+  code            String             @unique
+  name            String
+  description     String?
+  categoryId      String             @map("category_id")
+  category        CompetencyCategory @relation(fields: [categoryId], references: [id])
+  scaleId         String             @map("scale_id")
+  scale           CompetencyScale    @relation(fields: [scaleId], references: [id])
+  isActive        Boolean            @default(true) @map("is_active")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdByUserId String?            @map("created_by_user_id")
+
+  indicators      CompetencyLevelIndicator[]
+  requirements    JobCompetencyRequirement[]
+  assessmentItems CompetencyAssessmentItem[]
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("competencies")
+}
+
+/// What a level looks like in practice, so two reviewers mean the same thing by "level 3". Guidance, not a rule:
+/// changing it never rewrites an assessment that has already been made.
+model CompetencyLevelIndicator {
+  id           String     @id @default(cuid())
+  competencyId String     @map("competency_id")
+  competency   Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  level        Int
+  description  String
+
+  @@unique([competencyId, level])
+  @@index([competencyId])
+  @@map("competency_level_indicators")
+}
+
+/// What a job asks for. Requirements hang off the **job**, because a position already names one and an employee's
+/// position is what connects them to it.
+model JobCompetencyRequirement {
+  id            String     @id @default(cuid())
+  jobId         String     @map("job_id")
+  job           Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  competencyId  String     @map("competency_id")
+  competency    Competency @relation(fields: [competencyId], references: [id])
+  requiredLevel Int        @map("required_level")
+  /// A priority, not a percentage — a framework weights what matters and need not add up to 100.
+  weight        Decimal?   @db.Decimal(6, 2)
+  isMandatory   Boolean    @default(true) @map("is_mandatory")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  @@unique([jobId, competencyId])
+  @@index([jobId])
+  @@index([competencyId])
+  @@map("job_competency_requirements")
+}
+
+/// One assessment round. Stage changes are made by a person; there is no scheduler.
+model CompetencyAssessmentCycle {
+  id                     String    @id @default(cuid())
+  code                   String    @unique
+  name                   String
+  description            String?
+  periodStart            String    @map("period_start") // YYYY-MM-DD
+  periodEnd              String    @map("period_end")
+  selfAssessmentRequired Boolean   @default(true) @map("self_assessment_required")
+  status                 String    @default("DRAFT") // DRAFT | ACTIVE | REVIEW | CLOSED
+  activatedAt            DateTime? @map("activated_at")
+  reviewOpenedAt         DateTime? @map("review_opened_at")
+  closedAt               DateTime? @map("closed_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  createdByUserId        String?   @map("created_by_user_id")
+
+  assessments CompetencyAssessment[]
+
+  @@index([status])
+  @@map("competency_assessment_cycles")
+}
+
+/// One employee's assessment for one cycle, with the job they held and the reviewer they were given frozen onto it.
+model CompetencyAssessment {
+  id         String                    @id @default(cuid())
+  cycleId    String                    @map("cycle_id")
+  cycle      CompetencyAssessmentCycle @relation(fields: [cycleId], references: [id])
+  employeeId String                    @map("employee_id")
+  employee   Employee                  @relation("CompetencyAssessmentEmployee", fields: [employeeId], references: [id])
+
+  // snapshots, taken when the assessment is created
+  employeeCodeSnapshot String  @map("employee_code_snapshot")
+  employeeNameSnapshot String  @map("employee_name_snapshot")
+  organizationId       String? @map("organization_id")
+  organizationName     String? @map("organization_name")
+  departmentId         String? @map("department_id")
+  departmentName       String? @map("department_name")
+  positionId           String? @map("position_id")
+  positionTitle        String? @map("position_title")
+  jobId                String? @map("job_id")
+  jobTitle             String? @map("job_title")
+
+  reviewerEmployeeId   String?   @map("reviewer_employee_id")
+  reviewerEmployee     Employee? @relation("CompetencyAssessmentReviewer", fields: [reviewerEmployeeId], references: [id])
+  reviewerUserId       String?   @map("reviewer_user_id")
+  reviewerUser         User?     @relation("CompetencyAssessmentReviewerUser", fields: [reviewerUserId], references: [id])
+  reviewerNameSnapshot String?   @map("reviewer_name_snapshot")
+
+  status             String    @default("DRAFT") // DRAFT | ACTIVE | SELF_REVIEW | MANAGER_REVIEW | FINALIZED
+  selfSubmittedAt    DateTime? @map("self_submitted_at")
+  managerSubmittedAt DateTime? @map("manager_submitted_at")
+  finalizedAt        DateTime? @map("finalized_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items CompetencyAssessmentItem[]
+
+  @@unique([cycleId, employeeId])
+  @@index([employeeId])
+  @@index([reviewerUserId])
+  @@index([cycleId, status])
+  @@map("competency_assessments")
+}
+
+/// One competency on one assessment. The requirement is snapshotted here: raising a job's requirement next month
+/// must not retroactively turn a closed assessment into a gap.
+model CompetencyAssessmentItem {
+  id           String               @id @default(cuid())
+  assessmentId String               @map("assessment_id")
+  assessment   CompetencyAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  competencyId String?              @map("competency_id")
+  competency   Competency?          @relation(fields: [competencyId], references: [id])
+
+  competencyCodeSnapshot String  @map("competency_code_snapshot")
+  competencyNameSnapshot String  @map("competency_name_snapshot")
+  categorySnapshot       String  @map("category_snapshot")
+  scaleIdSnapshot        String? @map("scale_id_snapshot")
+  scaleNameSnapshot      String? @map("scale_name_snapshot")
+  /// The scale's levels and the competency's indicators as they read at assessment time, so an old assessment still
+  /// explains itself after the library moves on. JSON, because it is a frozen copy and never queried.
+  levelLabelsSnapshot    Json?   @map("level_labels_snapshot")
+  indicatorsSnapshot     Json?   @map("indicators_snapshot")
+
+  requiredLevelSnapshot Int      @map("required_level_snapshot")
+  weightSnapshot        Decimal? @map("weight_snapshot") @db.Decimal(6, 2)
+  isMandatorySnapshot   Boolean  @default(true) @map("is_mandatory_snapshot")
+
+  selfLevel    Int? @map("self_level")
+  managerLevel Int? @map("manager_level")
+  /// What the gap is measured against. In this release it is the manager's level, frozen at finalization.
+  finalLevel   Int? @map("final_level")
+
+  /// Assessment comments are sensitive HR text: they live here and never in a log, notification or report.
+  selfComment    String? @map("self_comment")
+  managerComment String? @map("manager_comment")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([assessmentId])
+  @@index([competencyId])
+  @@map("competency_assessment_items")
 }

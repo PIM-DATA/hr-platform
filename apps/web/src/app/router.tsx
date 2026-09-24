@@ -60,6 +60,14 @@ import { TeamReviewsPage } from '@/features/performance/TeamReviewsPage';
 import { CyclesPage } from '@/features/performance/CyclesPage';
 import { KpiLibraryPage } from '@/features/performance/KpiLibraryPage';
 import { PerformanceReportsPage } from '@/features/performance/PerformanceReportsPage';
+import { CompetencyLayout } from '@/features/competency/competency-ui';
+import { MyCompetenciesPage } from '@/features/competency/MyCompetenciesPage';
+import { TeamAssessmentsPage } from '@/features/competency/TeamAssessmentsPage';
+import { CompetencyLibraryPage } from '@/features/competency/CompetencyLibraryPage';
+import { ScalesPage } from '@/features/competency/ScalesPage';
+import { JobProfilesPage } from '@/features/competency/JobProfilesPage';
+import { CompetencyCyclesPage } from '@/features/competency/CompetencyCyclesPage';
+import { SkillGapReportPage } from '@/features/competency/SkillGapReportPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -218,6 +226,28 @@ export const router = createBrowserRouter([
                   children: [{ path: 'kpis', element: <KpiLibraryPage /> }],
                 },
                 { path: 'reports', element: <PerformanceReportsPage /> },
+              ],
+            }],
+          },
+          {
+            // Competency (Task 24). `competency.view` is your own profile plus aggregate gap reporting; reading
+            // somebody else's assessment needs to be their snapshot reviewer or to manage the framework.
+            element: <RequirePermission permission={PERMISSIONS.COMPETENCY_VIEW} />,
+            children: [{
+              path: 'hrd/competency', element: <CompetencyLayout />,
+              children: [
+                { index: true, element: <MyCompetenciesPage /> },
+                { element: <RequirePermission permission={PERMISSIONS.COMPETENCY_ASSESS} />, children: [{ path: 'assessments', element: <TeamAssessmentsPage /> }] },
+                { path: 'library', element: <CompetencyLibraryPage /> },
+                {
+                  element: <RequirePermission permission={PERMISSIONS.COMPETENCY_MANAGE} />,
+                  children: [
+                    { path: 'scales', element: <ScalesPage /> },
+                    { path: 'job-profiles', element: <JobProfilesPage /> },
+                    { path: 'cycles', element: <CompetencyCyclesPage /> },
+                  ],
+                },
+                { path: 'gaps', element: <SkillGapReportPage /> },
               ],
             }],
           },

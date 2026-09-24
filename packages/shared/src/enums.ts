@@ -143,6 +143,32 @@ export type PerformancePlanStatus = (typeof PERFORMANCE_PLAN_STATUSES)[number];
 /** Weights are percentage points and a plan's must add up to exactly this before anybody reviews it. */
 export const PERFORMANCE_TOTAL_WEIGHT = '100.00';
 
+// ---------- competency (Task 24) ----------
+/**
+ * A competency cycle's own state, which is not an assessment's state. Stage changes are made by a person; there is
+ * no scheduler in this release.
+ */
+export const COMPETENCY_CYCLE_STATUSES = ['DRAFT', 'ACTIVE', 'REVIEW', 'CLOSED'] as const;
+export type CompetencyCycleStatus = (typeof COMPETENCY_CYCLE_STATUSES)[number];
+
+/**
+ * One assessment's state — linear and non-overlapping, the same shape performance plans use.
+ *
+ *   DRAFT → ACTIVE → SELF_REVIEW → MANAGER_REVIEW → FINALIZED
+ *
+ * "Self submitted" is not a state of its own: it is the same instant as MANAGER_REVIEW, and two names for one moment
+ * is how state machines start lying. A cycle whose `selfAssessmentRequired` is false goes ACTIVE → MANAGER_REVIEW.
+ */
+export const COMPETENCY_ASSESSMENT_STATUSES = ['DRAFT', 'ACTIVE', 'SELF_REVIEW', 'MANAGER_REVIEW', 'FINALIZED'] as const;
+export type CompetencyAssessmentStatus = (typeof COMPETENCY_ASSESSMENT_STATUSES)[number];
+
+/**
+ * What a competency's gap says. **UNASSESSED is not zero**: nobody has looked, which is a different fact from
+ * "assessed and found at level 0" and must never be reported as a deficiency.
+ */
+export const GAP_STATUSES = ['UNASSESSED', 'GAP', 'NO_GAP', 'EXCEEDS_REQUIREMENT'] as const;
+export type GapStatus = (typeof GAP_STATUSES)[number];
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -160,6 +186,11 @@ export const NOTIFICATION_TYPES = {
   PERFORMANCE_SELF_REVIEW_SUBMITTED: 'PERFORMANCE_SELF_REVIEW_SUBMITTED',
   PERFORMANCE_MANAGER_REVIEW_REQUIRED: 'PERFORMANCE_MANAGER_REVIEW_REQUIRED',
   PERFORMANCE_FINALIZED: 'PERFORMANCE_FINALIZED',
+  /** Competency notifications carry a cycle and a name — never a level, a gap breakdown or an assessment comment. */
+  COMPETENCY_ASSESSMENT_OPENED: 'COMPETENCY_ASSESSMENT_OPENED',
+  COMPETENCY_SELF_ASSESSMENT_SUBMITTED: 'COMPETENCY_SELF_ASSESSMENT_SUBMITTED',
+  COMPETENCY_MANAGER_ASSESSMENT_REQUIRED: 'COMPETENCY_MANAGER_ASSESSMENT_REQUIRED',
+  COMPETENCY_ASSESSMENT_FINALIZED: 'COMPETENCY_ASSESSMENT_FINALIZED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -177,7 +208,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -286,6 +317,20 @@ export const AUDIT_ACTIONS = {
   SUBMIT_SELF_REVIEW: 'SUBMIT_SELF_REVIEW',
   SUBMIT_MANAGER_REVIEW: 'SUBMIT_MANAGER_REVIEW',
   FINALIZE_PERFORMANCE_PLAN: 'FINALIZE_PERFORMANCE_PLAN',
+  CREATE_COMPETENCY_CATEGORY: 'CREATE_COMPETENCY_CATEGORY',
+  UPDATE_COMPETENCY_CATEGORY: 'UPDATE_COMPETENCY_CATEGORY',
+  CREATE_COMPETENCY_SCALE: 'CREATE_COMPETENCY_SCALE',
+  UPDATE_COMPETENCY_SCALE: 'UPDATE_COMPETENCY_SCALE',
+  CREATE_COMPETENCY: 'CREATE_COMPETENCY',
+  UPDATE_COMPETENCY: 'UPDATE_COMPETENCY',
+  UPDATE_JOB_COMPETENCY_PROFILE: 'UPDATE_JOB_COMPETENCY_PROFILE',
+  CREATE_COMPETENCY_CYCLE: 'CREATE_COMPETENCY_CYCLE',
+  UPDATE_COMPETENCY_CYCLE: 'UPDATE_COMPETENCY_CYCLE',
+  ASSIGN_COMPETENCY_ASSESSMENT: 'ASSIGN_COMPETENCY_ASSESSMENT',
+  REASSIGN_COMPETENCY_REVIEWER: 'REASSIGN_COMPETENCY_REVIEWER',
+  SUBMIT_COMPETENCY_SELF_ASSESSMENT: 'SUBMIT_COMPETENCY_SELF_ASSESSMENT',
+  SUBMIT_COMPETENCY_MANAGER_ASSESSMENT: 'SUBMIT_COMPETENCY_MANAGER_ASSESSMENT',
+  FINALIZE_COMPETENCY_ASSESSMENT: 'FINALIZE_COMPETENCY_ASSESSMENT',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -346,6 +391,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   ot: 'Overtime',
   payroll: 'Payroll',
   performance: 'Performance',
+  competency: 'Competency',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

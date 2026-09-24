@@ -77,6 +77,23 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Performance review complete',
     body: `Your review${v.cycleName ? ` for ${v.cycleName}` : ''} is complete. Open your plan to see the result.`,
   }),
+  // Competency: a cycle and a name. A level, a gap or an assessment comment never leaves the assessment itself.
+  [NOTIFICATION_TYPES.COMPETENCY_ASSESSMENT_OPENED]: (v) => ({
+    title: 'Competency assessment open',
+    body: `Your competency assessment${v.cycleName ? ` for ${v.cycleName}` : ''} is open. Open it to complete your self assessment.`,
+  }),
+  [NOTIFICATION_TYPES.COMPETENCY_SELF_ASSESSMENT_SUBMITTED]: (v) => ({
+    title: 'Self assessment submitted',
+    body: `${v.employeeName ?? 'An employee'} submitted their competency self assessment${v.cycleName ? ` for ${v.cycleName}` : ''}.`,
+  }),
+  [NOTIFICATION_TYPES.COMPETENCY_MANAGER_ASSESSMENT_REQUIRED]: (v) => ({
+    title: 'Competency assessment required',
+    body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your competency assessment.`,
+  }),
+  [NOTIFICATION_TYPES.COMPETENCY_ASSESSMENT_FINALIZED]: (v) => ({
+    title: 'Competency assessment complete',
+    body: `Your competency assessment${v.cycleName ? ` for ${v.cycleName}` : ''} is complete. Open it to see your levels and any gaps.`,
+  }),
   [NOTIFICATION_TYPES.LEAVE_CANCELLED]: (v) => ({
     title: 'Leave request cancelled',
     body: `The ${v.leaveType ?? 'leave'} request${v.dateRange ? ` for ${v.dateRange}` : ''} was cancelled.`,

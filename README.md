@@ -292,6 +292,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Overtime: claim-based after the fact, minutes and multipliers only — no rounding rule or approved-claim reversal.
 - Payroll: no tax, social security, provident fund, bank file or GL posting; monthly only, one currency, one run per period, no off-cycle or retroactive run, no reopen after closing.
 - Performance: no 360 feedback, calibration, 9-box, forced ranking, competency scoring, bonus/payroll linkage, OKR tree, automatic achievement formulas, AI-written reviews, reopen after close or cycle scheduler.
+- Competency: no training catalogue, TNA, IDP, certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -758,6 +759,27 @@ Full guide: [docs/performance.md](docs/performance.md). HRM → Performance.
   notification, a report, a list or an audit payload, which records only that comments exist.
 - **Reading one person's review** needs to be that person, their reviewer, or a cycle manager. A data scope grants
   nothing. Reports are aggregate-only, which is what makes `performance.view` safe for an executive.
+
+## Competency and skill gaps (Task 24)
+
+Full guide: [docs/competency.md](docs/competency.md). HRD → Competency.
+
+- **Competency is not performance.** Performance measures what somebody achieved in a cycle; competency measures how
+  capable they are against what their job requires. Neither module reads or writes the other's numbers.
+- **Unassessed is not zero.** Somebody nobody has assessed has an *unknown* level — reported as `UNASSESSED` with a
+  null gap, never as a deficiency the size of the requirement. Being over the requirement is kept too, as a negative
+  gap, rather than clamped away.
+- **Nothing assumes a five-level scale.** Levels and their labels are configuration; once competencies use a scale
+  its rungs are frozen, because a recorded "3" means what the scale said at the time.
+- **Requirements belong to the job**: `employee → position → job → required competencies`. Per-employee requirements
+  would be a second master of what work needs, and the two would disagree within a month.
+- **An assessment snapshots what it was measured against** — the requirement, the scale labels, the indicators. When a
+  job's requirement rises, today's gap grows and the finished assessment still reads exactly as it did.
+- **The reviewer's level is the final level**, never an average with the self assessment: a self assessment is
+  evidence a reviewer reads, not half a vote.
+- **One definition of a gap**: `getSkillGapsForDevelopment(...)` (and `GET /competency/skill-gaps`) is what development
+  planning reads, so nothing downstream recomputes gaps from raw tables.
+- **Assessment comments** live on the assessment alone — never in a notification, report, list or audit payload.
 
 ## Pilot release
 
