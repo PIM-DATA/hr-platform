@@ -103,6 +103,13 @@ import { SuccessionPage } from '@/features/talent/SuccessionPage';
 import { TalentReportsPage } from '@/features/talent/TalentReportsPage';
 import { ExecutiveDashboardPage } from '@/features/analytics/ExecutiveDashboardPage';
 import { CopilotPage } from '@/features/copilot/CopilotPage';
+import { WorkforceLayout } from '@/features/workforce/workforce-ui';
+import { WorkforceDashboardPage } from '@/features/workforce/DashboardPage';
+import { CyclesPage as WorkforceCyclesPage } from '@/features/workforce/CyclesPage';
+import { HeadcountPlanPage } from '@/features/workforce/HeadcountPlanPage';
+import { OrgDesignPage } from '@/features/workforce/OrgDesignPage';
+import { VacanciesPage } from '@/features/workforce/VacanciesPage';
+import { WorkforceReportsPage } from '@/features/workforce/ReportsPage';
 import { DocumentsLayout } from '@/features/documents/documents-ui';
 import { MyDocumentsPage } from '@/features/documents/MyDocumentsPage';
 import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents/DocumentCenterPage';
@@ -373,6 +380,19 @@ export const router = createBrowserRouter([
           },
           { element: <RequirePermission permission={PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE} />, children: [{ path: 'analytics/executive', element: <ExecutiveDashboardPage /> }] },
           { element: <RequirePermission permission={PERMISSIONS.COPILOT_USE} />, children: [{ path: 'copilot', element: <CopilotPage /> }] },
+          {
+            element: <RequirePermission permission={[PERMISSIONS.WORKFORCE_VIEW, PERMISSIONS.WORKFORCE_PLAN, PERMISSIONS.WORKFORCE_MANAGE, PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE]} />,
+            children: [{
+              path: 'hrod/workforce', element: <WorkforceLayout />,
+              children: [
+                { element: <RequirePermission permission={[PERMISSIONS.WORKFORCE_VIEW, PERMISSIONS.WORKFORCE_PLAN, PERMISSIONS.WORKFORCE_MANAGE]} />, children: [
+                  { index: true, element: <WorkforceDashboardPage /> }, { path: 'cycles', element: <WorkforceCyclesPage /> }, { path: 'plan', element: <HeadcountPlanPage /> }, { path: 'vacancies', element: <VacanciesPage /> },
+                ] },
+                { element: <RequirePermission permission={[PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE]} />, children: [{ path: 'design', element: <OrgDesignPage /> }] },
+                { path: 'reports', element: <WorkforceReportsPage /> },
+              ],
+            }],
+          },
           { element: <RequirePermission permission={PERMISSIONS.ONBOARDING_MANAGE} />, children: [{ path: 'admin/onboarding', element: <OnboardingPage /> }] },
           {
             // Privacy operations (Task 18). Each tab is guarded on its own permission, as the API is.

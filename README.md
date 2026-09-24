@@ -300,6 +300,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Employee 360 / analytics: no report builder, dashboard designer, scheduled/emailed reports, external BI, warehouse, predictive analytics, attrition scoring, employee ranking, custom KPI formulas, historical headcount trend, executive salary analytics by default, dossier export, or AI copilot.
 - Documents: local filesystem storage adapter only, no malware scanning, no OCR, no e-signature, no approval workflow, no retention automation, no content search, no external DMS, no PDF generation, no expiry reminders.
 - Reports: no arbitrary SQL, custom joins, calculated fields, pivots, charts, dashboard designer, scheduled/emailed reports, warehouse, BI connector, PDF designer or background export job.
+- Workforce planning: no headcount approval workflow, financial budgeting, salary-cost simulation, predictive demand, attrition forecasting, automatic position creation, automatic restructuring, automatic employee movement, termination planning, optimization algorithm, skills-based hiring recommendation, advanced org-chart graphics or external planning integration.
 - HR Copilot: one provider adapter (Anthropic), no streaming, no conversation persistence, no embeddings/semantic search, pattern-based decision-boundary classifier, in-memory rate limiter, no proactive insights or actions; real-provider answers are non-deterministic (tests use the fake provider).
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
@@ -935,6 +936,24 @@ Guide: [docs/hr-copilot.md](docs/hr-copilot.md). Assistant → HR Copilot (shown
   `COPILOT_MAX_INPUT_CHARS`, `COPILOT_MAX_OUTPUT_TOKENS`, `COPILOT_RATE_LIMIT`. Questions and minimized tool results
   are sent to the configured provider; the deployment owner reviews the provider's terms before enabling it.
 - **Not** an AI hiring, promotion, prediction or legal-advice tool; makes no PDPA or zero-retention claim.
+
+## Organization design and workforce planning (Task 32)
+
+Guide: [docs/workforce-planning.md](docs/workforce-planning.md). HROD → Workforce planning (Dashboard, Planning
+cycles, Headcount plan, Organization design, Vacancies, Reports).
+
+- **Workforce planning** — planning cycles (DRAFT → ACTIVE → FINALIZED → ARCHIVED) holding one headcount plan per
+  department + job: current snapshot vs planned, delta classified factually (expansion / no change / reduction
+  planned), reason, priority, target date. "Initialize from current workforce" copies today's counts idempotently;
+  finalizing re-snapshots and freezes. Recruitment demand in flight is read from the recruitment module and shown
+  beside the delta; **Create requisition** is an explicit action (workforce.manage + recruitment.manage) that
+  creates a DRAFT through the recruitment service with the openings HR chose. Planned movements are records only.
+- **Organization design** — scenarios of a target structure: units referencing live departments or planned-only,
+  planned headcount per job or per not-yet-existing job title, duplicate, compare with current or with another
+  scenario, finalize to an immutable snapshot. No department, position or job is ever created from a scenario.
+- **Reads only.** The module never creates, transfers, promotes or terminates an employee, never changes the
+  organization master or payroll, and never approves headcount. It forecasts nothing, recommends nothing, ranks no
+  scenario and lists no one for a reduction.
 
 ## Pilot release
 

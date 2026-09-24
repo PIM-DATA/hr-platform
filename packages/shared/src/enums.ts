@@ -373,7 +373,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -594,6 +594,19 @@ export const AUDIT_ACTIONS = {
   EXPORT_REPORT: 'EXPORT_REPORT',
   // copilot (one summarized event per request; never prompt or answer text)
   COPILOT_QUERY: 'COPILOT_QUERY',
+  CREATE_WORKFORCE_CYCLE: 'CREATE_WORKFORCE_CYCLE',
+  UPDATE_WORKFORCE_CYCLE: 'UPDATE_WORKFORCE_CYCLE',
+  INITIALIZE_WORKFORCE_PLAN: 'INITIALIZE_WORKFORCE_PLAN',
+  UPDATE_WORKFORCE_PLAN_ITEM: 'UPDATE_WORKFORCE_PLAN_ITEM',
+  FINALIZE_WORKFORCE_CYCLE: 'FINALIZE_WORKFORCE_CYCLE',
+  CREATE_WORKFORCE_PLANNED_MOVEMENT: 'CREATE_WORKFORCE_PLANNED_MOVEMENT',
+  UPDATE_WORKFORCE_PLANNED_MOVEMENT: 'UPDATE_WORKFORCE_PLANNED_MOVEMENT',
+  CREATE_ORG_DESIGN_SCENARIO: 'CREATE_ORG_DESIGN_SCENARIO',
+  UPDATE_ORG_DESIGN_SCENARIO: 'UPDATE_ORG_DESIGN_SCENARIO',
+  UPDATE_ORG_DESIGN_STRUCTURE: 'UPDATE_ORG_DESIGN_STRUCTURE',
+  DUPLICATE_ORG_DESIGN_SCENARIO: 'DUPLICATE_ORG_DESIGN_SCENARIO',
+  FINALIZE_ORG_DESIGN_SCENARIO: 'FINALIZE_ORG_DESIGN_SCENARIO',
+  CREATE_REQUISITION_FROM_WORKFORCE_PLAN: 'CREATE_REQUISITION_FROM_WORKFORCE_PLAN',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -662,6 +675,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   documents: 'Documents',
   reports: 'Reports',
   copilot: 'HR Copilot',
+  workforce: 'Workforce planning',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

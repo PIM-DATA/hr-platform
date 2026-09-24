@@ -6,6 +6,8 @@ import type { AuthContext } from '../../auth/auth.types';
 import { employeeScopeWhere } from '../../employees/employees.scope';
 import { applicationScopeWhere } from '../../recruitment/recruitment.types';
 import { skillGapService } from '../../competency/skill-gap.service';
+import { headcountDelta } from '@hr/shared';
+import { visibleDepartmentIds } from '../../workforce/workforce.types';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
 
@@ -232,4 +234,48 @@ registerDataset(prismaDataset({
     f({ id: 'currencyCode', label: 'Currency', type: 'STRING', column: 'currencyCode', groupable: true }),
     f({ id: 'closedAt', label: 'Closed', type: 'DATETIME', column: 'closedAt' }),
   ],
+}));
+
+// ---------- workforce_plan_summary (aggregate-safe, Task 32) ----------
+registerDataset(memoryDataset({
+  id: 'workforce_plan_summary', name: 'Workforce plan summary', description: 'One row per planning cycle, department and job: current headcount snapshot, planned headcount and the delta. Counts only — no notes, no person.',
+  requiredPermissions: [PERMISSIONS.WORKFORCE_VIEW], aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'cycle', label: 'Planning cycle', type: 'STRING', column: 'cycle', groupable: true }),
+    f({ id: 'cycleStatus', label: 'Cycle status', type: 'ENUM', column: 'cycleStatus', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'FINALIZED', 'ARCHIVED']) }),
+    f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
+    f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }),
+    f({ id: 'current', label: 'Current (snapshot)', type: 'NUMBER', column: 'current', aggregatable: true }),
+    f({ id: 'planned', label: 'Planned', type: 'NUMBER', column: 'planned', aggregatable: true }),
+    f({ id: 'delta', label: 'Delta', type: 'NUMBER', column: 'delta', aggregatable: true }),
+    f({ id: 'classification', label: 'Classification', type: 'ENUM', column: 'classification', groupable: true, options: opts(['EXPANSION', 'NO_CHANGE', 'REDUCTION_PLANNED']) }),
+    f({ id: 'reason', label: 'Reason', type: 'ENUM', column: 'reason', groupable: true, options: opts(['GROWTH', 'REPLACEMENT', 'RESTRUCTURE', 'NEW_FUNCTION', 'SEASONAL', 'OTHER']) }),
+    f({ id: 'priority', label: 'Priority', type: 'ENUM', column: 'priority', groupable: true, options: opts(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']) }),
+    f({ id: 'targetDate', label: 'Target date', type: 'DATE', column: 'targetDate' }),
+  ],
+  async load(auth) {
+    need(auth, PERMISSIONS.WORKFORCE_VIEW, PERMISSIONS.WORKFORCE_PLAN, PERMISSIONS.WORKFORCE_MANAGE);
+    const visible = await visibleDepartmentIds(prisma, auth);
+    const rows = await prisma.workforcePlanItem.findMany({ where: visible ? { departmentId: { in: visible } } : {}, select: { departmentNameSnapshot: true, jobTitleSnapshot: true, currentHeadcountSnapshot: true, plannedHeadcount: true, reason: true, priority: true, targetDate: true, cycle: { select: { name: true, status: true } } }, orderBy: [{ cycle: { periodStart: 'desc' } }, { departmentNameSnapshot: 'asc' }], take: 50000 });
+    return rows.map((r): Row => { const d = headcountDelta(r.plannedHeadcount, r.currentHeadcountSnapshot); return { cycle: r.cycle.name, cycleStatus: r.cycle.status, department: r.departmentNameSnapshot, job: r.jobTitleSnapshot ?? 'No job assigned', current: r.currentHeadcountSnapshot, planned: r.plannedHeadcount, delta: d.delta, classification: d.classification, reason: r.reason, priority: r.priority, targetDate: r.targetDate }; });
+  },
+}));
+
+// ---------- organization_design_summary (aggregate-safe, Task 32) ----------
+registerDataset(memoryDataset({
+  id: 'organization_design_summary', name: 'Organization design summary', description: 'One row per scenario and planned unit: planned headcount and whether the unit exists today. No notes.',
+  requiredPermissions: [PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE], aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'scenario', label: 'Scenario', type: 'STRING', column: 'scenario', groupable: true }),
+    f({ id: 'scenarioStatus', label: 'Scenario status', type: 'ENUM', column: 'scenarioStatus', groupable: true, options: opts(['DRAFT', 'FINALIZED', 'ARCHIVED']) }),
+    f({ id: 'unit', label: 'Planned unit', type: 'STRING', column: 'unit', groupable: true }),
+    f({ id: 'unitType', label: 'Unit type', type: 'ENUM', column: 'unitType', groupable: true, options: opts(['ORGANIZATION', 'DEPARTMENT', 'TEAM']) }),
+    f({ id: 'plannedOnly', label: 'Planned only', type: 'BOOLEAN', column: 'plannedOnly', groupable: true }),
+    f({ id: 'plannedHeadcount', label: 'Planned headcount', type: 'NUMBER', column: 'plannedHeadcount', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE);
+    const nodes = await prisma.organizationDesignNode.findMany({ select: { name: true, nodeType: true, plannedOnly: true, scenario: { select: { name: true, status: true } }, positions: { select: { plannedHeadcount: true } } }, orderBy: [{ scenario: { createdAt: 'desc' } }, { sortOrder: 'asc' }], take: 50000 });
+    return nodes.map((n): Row => ({ scenario: n.scenario.name, scenarioStatus: n.scenario.status, unit: n.name, unitType: n.nodeType, plannedOnly: n.plannedOnly, plannedHeadcount: n.positions.reduce((s, p) => s + p.plannedHeadcount, 0) }));
+  },
 }));

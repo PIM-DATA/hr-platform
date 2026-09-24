@@ -29,3 +29,4 @@ export * from './copilot';
 export * from './onboarding';
 export * from './account';
 export * from './privacy';
+export * from './workforce';

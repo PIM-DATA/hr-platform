@@ -104,6 +104,11 @@ export const PERMISSIONS = {
   REPORTS_SHARE: 'reports.share',
   REPORTS_MANAGE: 'reports.manage',
   COPILOT_USE: 'copilot.use',
+  WORKFORCE_VIEW: 'workforce.view',
+  WORKFORCE_PLAN: 'workforce.plan',
+  WORKFORCE_MANAGE: 'workforce.manage',
+  ORG_DESIGN_VIEW: 'organization_design.view',
+  ORG_DESIGN_MANAGE: 'organization_design.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -215,6 +220,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.REPORTS_SHARE, module: 'reports', description: 'Share saved reports with other report users (sharing never grants dataset access)' },
   { code: PERMISSIONS.REPORTS_MANAGE, module: 'reports', description: 'Edit or delete any saved report' },
   { code: PERMISSIONS.COPILOT_USE, module: 'copilot', description: 'Open the HR Copilot. Grants no data: every answer is built from tools that re-check the source module\'s permission and scope' },
+  { code: PERMISSIONS.WORKFORCE_VIEW, module: 'workforce', description: 'See workforce planning cycles, headcount plans and vacancies within the data scope (aggregate figures)' },
+  { code: PERMISSIONS.WORKFORCE_PLAN, module: 'workforce', description: 'Create planning cycles and edit planned headcount, reasons, priorities and planned movements' },
+  { code: PERMISSIONS.WORKFORCE_MANAGE, module: 'workforce', description: 'Finalize and archive planning cycles and hand a planned demand to recruitment (with recruitment.manage)' },
+  { code: PERMISSIONS.ORG_DESIGN_VIEW, module: 'workforce', description: 'See organization-design scenarios and their comparison with the current structure' },
+  { code: PERMISSIONS.ORG_DESIGN_MANAGE, module: 'workforce', description: 'Create, edit, duplicate and finalize organization-design scenarios (never the live organization)' },
 ];
 
 /**

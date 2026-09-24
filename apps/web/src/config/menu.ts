@@ -58,7 +58,7 @@ export const MENU: MenuGroup[] = [
   {
     label: 'HROD',
     items: [
-      { label: 'Workforce', path: '/hrod/workforce', icon: BriefcaseBusiness, comingSoon: true },
+      { label: 'Workforce planning', path: '/hrod/workforce', icon: BriefcaseBusiness, permission: [P.WORKFORCE_VIEW, P.WORKFORCE_PLAN, P.WORKFORCE_MANAGE, P.ORG_DESIGN_VIEW, P.ORG_DESIGN_MANAGE] },
       { label: 'Talent', path: '/hrod/talent', icon: Star, comingSoon: true },
       { label: 'Succession', path: '/hrod/succession', icon: GitBranch, comingSoon: true },
     ],

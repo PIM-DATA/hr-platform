@@ -2732,3 +2732,162 @@ model SavedReport {
   @@index([visibility, datasetId])
   @@map("saved_reports")
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Task 32 — Organization design and workforce planning. A PLANNED layer beside the live organization: nothing here
+// is a second employee, department, job or position master, and nothing here changes one.
+// ---------------------------------------------------------------------------------------------------------------
+
+/// A planning cycle ("2027 Workforce Plan"). DRAFT → ACTIVE → FINALIZED → ARCHIVED; finalizing freezes the plan and does nothing else.
+model WorkforcePlanningCycle {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  name            String
+  organizationId  String?   @map("organization_id")
+  periodStart     String    @map("period_start")
+  periodEnd       String    @map("period_end")
+  status          String    @default("DRAFT") // DRAFT | ACTIVE | FINALIZED | ARCHIVED
+  description     String?
+  finalizedAt     DateTime? @map("finalized_at")
+  archivedAt      DateTime? @map("archived_at")
+  createdByUserId String    @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  items     WorkforcePlanItem[]
+  movements WorkforcePlannedMovement[]
+  scenarios OrganizationDesignScenario[]
+
+  @@index([status])
+  @@map("workforce_planning_cycles")
+}
+
+/// One planning row: department + job. Current headcount is a snapshot taken at initialization and again at finalization.
+model WorkforcePlanItem {
+  id                       String                 @id @default(cuid())
+  cycleId                  String                 @map("cycle_id")
+  cycle                    WorkforcePlanningCycle @relation(fields: [cycleId], references: [id])
+  organizationId           String                 @map("organization_id")
+  departmentId             String                 @map("department_id")
+  jobId                    String?                @map("job_id")
+  /// department:job (or department:-) — the idempotence key for initialization.
+  grainKey                 String                 @map("grain_key")
+  departmentNameSnapshot   String                 @map("department_name_snapshot")
+  jobTitleSnapshot         String?                @map("job_title_snapshot")
+  currentHeadcountSnapshot Int                    @map("current_headcount_snapshot")
+  snapshotAt               DateTime               @map("snapshot_at")
+  plannedHeadcount         Int                    @map("planned_headcount")
+  reason                   String? // GROWTH | REPLACEMENT | RESTRUCTURE | NEW_FUNCTION | SEASONAL | OTHER — chosen by a person
+  priority                 String? // LOW | NORMAL | HIGH | CRITICAL — set by a person
+  targetDate               String?                @map("target_date")
+  notes                    String?
+  createdAt                DateTime               @default(now()) @map("created_at")
+  updatedAt                DateTime               @updatedAt @map("updated_at")
+
+  requisitions WorkforcePlanRequisition[]
+
+  @@unique([cycleId, grainKey])
+  @@index([cycleId, departmentId])
+  @@map("workforce_plan_items")
+}
+
+/// Record of an explicit handoff: HR created this requisition (through the recruitment module) from this plan row.
+model WorkforcePlanRequisition {
+  id              String            @id @default(cuid())
+  planItemId      String            @map("plan_item_id")
+  planItem        WorkforcePlanItem @relation(fields: [planItemId], references: [id])
+  requisitionId   String            @unique @map("requisition_id")
+  createdByUserId String            @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  @@index([planItemId])
+  @@map("workforce_plan_requisitions")
+}
+
+/// A planned movement is a record of intent. The employee master never changes because of it.
+model WorkforcePlannedMovement {
+  id               String                 @id @default(cuid())
+  cycleId          String                 @map("cycle_id")
+  cycle            WorkforcePlanningCycle @relation(fields: [cycleId], references: [id])
+  employeeId       String?                @map("employee_id")
+  fromDepartmentId String?                @map("from_department_id")
+  toDepartmentId   String?                @map("to_department_id")
+  fromJobId        String?                @map("from_job_id")
+  toJobId          String?                @map("to_job_id")
+  targetDate       String?                @map("target_date")
+  status           String                 @default("PLANNED") // PLANNED | CANCELLED | COMPLETED_EXTERNALLY
+  notes            String?
+  createdByUserId  String                 @map("created_by_user_id")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  @@index([cycleId, status])
+  @@map("workforce_planned_movements")
+}
+
+/// "What would the organization look like if…" — never the live org chart.
+model OrganizationDesignScenario {
+  id               String                  @id @default(cuid())
+  name             String
+  description      String?
+  organizationId   String                  @map("organization_id")
+  planningCycleId  String?                 @map("planning_cycle_id")
+  planningCycle    WorkforcePlanningCycle? @relation(fields: [planningCycleId], references: [id])
+  status           String                  @default("DRAFT") // DRAFT | FINALIZED | ARCHIVED
+  /// Immutable target snapshot written at finalization (tree + planned headcount + the current figures at that moment).
+  finalSnapshot    Json?                   @map("final_snapshot")
+  finalizedAt      DateTime?               @map("finalized_at")
+  duplicatedFromId String?                 @map("duplicated_from_id")
+  createdByUserId  String                  @map("created_by_user_id")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+
+  nodes     OrganizationDesignNode[]
+  positions OrganizationDesignPosition[]
+
+  @@index([organizationId, status])
+  @@map("organization_design_scenarios")
+}
+
+/// A planned unit. Either a reference to a live department (sourceDepartmentId) or planned-only — no live master row is ever created for it.
+model OrganizationDesignNode {
+  id                   String                     @id @default(cuid())
+  scenarioId           String                     @map("scenario_id")
+  scenario             OrganizationDesignScenario @relation(fields: [scenarioId], references: [id])
+  nodeType             String                     @map("node_type") // ORGANIZATION | DEPARTMENT | TEAM
+  name                 String
+  code                 String?
+  parentNodeId         String?                    @map("parent_node_id")
+  parent               OrganizationDesignNode?    @relation("OrgDesignTree", fields: [parentNodeId], references: [id])
+  children             OrganizationDesignNode[]   @relation("OrgDesignTree")
+  sourceOrganizationId String?                    @map("source_organization_id")
+  sourceDepartmentId   String?                    @map("source_department_id")
+  plannedOnly          Boolean                    @default(true) @map("planned_only")
+  sortOrder            Int                        @default(0) @map("sort_order")
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  updatedAt            DateTime                   @updatedAt @map("updated_at")
+
+  positions OrganizationDesignPosition[]
+
+  @@index([scenarioId, parentNodeId])
+  @@map("organization_design_nodes")
+}
+
+/// Planned headcount for a job (or a not-yet-existing job title) inside a planned unit. No Position row is created.
+model OrganizationDesignPosition {
+  id               String                     @id @default(cuid())
+  scenarioId       String                     @map("scenario_id")
+  scenario         OrganizationDesignScenario @relation(fields: [scenarioId], references: [id])
+  nodeId           String                     @map("node_id")
+  node             OrganizationDesignNode     @relation(fields: [nodeId], references: [id])
+  jobId            String?                    @map("job_id")
+  plannedJobTitle  String?                    @map("planned_job_title")
+  plannedHeadcount Int                        @map("planned_headcount")
+  reportsToNodeId  String?                    @map("reports_to_node_id")
+  notes            String?
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  updatedAt        DateTime                   @updatedAt @map("updated_at")
+
+  @@index([scenarioId, nodeId])
+  @@map("organization_design_positions")
+}

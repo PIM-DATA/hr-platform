@@ -17,4 +17,5 @@ export * from './talent';
 export * from './documents';
 export * from './reports';
 export * from './copilot';
+export * from './workforce';
 export * from './schemas';
