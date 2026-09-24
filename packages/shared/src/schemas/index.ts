@@ -23,6 +23,8 @@ export * from './employee-relations';
 export * from './recruitment';
 export * from './talent';
 export * from './analytics';
+export * from './documents';
+export * from './reports';
 export * from './onboarding';
 export * from './account';
 export * from './privacy';

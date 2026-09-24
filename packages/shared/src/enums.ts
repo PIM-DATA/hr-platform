@@ -299,6 +299,26 @@ export const SUCCESSOR_READINESS = ['READY_NOW', 'READY_SOON', 'DEVELOPING'] as 
 export type SuccessorReadiness = (typeof SUCCESSOR_READINESS)[number];
 export const DEVELOPMENT_ACTION_SOURCES = ['CAREER', 'SUCCESSION', 'TALENT_REVIEW'] as const;
 
+// ---------- documents and reports (Task 30) ----------
+export const DOCUMENT_CLASSIFICATIONS = ['PUBLIC_INTERNAL', 'EMPLOYEE_PRIVATE', 'HR_CONFIDENTIAL', 'RESTRICTED'] as const;
+export type DocumentClassification = (typeof DOCUMENT_CLASSIFICATIONS)[number];
+export const DOCUMENT_SCOPE_TYPES = ['GENERAL', 'EMPLOYEE', 'HR', 'PAYROLL', 'RECRUITMENT', 'EMPLOYEE_RELATIONS', 'TRAINING', 'OTHER'] as const;
+export type DocumentScopeType = (typeof DOCUMENT_SCOPE_TYPES)[number];
+export const DOCUMENT_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
+export const DOCUMENT_EXPIRY_STATES = ['VALID', 'EXPIRING_SOON', 'EXPIRED', 'NONE'] as const;
+export type DocumentExpiryState = (typeof DOCUMENT_EXPIRY_STATES)[number];
+/** The only things a document may be attached to. A table name never comes from a request. */
+export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION'] as const;
+export type DocumentLinkEntityType = (typeof DOCUMENT_LINK_ENTITY_TYPES)[number];
+export const REPORT_VISIBILITIES = ['PRIVATE', 'SHARED'] as const;
+export const REPORT_FIELD_TYPES = ['STRING', 'NUMBER', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN', 'ENUM'] as const;
+export type ReportFieldType = (typeof REPORT_FIELD_TYPES)[number];
+export const REPORT_FIELD_SENSITIVITIES = ['NORMAL', 'PERSONAL', 'SENSITIVE', 'RESTRICTED'] as const;
+export const REPORT_AGGREGATIONS = ['COUNT', 'COUNT_DISTINCT', 'SUM', 'AVG', 'MIN', 'MAX'] as const;
+export type ReportAggregation = (typeof REPORT_AGGREGATIONS)[number];
+export const REPORT_OPERATORS = ['EQ', 'NE', 'CONTAINS', 'STARTS_WITH', 'GT', 'GTE', 'LT', 'LTE', 'BEFORE', 'AFTER', 'BETWEEN', 'IN', 'IS_NULL', 'IS_NOT_NULL'] as const;
+export type ReportOperator = (typeof REPORT_OPERATORS)[number];
+
 export const NOTIFICATION_TYPES = {
   APPROVAL_REQUIRED: 'APPROVAL_REQUIRED',
   LEAVE_SUBMITTED: 'LEAVE_SUBMITTED',
@@ -353,7 +373,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -555,6 +575,23 @@ export const AUDIT_ACTIONS = {
   UPDATE_SUCCESSOR_READINESS: 'UPDATE_SUCCESSOR_READINESS',
   REMOVE_SUCCESSOR: 'REMOVE_SUCCESSOR',
   CREATE_DEVELOPMENT_ACTION_FROM_TALENT: 'CREATE_DEVELOPMENT_ACTION_FROM_TALENT',
+  // documents
+  CREATE_DOCUMENT_CATEGORY: 'CREATE_DOCUMENT_CATEGORY',
+  UPDATE_DOCUMENT_CATEGORY: 'UPDATE_DOCUMENT_CATEGORY',
+  CREATE_DOCUMENT: 'CREATE_DOCUMENT',
+  UPLOAD_DOCUMENT_VERSION: 'UPLOAD_DOCUMENT_VERSION',
+  UPDATE_DOCUMENT_METADATA: 'UPDATE_DOCUMENT_METADATA',
+  LINK_DOCUMENT: 'LINK_DOCUMENT',
+  UNLINK_DOCUMENT: 'UNLINK_DOCUMENT',
+  ARCHIVE_DOCUMENT: 'ARCHIVE_DOCUMENT',
+  DOWNLOAD_DOCUMENT: 'DOWNLOAD_DOCUMENT',
+  // reports
+  CREATE_REPORT: 'CREATE_REPORT',
+  UPDATE_REPORT: 'UPDATE_REPORT',
+  DELETE_REPORT: 'DELETE_REPORT',
+  SHARE_REPORT: 'SHARE_REPORT',
+  RUN_REPORT: 'RUN_REPORT',
+  EXPORT_REPORT: 'EXPORT_REPORT',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -620,6 +657,8 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   employee_relations: 'Employee relations',
   recruitment: 'Recruitment',
   talent: 'Career & talent',
+  documents: 'Documents',
+  reports: 'Reports',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

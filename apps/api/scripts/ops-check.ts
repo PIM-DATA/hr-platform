@@ -33,8 +33,10 @@ async function main() {
   const ready = await probe('/api/v1/health/ready');
   const healthy = live.ok && ready.ok;
   const version = (ready.body as { data?: { version?: string | null } } | null)?.data?.version ?? null;
+  // Document storage is reported by the readiness probe: 'ok', 'disabled', or 'unavailable' (which already makes it 503).
+  const documentStorage = (ready.body as { data?: { documentStorage?: string } } | null)?.data?.documentStorage ?? 'unknown';
   opsLog(healthy ? 'ops_check_healthy' : 'ops_check_unhealthy', {
-    target: base, liveStatus: live.status, readyStatus: ready.status, version, durationMs: Date.now() - started,
+    target: base, liveStatus: live.status, readyStatus: ready.status, version, documentStorage, durationMs: Date.now() - started,
   });
   process.exit(healthy ? 0 : 1);
 }

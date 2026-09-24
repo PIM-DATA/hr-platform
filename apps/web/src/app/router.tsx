@@ -102,6 +102,10 @@ import { TalentPoolsPage } from '@/features/talent/TalentPoolsPage';
 import { SuccessionPage } from '@/features/talent/SuccessionPage';
 import { TalentReportsPage } from '@/features/talent/TalentReportsPage';
 import { ExecutiveDashboardPage } from '@/features/analytics/ExecutiveDashboardPage';
+import { DocumentsLayout } from '@/features/documents/documents-ui';
+import { MyDocumentsPage } from '@/features/documents/MyDocumentsPage';
+import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents/DocumentCenterPage';
+import { ReportsLayout, SavedReportsPage, ReportBuilderPage } from '@/features/reports/ReportCenterPage';
 import { MENU } from '@/config/menu';
 
 // Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
@@ -349,6 +353,22 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={PERMISSIONS.RECRUITMENT_MANAGE} />, children: [{ path: 'reports', element: <RecruitmentReportsPage /> }] },
               ],
             }],
+          },
+          {
+            // Documents (Task 30): the page opens for anybody with a document permission; every document is then decided by classification and its owning module.
+            element: <RequirePermission permission={[PERMISSIONS.DOCUMENTS_VIEW_OWN, PERMISSIONS.DOCUMENTS_VIEW, PERMISSIONS.DOCUMENTS_MANAGE]} />,
+            children: [{
+              path: 'hrm/documents', element: <DocumentsLayout />,
+              children: [
+                { element: <RequirePermission permission={PERMISSIONS.DOCUMENTS_VIEW_OWN} />, children: [{ index: true, element: <MyDocumentsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.DOCUMENTS_VIEW, PERMISSIONS.DOCUMENTS_MANAGE]} />, children: [{ path: 'center', element: <DocumentCenterPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.DOCUMENTS_MANAGE} />, children: [{ path: 'categories', element: <DocumentCategoriesPage /> }] },
+              ],
+            }],
+          },
+          {
+            element: <RequirePermission permission={PERMISSIONS.REPORTS_VIEW} />,
+            children: [{ path: 'hrm/reports', element: <ReportsLayout />, children: [{ index: true, element: <SavedReportsPage /> }, { path: 'builder', element: <ReportBuilderPage /> }, { path: 'builder/:id', element: <ReportBuilderPage /> }] }],
           },
           { element: <RequirePermission permission={PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE} />, children: [{ path: 'analytics/executive', element: <ExecutiveDashboardPage /> }] },
           { element: <RequirePermission permission={PERMISSIONS.ONBOARDING_MANAGE} />, children: [{ path: 'admin/onboarding', element: <OnboardingPage /> }] },

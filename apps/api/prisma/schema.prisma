@@ -168,6 +168,7 @@ model Organization {
   recruitmentPolicies  RecruitmentPolicy[]
   requisitions         RecruitmentRequisition[]
   careerPaths          CareerPath[]
+  documents            Document[]
   talentReviewCycles   TalentReviewCycle[]
   talentPools          TalentPool[]
   performanceKpis      PerformanceKpi[]
@@ -311,6 +312,7 @@ model Employee {
   talentReviewsAsReviewer      TalentReview[]                @relation("TalentReviewReviewer")
   talentPoolMemberships        TalentPoolMember[]
   successionNominations        SuccessionCandidate[]
+  ownedDocuments               Document[]                    @relation("DocumentOwner")
   interviewerAssignments       RecruitmentInterviewer[]
   disciplinaryAcknowledgements DisciplinaryAcknowledgement[]
 
@@ -2606,4 +2608,127 @@ model SuccessionCandidate {
   @@index([planId, status])
   @@index([employeeId, status])
   @@map("succession_candidates")
+}
+
+// ---------------------------------------------------------------------------
+// Document center and report center (Task 30)
+// ---------------------------------------------------------------------------
+
+/// Customer-defined document categories. The scope type names which module's authorization applies on top of the
+/// classification; nothing is inferred from a category's name.
+model DocumentCategory {
+  id                    String   @id @default(cuid())
+  code                  String   @unique
+  name                  String
+  description           String?
+  scopeType             String   @default("GENERAL") @map("scope_type")
+  defaultClassification String   @default("EMPLOYEE_PRIVATE") @map("default_classification")
+  /// Comma-separated allow-list that narrows the platform list (e.g. ".pdf,.jpg"); null = platform default.
+  allowedExtensions     String?  @map("allowed_extensions")
+  maxFileSizeBytes      Int?     @map("max_file_size_bytes")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  documents Document[]
+
+  @@map("document_categories")
+}
+
+model DocumentSequence {
+  year Int @id
+  next Int @default(1)
+
+  @@map("document_sequences")
+}
+
+/// Metadata about a file. The bytes live in the storage adapter under an opaque key on the current version.
+model Document {
+  id               String           @id @default(cuid())
+  documentNumber   String           @unique @map("document_number")
+  title            String
+  description      String?
+  categoryId       String           @map("category_id")
+  category         DocumentCategory @relation(fields: [categoryId], references: [id])
+  ownerEmployeeId  String?          @map("owner_employee_id")
+  ownerEmployee    Employee?        @relation("DocumentOwner", fields: [ownerEmployeeId], references: [id])
+  organizationId   String?          @map("organization_id")
+  organization     Organization?    @relation(fields: [organizationId], references: [id])
+  classification   String           @default("EMPLOYEE_PRIVATE") // PUBLIC_INTERNAL | EMPLOYEE_PRIVATE | HR_CONFIDENTIAL | RESTRICTED
+  status           String           @default("ACTIVE") // ACTIVE | ARCHIVED
+  currentVersionId String?          @unique @map("current_version_id")
+  currentVersion   DocumentVersion? @relation("DocumentCurrentVersion", fields: [currentVersionId], references: [id])
+  issuedDate       String?          @map("issued_date")
+  expiryDate       String?          @map("expiry_date")
+  archivedAt       DateTime?        @map("archived_at")
+  createdByUserId  String           @map("created_by_user_id")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  versions DocumentVersion[] @relation("DocumentVersions")
+  links    DocumentLink[]
+
+  @@index([ownerEmployeeId, status])
+  @@index([categoryId])
+  @@index([classification])
+  @@index([expiryDate])
+  @@map("documents")
+}
+
+/// Append-only. A replacement is version N+1 with its own bytes; nothing overwrites a stored object.
+model DocumentVersion {
+  id               String   @id @default(cuid())
+  documentId       String   @map("document_id")
+  document         Document @relation("DocumentVersions", fields: [documentId], references: [id])
+  versionNumber    Int      @map("version_number")
+  /// Opaque, server-generated: documents/<2 hex>/<uuid>. Never derived from a name.
+  storageKey       String   @unique @map("storage_key")
+  originalFilename String   @map("original_filename")
+  mimeType         String   @map("mime_type")
+  fileSize         Int      @map("file_size")
+  sha256           String
+  uploadedByUserId String   @map("uploaded_by_user_id")
+  uploadedAt       DateTime @default(now()) @map("uploaded_at")
+  note             String?
+
+  currentOf Document? @relation("DocumentCurrentVersion")
+
+  @@unique([documentId, versionNumber])
+  @@map("document_versions")
+}
+
+/// Which business record a document is attached to. The entity type is an enum; the id is checked against the real
+/// table when the link is made and the linked module's authorization applies to the document from then on.
+model DocumentLink {
+  id              String   @id @default(cuid())
+  documentId      String   @map("document_id")
+  document        Document @relation(fields: [documentId], references: [id])
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id")
+  relationType    String?  @map("relation_type")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([documentId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("document_links")
+}
+
+/// A report definition: which registry dataset, and a validated JSON of columns / filters / sort / group / aggregate.
+/// It names fields from the server-owned registry and never carries a query.
+model SavedReport {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  datasetId       String   @map("dataset_id")
+  ownerUserId     String   @map("owner_user_id")
+  visibility      String   @default("PRIVATE") // PRIVATE | SHARED
+  definition      Json
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([ownerUserId])
+  @@index([visibility, datasetId])
+  @@map("saved_reports")
 }

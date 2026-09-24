@@ -180,3 +180,20 @@ deletes business data on a schedule: retention policy is the customer's decision
   attack surface out of the web application entirely.
 - Backup operations are logged operationally, not in the application audit log — they often run while the application
   is unavailable, and infrastructure actions do not belong in a business audit trail.
+
+
+## Document storage (Task 30)
+
+The document center keeps file bytes **outside PostgreSQL**, in `DOCUMENT_STORAGE_DIR` (local filesystem adapter).
+From the moment it is used, the database backup described above is **not a complete backup**:
+
+- Back up `DOCUMENT_STORAGE_DIR` on the same schedule as the database, immediately after each dump, and keep the
+  pair together (same backup run, same retention).
+- Restore the pair together. A database restored without the matching storage produces documents whose objects
+  are missing (downloads answer `DOCUMENT_OBJECT_MISSING`); storage restored without the database produces orphaned
+  files. Neither is silently corrected.
+- `npm run ops:check` reports `documentStorage: ok | disabled | unavailable` from the readiness probe; `unavailable`
+  (root missing or not writable) makes the API not ready. Production refuses to start with the document center
+  enabled and no `DOCUMENT_STORAGE_DIR`, or with a temporary path.
+- Files are stored as uploaded. No malware scanning is performed by the platform; add a scanner in the deployment
+  if policy requires one.

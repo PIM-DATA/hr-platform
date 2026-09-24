@@ -298,6 +298,8 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
 - Career & talent: no automatic promotion, AI ranking, automatic successor recommendation, external successors, movement workflow, compensation/bonus linkage, attrition prediction, workforce forecasting, succession simulation, advanced replacement chart, psychometrics, talent marketplace, employee-visible nomination or AI career recommendation.
 - Employee 360 / analytics: no report builder, dashboard designer, scheduled/emailed reports, external BI, warehouse, predictive analytics, attrition scoring, employee ranking, custom KPI formulas, historical headcount trend, executive salary analytics by default, dossier export, or AI copilot.
+- Documents: local filesystem storage adapter only, no malware scanning, no OCR, no e-signature, no approval workflow, no retention automation, no content search, no external DMS, no PDF generation, no expiry reminders.
+- Reports: no arbitrary SQL, custom joins, calculated fields, pivots, charts, dashboard designer, scheduled/emailed reports, warehouse, BI connector, PDF designer or background export job.
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
@@ -890,6 +892,25 @@ Employees → Employee detail (360 tabs); Analytics → Executive dashboard.
 - **CSV export** of the aggregate tables with formula escaping; no dossier export (the Privacy module's audited
   personal-data export remains the only one).
 - No prediction, no ranking, no AI.
+
+## Document center and report center (Task 30)
+
+Guides: [docs/document-center.md](docs/document-center.md), [docs/report-center.md](docs/report-center.md).
+HRM → Documents; HRM → Reports.
+
+- **Documents** — files against employees and records, versioned (append-only, N+1 on replacement), with a
+  classification (internal / employee private / HR confidential / restricted) combined with the owning module's
+  authorization and ownership. Bytes live in a storage adapter under an opaque server-generated key
+  (`documents/<2 hex>/<uuid>`), never under a user-chosen name, and leave only through the authenticated, audited
+  download — no static file URL. Uploads are streamed with size limits, extension/MIME/signature checks and an
+  executable/HTML/SVG block list. Archive, never delete. **Not malware-scanned.**
+- **Reports** — a server-owned dataset registry (12 datasets), strict JSON definitions (no SQL, no table or column
+  names, no joins), allow-listed fields/filters/sorts/groups/aggregations validated server-side, each dataset in its
+  module's row scope, saved reports with PRIVATE/SHARED visibility that never grant dataset access, templates, and
+  formula-safe CSV export capped at 50,000 rows.
+- **Production env:** `DOCUMENT_STORAGE_DIR` (required while `DOCUMENTS_ENABLED=true`), `DOCUMENT_MAX_FILE_MB`.
+  **The database backup does not include document bytes — back up the storage directory with it** (see the
+  operations runbook).
 
 ## Pilot release
 

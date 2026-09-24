@@ -34,6 +34,11 @@ const envSchema = z.object({
   API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(0).default(600),
   /** JSON body cap. There are no uploads in this phase, so requests stay small. */
   JSON_BODY_LIMIT: z.string().default('1mb'),
+  /** Document center: where the local storage adapter keeps file bytes. Required in production when documents are enabled. */
+  /** `z.coerce.boolean()` would read the string "false" as true; parse the words explicitly. */
+  DOCUMENTS_ENABLED: z.preprocess((v) => (v === undefined || v === '' ? true : v === true || v === 'true' || v === '1' ? true : v === false || v === 'false' || v === '0' ? false : v), z.boolean()),
+  DOCUMENT_STORAGE_DIR: optional(z.string().min(1)),
+  DOCUMENT_MAX_FILE_MB: z.coerce.number().int().min(1).max(500).default(20),
   COOKIE_SECURE: z
     .string()
     .optional()
@@ -84,6 +89,8 @@ export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: z.infer<
   if (value.NODE_ENV === 'production') {
     // Fail fast: production never falls back to development defaults.
     if (!source.DATABASE_URL) errors.push('DATABASE_URL is required in production');
+    if (value.DOCUMENTS_ENABLED && !source.DOCUMENT_STORAGE_DIR) errors.push('DOCUMENT_STORAGE_DIR is required in production while the document center is enabled (set DOCUMENTS_ENABLED=false to disable it)');
+    if (source.DOCUMENT_STORAGE_DIR && /^\/(tmp|var\/tmp|dev\/shm)(\/|$)/.test(source.DOCUMENT_STORAGE_DIR)) errors.push('DOCUMENT_STORAGE_DIR must not be a temporary path in production');
     if (!source.CORS_ORIGIN) errors.push('CORS_ORIGIN is required in production (the browser origin that serves the app)');
     else {
       const origins = value.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);

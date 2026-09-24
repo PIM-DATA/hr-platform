@@ -21,6 +21,8 @@ import { employeeRelationsRouter } from './modules/employee-relations/er.routes'
 import { recruitmentRouter } from './modules/recruitment/recruitment.routes';
 import { talentRouter } from './modules/talent/talent.routes';
 import { analyticsRouter } from './modules/analytics/analytics.routes';
+import { documentsRouter } from './modules/documents/documents.routes';
+import { reportsRouter } from './modules/reports/reports.routes';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
@@ -60,4 +62,6 @@ apiRouter.use('/employee-relations', employeeRelationsRouter);
 apiRouter.use('/recruitment', recruitmentRouter);
 apiRouter.use('/talent', talentRouter);
 apiRouter.use('/analytics', analyticsRouter);
+apiRouter.use('/documents', documentsRouter);
+apiRouter.use('/reports', reportsRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)

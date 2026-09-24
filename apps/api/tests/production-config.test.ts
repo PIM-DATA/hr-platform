@@ -16,6 +16,7 @@ const PROD_BASE = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgresql://app:pw@db.internal:5432/hr?schema=public',
   CORS_ORIGIN: 'https://hr.example.com',
+  DOCUMENT_STORAGE_DIR: '/var/lib/hr/documents',
   PUBLIC_APP_URL: 'https://hr.example.com',
 } as NodeJS.ProcessEnv;
 const parse = (extra: NodeJS.ProcessEnv = {}) => parseEnv({ ...PROD_BASE, ...extra });
@@ -41,6 +42,12 @@ describe('production environment validation', () => {
     expect(errorsOf(parse({ CORS_ORIGIN: '*' }))).toMatch(/must not be "\*"/);
     expect(errorsOf(parse({ CORS_ORIGIN: 'http://hr.example.com' }))).toMatch(/https/);
     expect(errorsOf(parse({ CORS_ORIGIN: 'https://hr.example.com,https://admin.example.com' }))).toBe('');
+  });
+
+  it('the document center needs a real storage directory in production (Task 30)', () => {
+    expect(errorsOf(parseEnv({ ...PROD_BASE, DOCUMENT_STORAGE_DIR: undefined }))).toMatch(/DOCUMENT_STORAGE_DIR is required/);
+    expect(errorsOf(parseEnv({ ...PROD_BASE, DOCUMENT_STORAGE_DIR: '/tmp/docs' }))).toMatch(/temporary path/);
+    expect(errorsOf(parseEnv({ ...PROD_BASE, DOCUMENT_STORAGE_DIR: undefined, DOCUMENTS_ENABLED: 'false' }))).not.toMatch(/DOCUMENT_STORAGE_DIR/);
   });
   it('development placeholders and demo credentials are rejected in production', () => {
     expect(errorsOf(parse({ SEED_ADMIN_PASSWORD: 'change-me-locally' }))).toMatch(/development placeholder/);
@@ -108,7 +115,7 @@ describe('password policy is one rule', () => {
         cwd: path.resolve(__dirname, '..'),
         env: {
           ...process.env,
-          NODE_ENV: 'production',
+          NODE_ENV: 'production', DOCUMENT_STORAGE_DIR: '/var/lib/hr/documents',
           DATABASE_URL: process.env.TEST_DATABASE_URL, // never the developer database
           CORS_ORIGIN: 'https://hr.example.com',
           PUBLIC_APP_URL: 'https://hr.example.com',

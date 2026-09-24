@@ -95,6 +95,14 @@ export const PERMISSIONS = {
   EMPLOYEE360_VIEW: 'employee360.view',
   ANALYTICS_VIEW_EXECUTIVE: 'analytics.view_executive',
   ANALYTICS_VIEW_PAYROLL_AGGREGATE: 'analytics.view_payroll_aggregate',
+  DOCUMENTS_VIEW_OWN: 'documents.view_own',
+  DOCUMENTS_VIEW: 'documents.view',
+  DOCUMENTS_MANAGE: 'documents.manage',
+  REPORTS_VIEW: 'reports.view',
+  REPORTS_VIEW_INDIVIDUAL: 'reports.view_individual',
+  REPORTS_CREATE: 'reports.create',
+  REPORTS_SHARE: 'reports.share',
+  REPORTS_MANAGE: 'reports.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -197,6 +205,14 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.EMPLOYEE360_VIEW, module: 'analytics', description: 'Open the Employee 360 view; every section still needs its own source-module permission' },
   { code: PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE, module: 'analytics', description: 'Executive HR dashboard — organization-level aggregates only, never an individual' },
   { code: PERMISSIONS.ANALYTICS_VIEW_PAYROLL_AGGREGATE, module: 'analytics', description: 'Organization-level payroll totals on the executive dashboard (gross, deductions, net, headcount paid)' },
+  { code: PERMISSIONS.DOCUMENTS_VIEW_OWN, module: 'documents', description: 'See and download own documents whose classification allows the employee to see them' },
+  { code: PERMISSIONS.DOCUMENTS_VIEW, module: 'documents', description: 'Browse the document center within the data scope; classification and the linked domain still apply' },
+  { code: PERMISSIONS.DOCUMENTS_MANAGE, module: 'documents', description: 'Upload, version, link and archive documents and manage categories; required for RESTRICTED documents' },
+  { code: PERMISSIONS.REPORTS_VIEW, module: 'reports', description: 'Open the report center and run reports on datasets the caller is otherwise authorized for' },
+  { code: PERMISSIONS.REPORTS_VIEW_INDIVIDUAL, module: 'reports', description: 'Run datasets that return individual rows (not aggregate-only datasets); source-module scope still applies' },
+  { code: PERMISSIONS.REPORTS_CREATE, module: 'reports', description: 'Save private report definitions' },
+  { code: PERMISSIONS.REPORTS_SHARE, module: 'reports', description: 'Share saved reports with other report users (sharing never grants dataset access)' },
+  { code: PERMISSIONS.REPORTS_MANAGE, module: 'reports', description: 'Edit or delete any saved report' },
 ];
 
 /**
