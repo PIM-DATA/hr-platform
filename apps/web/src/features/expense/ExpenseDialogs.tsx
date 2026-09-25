@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PERMISSIONS, type ExpenseItemDto, type ExpenseReportDetailDto, type TravelRequestDetailDto } from '@hr/shared';
+import { PERMISSIONS, type ExpenseItemDto, type ExpensePolicyResolutionDto, type ExpenseReportDetailDto, type TravelRequestDetailDto } from '@hr/shared';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Alert } from '@/components/ui/Alert';
@@ -69,18 +69,20 @@ export function TravelModal({ id, onClose, onCreateReport }: { id: string; onClo
 }
 
 // ---------- expense report ----------
-export function NewReportModal({ policies, travel, onClose, onCreated }: { policies: { id: string; name: string; currency: string; isDefault: boolean }[]; travel: { id: string; requestNumber: string; destination: string; status: string; currency: string } | null; onClose: () => void; onCreated: (id: string) => void }) {
+export function NewReportModal({ resolution, travel, onClose, onCreated }: { resolution: ExpensePolicyResolutionDto; travel: { id: string; requestNumber: string; destination: string; status: string; currency: string } | null; onClose: () => void; onCreated: (id: string) => void }) {
   const m = useExpenseMutations(); const toast = useToast();
-  const [d, setD] = useState({ policyId: policies.find((p) => p.isDefault)?.id ?? policies[0]?.id ?? '', title: travel ? `Trip ${travel.requestNumber} — ${travel.destination}` : '' }); const [error, setError] = useState<string | null>(null);
+  const [title, setTitle] = useState(travel ? `Trip ${travel.requestNumber} — ${travel.destination}` : ''); const [error, setError] = useState<string | null>(null);
+  // The policy is never chosen here: the server resolves it (the travel policy's linked expense policy for a trip,
+  // otherwise the unique most-specific applicable policy) and refuses ambiguity. This dialog only shows the outcome.
+  const blocked = !travel && resolution.kind !== 'RESOLVED';
   return (
-    <Modal open onClose={onClose} title={travel ? `New expense report for ${travel.requestNumber}` : 'New expense report'} description="Choose the policy and give the report a title. Items and receipts are added on the report." footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={m.createReport.isPending} disabled={!d.policyId || d.title.trim().length < 2} onClick={async () => { setError(null); try { const r = await m.createReport.mutateAsync({ policyId: d.policyId, title: d.title, travelRequestId: travel?.id ?? null }); toast.success('Draft report created. Add items, attach receipts, then submit.'); onCreated(r.id); } catch (e) { setError(errorMessage(e)); } }}>Create draft</Button></>}>
+    <Modal open onClose={onClose} title={travel ? `New expense report for ${travel.requestNumber}` : 'New expense report'} description="Give the report a title. Items and receipts are added on the report. The expense policy is assigned by HR configuration, not chosen." footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={m.createReport.isPending} disabled={blocked || title.trim().length < 2} onClick={async () => { setError(null); try { const r = await m.createReport.mutateAsync({ title, travelRequestId: travel?.id ?? null }); toast.success('Draft report created. Add items, attach receipts, then submit.'); onCreated(r.id); } catch (e) { setError(errorMessage(e)); } }}>Create draft</Button></>}>
       <div className="space-y-3">
         {error && <Alert>{error}</Alert>}
-        {policies.length === 0 && <Alert tone="info">No expense policy applies to you yet. Ask HR.</Alert>}
-        {policies.length > 1 && !policies.some((p) => p.isDefault) && <Alert tone="info">More than one policy applies to you at the same level. Pick the right one; HR has been able to see this overlap.</Alert>}
-        <Select label="Expense policy" options={policies.map((p) => ({ value: p.id, label: `${p.name} (${p.currency})${p.isDefault ? ' · default' : ''}` }))} value={d.policyId} onChange={(e) => setD({ ...d, policyId: e.target.value })} />
-        <Input label="Title" placeholder="Client visit, October" value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} />
-        {travel && <p className="text-xs text-slate-500">Linked to travel request {travel.requestNumber} ({travel.destination}, {titleCase(travel.status)}).</p>}
+        {travel ? <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Linked to travel request {travel.requestNumber} ({travel.destination}, {titleCase(travel.status)}). The policy comes from the trip's travel policy when it names one, otherwise from your applicable policy.</p>
+          : resolution.kind === 'RESOLVED' ? <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">Policy: <span className="font-medium text-slate-900">{resolution.policy!.name}</span> ({resolution.policy!.currency})</p>
+          : <Alert tone="info">{resolution.message}</Alert>}
+        <Input label="Title" placeholder="Client visit, October" value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
     </Modal>
   );

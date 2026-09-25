@@ -40,25 +40,39 @@ under Document Center rules. Money is `Decimal(18,2)`, transported as strings.
 Services check permissions and data scope only, never role names. A manager's `TEAM` scope does **not** open a
 subordinate's travel or expenses: a manager sees only what the workflow puts in front of them.
 
-## 3. Policy applicability and precedence
+## 3. Policy applicability and resolution (server authority)
 
 Applicability rows use organization, department, job, position, employment type and employment status only.
 There is no field for any protected attribute. A policy applies when at least one of its rows matches the
-employee. When several active policies apply on the same day, the **most specific** wins and becomes the
-employee's default:
+employee. **The claimant never chooses a policy.** The server resolves it at report creation and again,
+independently, at submission, so a crafted request cannot bypass the rule:
 
-| Rule type | Specificity |
-|---|---|
-| POSITION | 5 |
-| JOB | 4 |
-| DEPARTMENT | 3 |
-| ORGANIZATION | 2 |
-| EMPLOYMENT_TYPE, EMPLOYMENT_STATUS | 1 |
+1. **Explicit configuration wins.** A report created from an approved trip uses the expense policy the trip's
+   travel policy names, if the travel policy names one. That policy is still validated (active, in effect, the
+   employee's organization, applicable to the employee); if it is not valid the trip cannot be expensed
+   (`422 EXPENSE_POLICY_NOT_APPLICABLE`) until HR fixes the configuration.
+2. **Otherwise the unique most-specific applicable policy** is used:
 
-Two applicable policies at the same top specificity are **ambiguous**: no default is chosen, every applicable
-policy is offered, and the employee picks one on the report. A policy that does not apply to the employee cannot
-be chosen (`422 EXPENSE_POLICY_NOT_APPLICABLE`). The precedence table is documented rather than hidden so that an
-overlap is a configuration fact HR can see, not a coin toss.
+   | Rule type | Specificity |
+   |---|---|
+   | POSITION | 5 |
+   | JOB | 4 |
+   | DEPARTMENT | 3 |
+   | ORGANIZATION | 2 |
+   | EMPLOYMENT_TYPE, EMPLOYMENT_STATUS | 1 |
+
+3. **Two applicable policies at the same top specificity are refused**: `409 EXPENSE_POLICY_AMBIGUOUS` on
+   creation and on submission of an existing draft. No fallback, no employee preference, no workflow, no report.
+4. **No applicable policy** is `422 EXPENSE_POLICY_NOT_APPLICABLE`. A `policyId` in the request is accepted only
+   when it equals the resolved policy; anything else is `422 EXPENSE_POLICY_NOT_APPLICABLE`.
+5. A draft whose policy is no longer the resolved one (HR changed applicability after the draft) is blocked at
+   submission with "Your expense policy is now …; create a new report".
+
+`GET /expense/my` returns `policyResolution` (`RESOLVED`, `AMBIGUOUS` with the tied policies, or `NONE`) and the
+web form shows the assigned policy read-only or the reason nothing can be created. HR sees every current tie on the
+Policies tab, computed by the same resolver over active employees (`GET /expense/policies/conflicts`), with the
+instruction to update applicability before employees can submit. Task 39 adds no priority editor: refusing the
+tie is the MVP behaviour.
 
 ## 4. Travel requests
 
@@ -88,8 +102,10 @@ Item checks (shown as blockers while the report is a draft):
 - description required, travel-only category on a report without a trip, maximum age in days, expense date in
   the future.
 
-Report checks: at least one item, policy active and in effect today, the optional report maximum, and the trip
-link. The total is always the server's Σ of the item amounts (a cached copy is kept on the report and rechecked at
+Report checks: at least one item, policy active and in effect today, the optional report maximum (exact Decimal:
+a 5000.00 total passes a 5000.00 maximum, 5000.01 does not), the policy re-resolution above, and the trip link.
+The maximum-age rule is inclusive: with `maximumAgeDays = 30` an item dated exactly 30 days before the business
+date (Asia/Bangkok) is allowed and one dated 31 days before is blocked, on the item and again at submission. The total is always the server's Σ of the item amounts (a cached copy is kept on the report and rechecked at
 submit; the items are the truth). The browser never computes money.
 
 Submission runs in one transaction: lock the report, recompute the blockers, freeze the rule snapshots on each
@@ -149,8 +165,11 @@ trip, paid date, trip dates.
 
 ## 10. Tests
 
-`apps/api/tests/expense.test.ts` (15 tests): categories, policy rules, workflow validation, protected-attribute
-refusal; deterministic precedence with the ambiguous case; travel request lifecycle with purpose-free
+`apps/api/tests/expense.test.ts` (16 tests): categories, policy rules, workflow validation, protected-attribute
+refusal; server-side resolution (most specific wins, the claimant cannot name another policy, an equal-specificity
+tie is `EXPENSE_POLICY_AMBIGUOUS` on create and on submit with no report or workflow created, HR conflict list,
+stale draft blocked); travel-linked policy used and validated; report maximum 5000.00 / 5000.01 and age 30 / 31
+days under a fixed clock; travel request lifecycle with purpose-free
 notifications and audit and the other manager's `404`; explicit report-from-trip; per-item maximum and inclusive
 receipt boundary; stranger's receipt `404` and the approver's non-access to the file; submission freeze,
 immutability, double submit and a policy edit after submission; double approve; external payment with reference
@@ -166,5 +185,5 @@ No OCR or receipt extraction, no FX conversion (original amount and currency are
 per-diem or mileage engine, no corporate-card or bank feed, no advance or cash-float handling, no booking or
 itinerary integration, no budget or cost-centre accounting, no tax or VAT decision, no partial approval or
 line-item approval, no multi-currency report, no delegation of approval, no reminder scheduler, no policy
-versioning beyond effective dates, no department-level spend for managers or executives, and no Employee 360
+versioning beyond effective dates, no policy priority editor or policy selection groups (ties are refused), no department-level spend for managers or executives, and no Employee 360
 section.

@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { AUDIT_ACTIONS, EXPENSE_WORKFLOW, NOTIFICATION_TYPES, type CreateExpenseReportInput, type ExpenseItemDto, type ExpenseItemInput, type ExpenseReportDetailDto, type ExpenseReportDto, type ExpenseReviewDto, type MyExpensesDto, type RecordExpensePaymentInput, type SendExpenseToPayrollInput, type UpdateExpenseItemInput, type UpdateExpenseReportInput } from '@hr/shared';
+import { AUDIT_ACTIONS, EXPENSE_WORKFLOW, NOTIFICATION_TYPES, type ExpensePolicyResolutionDto, type CreateExpenseReportInput, type ExpenseItemDto, type ExpenseItemInput, type ExpenseReportDetailDto, type ExpenseReportDto, type ExpenseReviewDto, type MyExpensesDto, type RecordExpensePaymentInput, type SendExpenseToPayrollInput, type UpdateExpenseItemInput, type UpdateExpenseReportInput } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
@@ -10,7 +10,7 @@ import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.se
 import { ZERO, dec, money, toMoneyString } from '../payroll/money';
 import { addManualAdjustmentWithTx, findPayrollResultForEmployee } from '../payroll/payroll-run.service';
 import { type Actor, type Db, type Tx, adminScope, canSeeEmployee, employeeInclude, employeeSnapshot, expenseAudit, has, history, historyDto, isApprover, lockRow, nextNumber, notFound, P, snapshotDto, textAudit, today, visibleEmployeeWhere } from './expense.types';
-import { expensePolicyService, matchesApplicability } from './policy.service';
+import { expensePolicyService, type PolicyResolution } from './policy.service';
 import { loadTravelForMutation, travelDto, travelForReviewer } from './travel.service';
 
 /**
@@ -99,6 +99,11 @@ async function ownOrManage(tx: Tx, auth: AuthContext, id: string) {
   return r;
 }
 
+const resolutionDto = (r: PolicyResolution): ExpensePolicyResolutionDto => r.kind === 'RESOLVED' || r.kind === 'LINKED'
+  ? { kind: 'RESOLVED', policy: { id: r.policy.id, code: r.policy.code, name: r.policy.name, currency: r.policy.currency }, conflicting: [], message: `Your expenses are checked against ${r.policy.name}.` }
+  : r.kind === 'AMBIGUOUS' ? { kind: 'AMBIGUOUS', policy: null, conflicting: r.policies.map((p) => ({ id: p.id, code: p.code, name: p.name })), message: 'Multiple expense policies apply to you at the same priority. HR must update policy applicability before you can submit expenses.' }
+  : { kind: 'NONE', policy: null, conflicting: [], message: 'No active expense policy applies to you. Ask HR.' };
+
 export const expenseReportService = {
   async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; policyId?: string; employeeId?: string; search?: string }) {
     const scope = visibleEmployeeWhere(auth);
@@ -128,15 +133,15 @@ export const expenseReportService = {
     const employeeId = auth.employeeId;
     const queueRows = has(auth, P.WORKFLOW_APPROVE) ? await workflowEngine.inbox(auth, { page: 1, pageSize: 50, module: EXPENSE_WORKFLOW.module }) : { data: [] };
     const queue = queueRows.data.map((i) => ({ instanceId: i.instanceId, entityType: i.entityType, entityId: i.entityId, stepName: i.stepName, requesterName: `${i.requesterEmployee.firstName} ${i.requesterEmployee.lastName}`, submittedAt: i.submittedAt }));
-    if (!employeeId) return { travelRequests: [], reports: [], policies: [], travelPolicies: [], queue };
+    if (!employeeId) return { policyResolution: resolutionDto({ kind: 'NONE', policies: [] }), travelRequests: [], reports: [], policies: [], travelPolicies: [], queue };
     const employee = await prisma.employee.findUnique({ where: { id: employeeId }, include: employeeInclude });
     const [travel, reports, applicable, travelPolicies] = await Promise.all([
       prisma.travelRequest.findMany({ where: { employeeId }, include: { travelPolicy: { select: { name: true, workflowCode: true, status: true, currency: true, maximumEstimatedAmount: true, effectiveFrom: true, effectiveTo: true } }, reports: { select: { id: true, reportNumber: true, status: true, totalAmount: true } } }, orderBy: { createdAt: 'desc' }, take: 50 }),
       prisma.expenseReport.findMany({ where: { employeeId }, include, orderBy: { createdAt: 'desc' }, take: 50 }),
-      employee ? expensePolicyService.applicable(prisma, employee, today()) : Promise.resolve({ policies: [], ambiguous: false }),
+      employee ? expensePolicyService.resolve(prisma, employee, today()) : Promise.resolve<PolicyResolution>({ kind: 'NONE', policies: [] }),
       employee ? prisma.travelPolicy.findMany({ where: { status: 'ACTIVE', OR: [{ organizationId: null }, { organizationId: employee.organizationId }] }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
     ]);
-    return { travelRequests: await Promise.all(travel.map((t) => travelDto(prisma, auth, t))), reports: reports.map((r) => dto(auth, r)), policies: applicable.policies.map((p, i) => ({ id: p.id, code: p.code, name: p.name, currency: p.currency, isDefault: i === 0 && !applicable.ambiguous })), travelPolicies: travelPolicies.map((p) => ({ id: p.id, code: p.code, name: p.name, currency: p.currency })), queue };
+    return { travelRequests: await Promise.all(travel.map((t) => travelDto(prisma, auth, t))), reports: reports.map((r) => dto(auth, r)), policyResolution: resolutionDto(applicable), policies: applicable.kind === 'RESOLVED' || applicable.kind === 'LINKED' ? [{ id: applicable.policy.id, code: applicable.policy.code, name: applicable.policy.name, currency: applicable.policy.currency, isDefault: true }] : [], travelPolicies: travelPolicies.map((p) => ({ id: p.id, code: p.code, name: p.name, currency: p.currency })), queue };
   },
   /** A draft against an applicable policy, optionally linked to the employee's own approved trip. Nothing is frozen yet. */
   async create(input: CreateExpenseReportInput, actor: Actor): Promise<ExpenseReportDetailDto> {
@@ -146,13 +151,17 @@ export const expenseReportService = {
     const id = await prisma.$transaction(async (tx) => {
       const { employee, data } = await employeeSnapshot(tx, employeeId);
       if (employee.employmentStatus !== 'ACTIVE') throw new AppError(409, 'EMPLOYEE_NOT_ACTIVE', 'Expense reports need an active employee');
-      const policy = await tx.expensePolicy.findUnique({ where: { id: input.policyId }, include: { applicability: true } }); if (!policy) throw notFound('expense policy');
-      if (policy.status !== 'ACTIVE') throw new AppError(409, 'EXPENSE_POLICY_NOT_ACTIVE', 'This policy is not active');
-      if ((policy.organizationId && policy.organizationId !== employee.organizationId) || !matchesApplicability(employee, policy.applicability)) throw new AppError(422, 'EXPENSE_POLICY_NOT_APPLICABLE', 'This policy does not apply to you');
+      let linkedPolicyId: string | null = null;
       if (input.travelRequestId) {
-        const t = await tx.travelRequest.findUnique({ where: { id: input.travelRequestId } }); if (!t || t.employeeId !== employeeId) throw notFound('travel request');
+        const t = await tx.travelRequest.findUnique({ where: { id: input.travelRequestId }, include: { travelPolicy: { select: { expensePolicyId: true } } } }); if (!t || t.employeeId !== employeeId) throw notFound('travel request');
         if (!['APPROVED', 'COMPLETED'].includes(t.status)) throw new AppError(409, 'TRAVEL_REQUEST_NOT_APPROVED', 'An expense report links to an approved trip');
+        linkedPolicyId = t.travelPolicy.expensePolicyId;
       }
+      // Server authority: the policy is resolved here, never chosen by the claimant. A travel policy's explicit expense
+      // policy is business configuration and wins; otherwise the unique most-specific applicable policy; ties are refused.
+      const resolution = await expensePolicyService.resolve(tx, employee, today(), linkedPolicyId);
+      if (linkedPolicyId && resolution.kind === 'NONE') throw new AppError(422, 'EXPENSE_POLICY_NOT_APPLICABLE', 'The expense policy linked to this trip\'s travel policy is not active or does not apply to you. Ask HR.');
+      const policy = expensePolicyService.require(resolution, input.policyId);
       const r = await tx.expenseReport.create({ data: { reportNumber: await nextNumber(tx, 'report'), title: input.title, employeeId, policyId: policy.id, travelRequestId: input.travelRequestId ?? null, policyCodeSnapshot: policy.code, policyNameSnapshot: policy.name, maximumReportAmountSnapshot: policy.maximumReportAmount, ...data, currency: policy.currency, createdByUserId: auth.userId } });
       await history(tx, 'EXPENSE_REPORT', r.id, null, 'DRAFT', auth.userId);
       await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.CREATE_EXPENSE_REPORT, 'ExpenseReport', r.id, { reportNumber: r.reportNumber, policyId: policy.id, travelRequestId: r.travelRequestId, currency: r.currency, titleLength: r.title.length }), tx);
@@ -233,6 +242,12 @@ export const expenseReportService = {
       const items = await itemDtos(tx, auth, r);
       const blockers = reportBlockers(r, items);
       if (employee?.employmentStatus !== 'ACTIVE') blockers.push('Expense reports need an active employee');
+      // Independent re-resolution at submit: a crafted or stale draft cannot bypass the policy the server assigns today.
+      const { employee: emp } = await employeeSnapshot(tx, r.employeeId);
+      const resolution = await expensePolicyService.resolve(tx, emp, today(), r.travelRequest ? (await tx.travelRequest.findUniqueOrThrow({ where: { id: r.travelRequestId! }, include: { travelPolicy: { select: { expensePolicyId: true } } } })).travelPolicy.expensePolicyId : null);
+      if (resolution.kind === 'AMBIGUOUS') expensePolicyService.require(resolution);
+      else if (resolution.kind === 'NONE') blockers.push('No active expense policy applies to you today');
+      else if (resolution.policy.id !== r.policyId) blockers.push(`Your expense policy is now ${resolution.policy.name}; create a new report`);
       if (blockers.length) throw new AppError(422, 'EXPENSE_REPORT_INVALID', blockers.join('; '), blockers.map((b) => ({ field: 'report', message: b })));
       for (const i of r.items) { const rule = ruleFor(r, i.categoryId); await tx.expenseItem.update({ where: { id: i.id }, data: { receiptRequiredSnapshot: receiptRequired(rule, i.amount), perItemMaximumSnapshot: rule?.perItemMaximum ?? null } }); }
       const total = sumItems(r.items);

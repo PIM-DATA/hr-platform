@@ -11,7 +11,7 @@
  */
 import type { Server } from 'node:http';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import { createTestServer, createUser, loginAs, resetDatabase } from './helpers';
 
@@ -37,7 +37,7 @@ function forbiddenKeys(value: unknown, re: RegExp, path = ''): string[] {
   walk(value, path); return hits;
 }
 const newReport = async (s: Session, title = 'Report', travelRequestId: string | null = null) => (await as(s, 'post', `${X}/expense-reports`).send({ policyId, title, travelRequestId })).body.data.id as string;
-const addItem = async (s: Session, id: string, item: Record<string, unknown>) => { const r = await as(s, 'post', `${X}/expense-reports/${id}/items`).send(item); expect(r.status, text(r.body)).toBe(201); return r.body.data.items[r.body.data.items.length - 1].id as string; };
+const addItem = async (s: Session, id: string, item: Record<string, unknown>) => { const before = new Set(((await as(s, 'get', `${X}/expense-reports/${id}`)).body.data.items as { id: string }[]).map((i) => i.id)); const r = await as(s, 'post', `${X}/expense-reports/${id}/items`).send(item); expect(r.status, text(r.body)).toBe(201); return (r.body.data.items as { id: string }[]).find((i) => !before.has(i.id))!.id; }; // items are ordered by date, so the new one is found by id
 
 beforeAll(async () => {
   await resetDatabase();
@@ -107,27 +107,96 @@ describe('categories and policies', () => {
     expect(err(await as(emp, 'get', `${X}/policies`))).toBe('403 FORBIDDEN');
   });
 
-  it('policy applicability is deterministic: the most specific policy is the default and equal specificity is reported as ambiguous, never picked at random', async () => {
-    const my = (await as(emp, 'get', `${X}/my`)).body.data;
+  it('policy resolution is server authority: the unique most-specific policy is assigned; the claimant cannot choose another; equal specificity is refused with EXPENSE_POLICY_AMBIGUOUS and nothing is created', async () => {
+    let my = (await as(emp, 'get', `${X}/my`)).body.data;
+    expect(my.policyResolution).toMatchObject({ kind: 'RESOLVED', policy: { code: 'TH-BIZ' } });
     expect(my.policies).toEqual([{ id: policyId, code: 'TH-BIZ', name: 'Thailand Business Expense Policy', currency: 'THB', isDefault: true }]);
-    // a department-specific policy for Sales outranks the organization-wide one
-    const sales = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'SALES-BIZ', name: 'Sales expense policy', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', rules: [], applicability: [{ ruleType: 'DEPARTMENT', value: salesId }] });
+    // §8 more specific wins deterministically: Sales (department) outranks the organization-wide policy
+    const sales = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'SALES-BIZ', name: 'Sales expense policy', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', rules: [{ categoryId: cats.MEALS, perItemMaximum: '500.00' }], applicability: [{ ruleType: 'DEPARTMENT', value: salesId }] });
     await as(hrAdmin, 'patch', `${X}/policies/${sales.body.data.id}`).send({ status: 'ACTIVE' });
-    let policies = (await as(emp, 'get', `${X}/my`)).body.data.policies;
-    expect(policies.map((p: { code: string; isDefault: boolean }) => [p.code, p.isDefault])).toEqual([['SALES-BIZ', true], ['TH-BIZ', false]]);
-    expect((await as(mgrB, 'get', `${X}/my`)).body.data.policies.map((p: { code: string }) => p.code)).toEqual(['TH-BIZ']); // Marketing: only the organization-wide one
-    // a second department policy at the same specificity makes the default ambiguous
-    const dup = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'SALES-BIZ-2', name: 'Second sales policy', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', applicability: [{ ruleType: 'DEPARTMENT', value: salesId }] });
-    await as(hrAdmin, 'patch', `${X}/policies/${dup.body.data.id}`).send({ status: 'ACTIVE' });
-    policies = (await as(emp, 'get', `${X}/my`)).body.data.policies;
-    expect(policies.every((p: { isDefault: boolean }) => !p.isDefault)).toBe(true);
-    await as(hrAdmin, 'patch', `${X}/policies/${dup.body.data.id}`).send({ status: 'INACTIVE' });
+    my = (await as(emp, 'get', `${X}/my`)).body.data;
+    expect(my.policyResolution).toMatchObject({ kind: 'RESOLVED', policy: { code: 'SALES-BIZ' } });
+    expect(my.policies.map((p: { code: string }) => p.code)).toEqual(['SALES-BIZ']); // only the resolved one is offered
+    expect((await as(mgrB, 'get', `${X}/my`)).body.data.policyResolution.policy.code).toBe('TH-BIZ'); // Marketing: the organization-wide one
+    // the claimant cannot pick the organization policy by id while a more specific one applies
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ policyId, title: 'Prefer the wider policy' }))).toBe('422 EXPENSE_POLICY_NOT_APPLICABLE');
+    // §7 two Sales policies at the same specificity: Policy A meals ≤ 500.00, Policy B meals ≤ 2,000.00 → ambiguous, B cannot be chosen
+    const b = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'SALES-BIZ-B', name: 'Generous sales policy', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', rules: [{ categoryId: cats.MEALS, perItemMaximum: '2000.00' }], applicability: [{ ruleType: 'DEPARTMENT', value: salesId }] });
+    await as(hrAdmin, 'patch', `${X}/policies/${b.body.data.id}`).send({ status: 'ACTIVE' });
+    my = (await as(emp, 'get', `${X}/my`)).body.data;
+    expect(my.policyResolution).toMatchObject({ kind: 'AMBIGUOUS', policy: null });
+    expect(my.policyResolution.conflicting.map((p: { code: string }) => p.code).sort()).toEqual(['SALES-BIZ', 'SALES-BIZ-B']);
+    expect(my.policies).toEqual([]);
+    const reportsBefore = await prisma.expenseReport.count(); const wfBefore = await prisma.workflowInstance.count();
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ title: 'No policy named' }))).toBe('409 EXPENSE_POLICY_AMBIGUOUS');
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ policyId: b.body.data.id, title: 'I choose B' }))).toBe('409 EXPENSE_POLICY_AMBIGUOUS');
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ policyId: sales.body.data.id, title: 'I choose A' }))).toBe('409 EXPENSE_POLICY_AMBIGUOUS');
+    expect(await prisma.expenseReport.count()).toBe(reportsBefore); expect(await prisma.workflowInstance.count()).toBe(wfBefore);
+    // HR sees the conflict; a manager and an employee cannot
+    const conflicts = await as(hrAdmin, 'get', `${X}/policies/conflicts`);
+    expect(conflicts.status).toBe(200);
+    expect(conflicts.body.data).toEqual([{ policies: expect.arrayContaining([expect.objectContaining({ code: 'SALES-BIZ' }), expect.objectContaining({ code: 'SALES-BIZ-B' })]), employeeCount: 5 }]); // MGRA, HRADM, PAYADM, EMP003 and EMP004 are in Sales
+    expect(err(await as(mgrA, 'get', `${X}/policies/conflicts`))).toBe('403 FORBIDDEN');
+    // a draft created before the tie cannot be submitted into it either (independent check at submit)
+    await as(hrAdmin, 'patch', `${X}/policies/${b.body.data.id}`).send({ status: 'INACTIVE' });
+    const draft = await as(emp, 'post', `${X}/expense-reports`).send({ title: 'Drafted under A' });
+    expect(draft.status, text(draft.body)).toBe(201); expect(draft.body.data.policyCode).toBe('SALES-BIZ');
+    await addItem(emp, draft.body.data.id, { categoryId: cats.MEALS, expenseDate: '2026-08-20', amount: '100.00' });
+    await as(hrAdmin, 'patch', `${X}/policies/${b.body.data.id}`).send({ status: 'ACTIVE' });
+    expect(err(await as(emp, 'post', `${X}/expense-reports/${draft.body.data.id}/submit`))).toBe('409 EXPENSE_POLICY_AMBIGUOUS');
+    expect(await prisma.workflowInstance.count()).toBe(wfBefore);
+    // HR fixes the applicability: the tie is gone and the draft can be submitted under A, its policy
+    await as(hrAdmin, 'patch', `${X}/policies/${b.body.data.id}`).send({ status: 'INACTIVE' });
+    expect((await as(emp, 'get', `${X}/my`)).body.data.policyResolution.policy.code).toBe('SALES-BIZ');
+    expect((await as(hrAdmin, 'get', `${X}/policies/conflicts`)).body.data).toEqual([]);
+    // a draft whose policy is no longer the resolved one is blocked at submit with a clear reason
     await as(hrAdmin, 'patch', `${X}/policies/${sales.body.data.id}`).send({ status: 'INACTIVE' });
-    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ policyId: sales.body.data.id, title: 'Retired policy' }))).toBe('409 EXPENSE_POLICY_NOT_ACTIVE');
-    // an employee cannot pick a policy that does not apply to them
+    const stale = await as(emp, 'post', `${X}/expense-reports/${draft.body.data.id}/submit`);
+    expect(err(stale)).toBe('422 EXPENSE_REPORT_INVALID'); expect(stale.body.error.message).toMatch(/now Thailand Business Expense Policy/);
+    await as(emp, 'post', `${X}/expense-reports/${draft.body.data.id}/cancel`);
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ policyId: sales.body.data.id, title: 'Retired policy' }))).toBe('422 EXPENSE_POLICY_NOT_APPLICABLE');
+    // a policy for another department cannot be named either
     const other = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'MKT-ONLY', name: 'Marketing only', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', applicability: [{ ruleType: 'DEPARTMENT', value: mktId }] });
     await as(hrAdmin, 'patch', `${X}/policies/${other.body.data.id}`).send({ status: 'ACTIVE' });
     expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ policyId: other.body.data.id, title: 'Sneaky' }))).toBe('422 EXPENSE_POLICY_NOT_APPLICABLE');
+  });
+
+  it('§10 maximumReportAmount and §11 maximumAgeDays are enforced server-side at exact Decimal and date boundaries', async () => {
+    const strict = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'SALES-STRICT', name: 'Strict sales policy', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', maximumReportAmount: '5000.00', rules: [{ categoryId: cats.OFFICE, maximumAgeDays: 30 }], applicability: [{ ruleType: 'DEPARTMENT', value: salesId }] });
+    expect(strict.status, text(strict.body)).toBe(201);
+    await as(hrAdmin, 'patch', `${X}/policies/${strict.body.data.id}`).send({ status: 'ACTIVE' });
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-25T03:00:00.000Z') }); // business today in Asia/Bangkok = 2026-09-25
+    try {
+      const created = await as(emp, 'post', `${X}/expense-reports`).send({ title: 'Strict report' });
+      expect(created.status, text(created.body)).toBe(201); const id = created.body.data.id as string;
+      expect(created.body.data.policyCode).toBe('SALES-STRICT');
+      const a = await addItem(emp, id, { categoryId: cats.MEALS, expenseDate: '2026-09-20', amount: '4000.00' });
+      void a;
+      const b = await addItem(emp, id, { categoryId: cats.MEALS, expenseDate: '2026-09-21', amount: '1000.00' });
+      let d = (await as(emp, 'get', `${X}/expense-reports/${id}`)).body.data;
+      expect(d).toMatchObject({ total: '5000.00', maximumReportAmount: '5000.00', blockers: [] }); // exactly the maximum is valid
+      await as(emp, 'patch', `${X}/expense-reports/${id}/items/${b}`).send({ amount: '1000.01' });
+      d = (await as(emp, 'get', `${X}/expense-reports/${id}`)).body.data;
+      expect(d.total).toBe('5000.01'); expect(d.blockers).toEqual(['The total exceeds the policy maximum of 5000.00']);
+      expect(err(await as(emp, 'post', `${X}/expense-reports/${id}/submit`))).toBe('422 EXPENSE_REPORT_INVALID');
+      await as(emp, 'patch', `${X}/expense-reports/${id}/items/${b}`).send({ amount: '1000.00' });
+      // age: 30 days before 2026-09-25 is 2026-08-26 (allowed, inclusive); 2026-08-25 is 31 days old (blocked)
+      const old = await addItem(emp, id, { categoryId: cats.OFFICE, expenseDate: '2026-08-26', amount: '1.00', description: 'Boundary' });
+      d = (await as(emp, 'get', `${X}/expense-reports/${id}`)).body.data;
+      expect(d.items.find((i: { id: string }) => i.id === old).blockers).toEqual([]);
+      await as(emp, 'patch', `${X}/expense-reports/${id}/items/${old}`).send({ expenseDate: '2026-08-25' });
+      d = (await as(emp, 'get', `${X}/expense-reports/${id}`)).body.data;
+      expect(d.items.find((i: { id: string }) => i.id === old).blockers, text(d.items)).toEqual(['Older than the 30-day limit']);
+      const s = await as(emp, 'post', `${X}/expense-reports/${id}/submit`);
+      expect(err(s)).toBe('422 EXPENSE_REPORT_INVALID'); expect(s.body.error.message).toMatch(/Older than the 30-day limit/);
+      await as(emp, 'patch', `${X}/expense-reports/${id}/items/${old}`).send({ expenseDate: '2026-08-26' });
+      await as(emp, 'patch', `${X}/expense-reports/${id}/items/${b}`).send({ amount: '999.00' }); // 4000.00 + 999.00 + 1.00 = 5000.00, the maximum
+      expect((await as(emp, 'get', `${X}/expense-reports/${id}`)).body.data).toMatchObject({ total: '5000.00', blockers: [] });
+      expect((await as(emp, 'post', `${X}/expense-reports/${id}/submit`)).status).toBe(200);
+      const wf = (await as(emp, 'get', `${X}/expense-reports/${id}`)).body.data.workflowInstanceId;
+      await act(mgrA, wf, 'REJECT', 'test cleanup');
+    } finally { vi.useRealTimers(); await as(hrAdmin, 'patch', `${X}/policies/${strict.body.data.id}`).send({ status: 'INACTIVE' }); }
+    expect((await as(emp, 'get', `${X}/my`)).body.data.policyResolution.policy.code).toBe('TH-BIZ');
   });
 });
 
@@ -158,7 +227,7 @@ describe('travel requests', () => {
     const t = (await as(emp, 'get', `${X}/travel/${travelId}`)).body.data;
     expect(t).toMatchObject({ status: 'APPROVED', can: { createExpenseReport: true } });
     expect(t.history.map((h: { to: string }) => h.to)).toEqual(['DRAFT', 'PENDING_APPROVAL', 'APPROVED']);
-    expect(await prisma.expenseReport.count()).toBe(0); // nothing created automatically
+    expect(await prisma.expenseReport.count({ where: { travelRequestId: travelId } })).toBe(0); // nothing created automatically
     expect(await prisma.notification.count({ where: { type: 'TRAVEL_REQUEST_APPROVED', userId: emp.user.id } })).toBe(1);
     expect(text(await prisma.auditLog.findMany({ where: { module: 'expense' } }))).not.toMatch(/northern accounts/);
   });
@@ -167,8 +236,20 @@ describe('travel requests', () => {
 describe('expense reports', () => {
   it('the employee explicitly creates a report from the approved trip (§73); the report belongs to them, links the trip and starts as an empty draft', async () => {
     expect(err(await as(emp4, 'post', `${X}/expense-reports`).send({ policyId, title: 'Not my trip', travelRequestId: travelId }))).toBe('404 TRAVEL_REQUEST_NOT_FOUND');
-    const r = await as(emp, 'post', `${X}/expense-reports`).send({ policyId, title: 'Chiang Mai workshop', travelRequestId: travelId });
+    // §9: the travel policy names TH-BIZ explicitly. Even while a more specific Sales policy resolves for the employee,
+    // the report from the trip uses the linked policy, and the employee cannot name the resolved one instead.
+    const salesB = await as(hrAdmin, 'post', `${X}/policies`).send({ code: 'SALES-TRAVEL-TEST', name: 'Sales policy for the travel test', currency: 'THB', effectiveFrom: '2026-01-01', workflowCode: 'EXPENSE_STD', applicability: [{ ruleType: 'DEPARTMENT', value: salesId }] });
+    await as(hrAdmin, 'patch', `${X}/policies/${salesB.body.data.id}`).send({ status: 'ACTIVE' });
+    expect((await as(emp, 'get', `${X}/my`)).body.data.policyResolution.policy.code).toBe('SALES-TRAVEL-TEST');
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ title: 'Wrong policy for the trip', travelRequestId: travelId, policyId: salesB.body.data.id }))).toBe('422 EXPENSE_POLICY_NOT_APPLICABLE');
+    await as(hrAdmin, 'patch', `${X}/policies/${policyId}`).send({ status: 'INACTIVE' }); // the linked policy is still validated
+    expect(err(await as(emp, 'post', `${X}/expense-reports`).send({ title: 'Trip without a valid linked policy', travelRequestId: travelId }))).toBe('422 EXPENSE_POLICY_NOT_APPLICABLE');
+    await as(hrAdmin, 'patch', `${X}/policies/${policyId}`).send({ status: 'ACTIVE' });
+    const r = await as(emp, 'post', `${X}/expense-reports`).send({ title: 'Chiang Mai workshop', travelRequestId: travelId });
     expect(r.status, text(r.body)).toBe(201); reportId = r.body.data.id;
+    expect(r.body.data.policyCode).toBe('TH-BIZ'); // linked, not resolved
+    await as(hrAdmin, 'patch', `${X}/policies/${salesB.body.data.id}`).send({ status: 'INACTIVE' });
+    expect((await as(emp, 'get', `${X}/my`)).body.data.policyResolution.policy.code).toBe('TH-BIZ');
     expect(r.body.data).toMatchObject({ status: 'DRAFT', total: '0.00', itemCount: 0, travelRequestId: travelId, travel: { estimatedAmount: '12500.00' }, blockers: ['Add at least one item'] });
     expect(r.body.data.reportNumber).toMatch(/^EXP-2026-\d{6}$/);
     expect(err(await as(emp, 'post', `${X}/expense-reports/${reportId}/submit`))).toBe('422 EXPENSE_REPORT_INVALID');
@@ -207,8 +288,8 @@ describe('expense reports', () => {
     expect(d).toMatchObject({ status: 'PENDING_APPROVAL', total: '7350.00' }); reportWf = d.workflowInstanceId;
     expect(await prisma.workflowInstance.count({ where: { entityId: reportId } })).toBe(1);
     expect(await prisma.expenseStatusHistory.count({ where: { entityId: reportId, toStatus: 'PENDING_APPROVAL' } })).toBe(1);
-    expect(await prisma.notification.count({ where: { type: 'EXPENSE_REPORT_SUBMITTED', userId: emp.user.id } })).toBe(1);
-    expect(await prisma.notification.count({ where: { type: 'EXPENSE_APPROVAL_REQUIRED', userId: mgrA.user.id } })).toBe(1);
+    expect(await prisma.notification.count({ where: { type: 'EXPENSE_REPORT_SUBMITTED', userId: emp.user.id, sourceEntityId: reportId } })).toBe(1);
+    expect(await prisma.notification.count({ where: { type: 'EXPENSE_APPROVAL_REQUIRED', userId: mgrA.user.id, sourceEntityId: reportId } })).toBe(1);
     expect(err(await as(emp, 'post', `${X}/expense-reports/${reportId}/items`).send({ categoryId: cats.MEALS, expenseDate: '2026-08-11', amount: '1.00' }))).toBe('409 EXPENSE_REPORT_NOT_DRAFT');
     expect(err(await as(emp, 'patch', `${X}/expense-reports/${reportId}/items/${d.items[0].id}`).send({ amount: '1.00' }))).toBe('409 EXPENSE_REPORT_NOT_DRAFT');
     // the frozen rules survive a policy edit
@@ -271,7 +352,7 @@ describe('expense reports', () => {
     expect(after.status).toBe('REJECTED');
     expect(after.items).toHaveLength(2); // nothing deleted
     expect(text(after)).not.toMatch(/Duplicate of an earlier/);
-    expect(await prisma.notification.count({ where: { type: 'EXPENSE_REPORT_REJECTED', userId: emp.user.id } })).toBe(1);
+    expect(await prisma.notification.count({ where: { type: 'EXPENSE_REPORT_REJECTED', userId: emp.user.id, sourceEntityId: id } })).toBe(1);
   });
 
   it('approve versus reject race (§70) yields one terminal state; cancel releases nothing and works exactly once; a draft cancels without a workflow', async () => {
@@ -364,8 +445,8 @@ describe('who sees what', () => {
     const rep = await as(exec, 'get', `${X}/reports?from=2026-01-01&to=2026-12-31`);
     expect(rep.status).toBe(200);
     expect(rep.body.data.byPolicy.find((p: { policy: string }) => p.policy === 'Thailand Business Expense Policy')).toMatchObject({ currency: 'THB', paidTotal: '9350.00' });
-    expect(rep.body.data.byCategory.find((c: { category: string }) => c.category === 'Meals')).toMatchObject({ items: 1 });
-    expect(rep.body.data.byCategory.find((c: { category: string }) => c.category === 'Office Supplies')).toMatchObject({ items: 4, total: '1130.10' });
+    expect(rep.body.data.byCategory.find((c: { category: string }) => c.category === 'Meals')).toMatchObject({ items: 3 }); // 450.00 + the two strict-policy items
+    expect(rep.body.data.byCategory.find((c: { category: string }) => c.category === 'Office Supplies')).toMatchObject({ items: 5, total: '1131.10' });
     expect(rep.body.data.travel).toMatchObject({ requests: 2, approved: 2, estimatedTotal: '12600.00' });
     for (const payload of [dash.body.data, rep.body.data]) expect(forbiddenKeys(payload, /^(employeeId|employeeCode|employeeName|firstName|lastName|name|email|reportNumber|requestNumber|merchant|description|purpose|destination|documentId|paymentReference)$/)).toEqual([]);
     expect(text(rep.body.data)).not.toMatch(/Emma|EMP003|EXP-|TRV-|Hotel|Chiang|northern|TRF-/);
@@ -374,7 +455,7 @@ describe('who sees what', () => {
     expect(err(r1)).toBe('200');
     expect(r1.body.data.rows.filter((x: { status: string }) => x.status === 'PAID').map((x: { total: string }) => x.total).sort()).toEqual([paidTotal, '2000.00'].sort());
     const r2 = await run(exec, 'expense_category_summary', ['category', 'amount', 'reportStatus']);
-    expect(r2.body.data.rows.filter((x: { category: string }) => x.category === 'Office Supplies').map((x: { amount: string }) => x.amount).sort()).toEqual(['10.00', '120.00', '333.37', '666.73'].sort());
+    expect(r2.body.data.rows.filter((x: { category: string }) => x.category === 'Office Supplies').map((x: { amount: string }) => x.amount).sort()).toEqual(['1.00', '10.00', '120.00', '333.37', '666.73'].sort());
     const r3 = await run(hrAdmin, 'travel_request_summary', ['travelPolicy', 'status', 'tripDays', 'estimatedAmount']);
     expect(r3.body.data.rows.find((x: { estimatedAmount: string }) => x.estimatedAmount === '12500.00')).toMatchObject({ tripDays: 3, status: 'COMPLETED' });
     for (const r of [r1, r2, r3]) expect(text(r.body)).not.toMatch(/Emma|EMP003|EXP-|TRV-|Hotel|Chiang|northern|TRF-/);

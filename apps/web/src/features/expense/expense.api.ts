@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  CreateExpenseCategoryInput, CreateExpensePolicyInput, CreateExpenseReportInput, CreateTravelPolicyInput, CreateTravelRequestInput, ExpenseCategoryDto, ExpenseDashboardDto, ExpenseItemInput, ExpensePolicyDto, ExpenseReportDetailDto, ExpenseReportDto, ExpenseReportsDto, ExpenseReviewDto,
+  CreateExpenseCategoryInput, CreateExpensePolicyInput, CreateExpenseReportInput, CreateTravelPolicyInput, CreateTravelRequestInput, ExpenseCategoryDto, ExpenseDashboardDto, ExpensePolicyConflictDto, ExpenseItemInput, ExpensePolicyDto, ExpenseReportDetailDto, ExpenseReportDto, ExpenseReportsDto, ExpenseReviewDto,
   MyExpensesDto, RecordExpensePaymentInput, SendExpenseToPayrollInput, TravelPolicyDto, TravelRequestDetailDto, TravelRequestDto, UpdateExpenseCategoryInput, UpdateExpenseItemInput, UpdateExpensePolicyInput, UpdateExpenseReportInput, UpdateTravelPolicyInput, UpdateTravelRequestInput,
 } from '@hr/shared';
 import { api } from '@/lib/api-client';
@@ -16,6 +16,7 @@ export const useExpenseReportsAnalytics = (f: Record<string, unknown>) => useQue
 export const useExpenseOptions = (enabled = true) => useQuery({ queryKey: [KEY, 'options'], queryFn: () => api.get<ExpenseOptions>('/expense/options').then((r) => r.data), staleTime: 60_000, enabled });
 export const useExpenseCategories = (includeInactive = false) => useQuery({ queryKey: [KEY, 'categories', includeInactive], queryFn: () => api.get<ExpenseCategoryDto[]>(`/expense/categories?${qs({ includeInactive })}`).then((r) => r.data) });
 export const useExpensePolicies = (includeInactive = false, enabled = true) => useQuery({ queryKey: [KEY, 'policies', includeInactive], queryFn: () => api.get<ExpensePolicyDto[]>(`/expense/policies?${qs({ includeInactive })}`).then((r) => r.data), enabled });
+export const useExpensePolicyConflicts = () => useQuery({ queryKey: [KEY, 'policy-conflicts'], queryFn: () => api.get<ExpensePolicyConflictDto[]>('/expense/policies/conflicts').then((r) => r.data) });
 export const useExpensePolicy = (id: string | null) => useQuery({ queryKey: [KEY, 'policy', id ?? ''], queryFn: () => api.get<ExpensePolicyDto>(`/expense/policies/${id}`).then((r) => r.data), enabled: !!id });
 export const useTravelPolicies = (includeInactive = false) => useQuery({ queryKey: [KEY, 'travel-policies', includeInactive], queryFn: () => api.get<TravelPolicyDto[]>(`/expense/travel-policies?${qs({ includeInactive })}`).then((r) => r.data) });
 export const useTravelRequests = (f: Record<string, unknown>) => useQuery({ queryKey: [KEY, 'travel', f], queryFn: () => api.get<TravelRequestDto[]>(`/expense/travel?${qs(f)}`) as Promise<Page<TravelRequestDto>>, placeholderData: (p) => p });

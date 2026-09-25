@@ -1,11 +1,11 @@
 import type { Prisma } from '@prisma/client';
-import { AUDIT_ACTIONS, EXPENSE_RULE_SPECIFICITY, type CreateExpenseCategoryInput, type CreateExpensePolicyInput, type CreateTravelPolicyInput, type ExpenseApplicabilityDto, type ExpenseCategoryDto, type ExpensePolicyDto, type ExpensePolicyRuleDto, type TravelPolicyDto, type UpdateExpenseCategoryInput, type UpdateExpensePolicyInput, type UpdateTravelPolicyInput } from '@hr/shared';
+import { AUDIT_ACTIONS, EXPENSE_RULE_SPECIFICITY, businessToday, type ExpensePolicyConflictDto, type CreateExpenseCategoryInput, type CreateExpensePolicyInput, type CreateTravelPolicyInput, type ExpenseApplicabilityDto, type ExpenseCategoryDto, type ExpensePolicyDto, type ExpensePolicyRuleDto, type TravelPolicyDto, type UpdateExpenseCategoryInput, type UpdateExpensePolicyInput, type UpdateTravelPolicyInput } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
 import { workflowDefinitionsService } from '../../services/workflow';
 import { dec, toMoneyString } from '../payroll/money';
-import { type Actor, type Db, type EmployeeRow, expenseAudit, lockRow, notFound, textAudit } from './expense.types';
+import { type Actor, type Db, type EmployeeRow, employeeInclude, expenseAudit, lockRow, notFound, textAudit } from './expense.types';
 
 const m = (v: Prisma.Decimal | null | undefined) => (v ? toMoneyString(v) : null);
 const moneyOrNull = (v: string | null | undefined) => (v === undefined ? undefined : v === null ? null : dec(v));
@@ -115,7 +115,53 @@ export const expensePolicyService = {
     const ambiguous = matches.length > 1 && spec(matches[0]) === spec(matches[1]);
     return { policies: matches, ambiguous };
   },
+  /**
+   * The one policy an employee's expense report is checked against. Server authority: the claimant never chooses.
+   * - `linkedPolicyId` (the expense policy a travel policy points to) is explicit business configuration and wins,
+   *   but it must still be active, in effect, of the employee's organization and applicable to the employee;
+   *   otherwise the trip cannot be expensed until HR fixes the configuration (422 EXPENSE_POLICY_NOT_APPLICABLE).
+   * - Otherwise the unique most-specific applicable policy is used. Two at the same top specificity are refused
+   *   with 409 EXPENSE_POLICY_AMBIGUOUS; none is 422 EXPENSE_POLICY_NOT_APPLICABLE. No fallback, no preference.
+   */
+  async resolve(db: Db, employee: EmployeeRow, asOf: string, linkedPolicyId?: string | null): Promise<PolicyResolution> {
+    if (linkedPolicyId) {
+      const p = await db.expensePolicy.findUnique({ where: { id: linkedPolicyId }, include: policyInclude });
+      const valid = !!p && p.status === 'ACTIVE' && p.effectiveFrom <= asOf && (!p.effectiveTo || p.effectiveTo >= asOf) && (!p.organizationId || p.organizationId === employee.organizationId) && matchesApplicability(employee, p.applicability);
+      return valid ? { kind: 'LINKED', policy: p } : { kind: 'NONE', policies: [] };
+    }
+    const { policies, ambiguous } = await expensePolicyService.applicable(db, employee, asOf);
+    if (ambiguous) return { kind: 'AMBIGUOUS', policies: policies.filter((p) => specOf(p) === specOf(policies[0])) };
+    if (policies.length === 0) return { kind: 'NONE', policies: [] };
+    return { kind: 'RESOLVED', policy: policies[0] };
+  },
+  /** Turns a resolution into the policy or the refusal the API returns. */
+  require(res: PolicyResolution, requestedPolicyId?: string | null): PolicyRow {
+    if (res.kind === 'AMBIGUOUS') throw new AppError(409, 'EXPENSE_POLICY_AMBIGUOUS', `Multiple expense policies apply to you at the same priority (${res.policies.map((p) => p.code).join(', ')}). HR must update policy applicability before you can submit expenses.`);
+    if (res.kind === 'NONE') throw new AppError(422, 'EXPENSE_POLICY_NOT_APPLICABLE', 'No active expense policy applies to you. Ask HR.');
+    if (requestedPolicyId && requestedPolicyId !== res.policy.id) throw new AppError(422, 'EXPENSE_POLICY_NOT_APPLICABLE', `Your expense policy is ${res.policy.name}; another policy cannot be chosen`);
+    return res.policy;
+  },
+  /**
+   * Configuration conflicts for HR: every active employee whose resolution is ambiguous today, grouped by the set of
+   * policies that tie. Computed on request from the same resolver the reports use, so what HR sees is what employees hit.
+   */
+  async conflicts(db: Db): Promise<ExpensePolicyConflictDto[]> {
+    const asOf = businessToday('Asia/Bangkok');
+    const employees = await db.employee.findMany({ where: { employmentStatus: 'ACTIVE' }, include: employeeInclude });
+    const groups = new Map<string, ExpensePolicyConflictDto>();
+    for (const e of employees) {
+      const res = await expensePolicyService.applicable(db, e, asOf);
+      if (!res.ambiguous) continue;
+      const top = res.policies.filter((p) => specOf(p) === specOf(res.policies[0]));
+      const key = top.map((p) => p.id).sort().join('|');
+      const g = groups.get(key) ?? { policies: top.map((p) => ({ id: p.id, code: p.code, name: p.name })), employeeCount: 0 };
+      g.employeeCount += 1; groups.set(key, g);
+    }
+    return [...groups.values()].sort((a, b) => b.employeeCount - a.employeeCount);
+  },
 };
+const specOf = (p: PolicyRow) => Math.max(0, ...p.applicability.map((a) => EXPENSE_RULE_SPECIFICITY[a.ruleType as keyof typeof EXPENSE_RULE_SPECIFICITY] ?? 0));
+export type PolicyResolution = { kind: 'RESOLVED' | 'LINKED'; policy: PolicyRow } | { kind: 'AMBIGUOUS'; policies: PolicyRow[] } | { kind: 'NONE'; policies: PolicyRow[] };
 export function matchesApplicability(e: EmployeeRow, rules: { ruleType: string; value: string }[]): boolean {
   const groups = new Map<string, string[]>();
   for (const r of rules) groups.set(r.ruleType, [...(groups.get(r.ruleType) ?? []), r.value]);

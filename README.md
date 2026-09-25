@@ -1046,8 +1046,9 @@ reports, receipts and payments; approvers see the requests waiting for them ther
 
 - **Policies** — categories, one policy per set of employees with per-category rules (receipt required, receipt
   from an amount with an inclusive threshold, per-item maximum, age, travel-only, description) and allow-listed
-  applicability (organization, department, job, position, employment type and status); the most specific
-  applicable policy is the default and an overlap at the same level is reported, never guessed.
+  applicability (organization, department, job, position, employment type and status); the server assigns
+  the single most specific applicable policy (or the one a travel policy names explicitly); an overlap at the
+  same level is refused as `EXPENSE_POLICY_AMBIGUOUS` until HR fixes applicability. The claimant never chooses.
 - **Travel** — `TRV-` requests approved through the generic workflow before the trip; approval books and pays
   nothing; the expense report is created from the approved trip only by an explicit action; the purpose never
   leaves the request, its review view and the owner's export.

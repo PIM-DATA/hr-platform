@@ -63,6 +63,7 @@ expenseRouter.post('/categories', manage, validate(createExpenseCategorySchema),
 expenseRouter.patch('/categories/:id', manage, validate(updateExpenseCategorySchema), async (req, res: Response) => res.json({ data: await expenseCategoryService.update(req.params.id as string, req.body, actor(req)) }));
 expenseRouter.get('/policies', view, includeInactive, async (_req, res: Response) => res.json({ data: await expensePolicyService.list(res.locals.query) }));
 expenseRouter.post('/policies', manage, validate(createExpensePolicySchema), async (req, res: Response) => res.status(201).json({ data: await expensePolicyService.create(req.body, actor(req)) }));
+expenseRouter.get('/policies/conflicts', view, async (_req, res: Response) => res.json({ data: await expensePolicyService.conflicts(prisma) }));
 expenseRouter.get('/policies/:id', anyView, async (req, res: Response) => res.json({ data: await expensePolicyService.get(req.params.id as string) }));
 expenseRouter.patch('/policies/:id', manage, validate(updateExpensePolicySchema), async (req, res: Response) => res.json({ data: await expensePolicyService.update(req.params.id as string, req.body, actor(req)) }));
 expenseRouter.get('/travel-policies', anyView, includeInactive, async (_req, res: Response) => res.json({ data: await travelPolicyService.list(res.locals.query) }));

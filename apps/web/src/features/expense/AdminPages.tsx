@@ -13,7 +13,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { LoadingBlock } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/features/organization/shared';
-import { useExpenseCategories, useExpenseDashboard, useExpenseMutations, useExpenseOptions, useExpensePolicies, useExpenseReports, useExpenseReportsAnalytics, useTravelPolicies, useTravelRequests } from './expense.api';
+import { useExpenseCategories, useExpenseDashboard, useExpenseMutations, useExpenseOptions, useExpensePolicies, useExpensePolicyConflicts, useExpenseReports, useExpenseReportsAnalytics, useTravelPolicies, useTravelRequests } from './expense.api';
 import { ExpenseBadge, Stat, Table, fmtDate, money, titleCase } from './expense-ui';
 import { ReportModal, TravelModal } from './ExpenseDialogs';
 
@@ -91,7 +91,7 @@ type RuleDraft = { categoryId: string; requiresReceipt: boolean; receiptRequired
 type AppDraft = { ruleType: (typeof EXPENSE_RULE_TYPES)[number]; value: string };
 const emptyPolicy = { code: '', name: '', description: '', organizationId: '', currency: 'THB', effectiveFrom: `${new Date().getFullYear()}-01-01`, effectiveTo: '', workflowCode: '', maximumReportAmount: '' };
 export function PoliciesPage() {
-  const policies = useExpensePolicies(true); const travel = useTravelPolicies(true); const cats = useExpenseCategories(); const options = useExpenseOptions(); const m = useExpenseMutations(); const toast = useToast();
+  const policies = useExpensePolicies(true); const conflicts = useExpensePolicyConflicts(); const travel = useTravelPolicies(true); const cats = useExpenseCategories(); const options = useExpenseOptions(); const m = useExpenseMutations(); const toast = useToast();
   const [editing, setEditing] = useState<ExpensePolicyDto | 'new' | null>(null); const [tEditing, setTEditing] = useState<TravelPolicyDto | 'new' | null>(null); const [error, setError] = useState<string | null>(null);
   const [d, setD] = useState({ ...emptyPolicy }); const [rules, setRules] = useState<RuleDraft[]>([]); const [apps, setApps] = useState<AppDraft[]>([]);
   const [t, setT] = useState({ code: '', name: '', description: '', organizationId: '', currency: 'THB', workflowCode: '', expensePolicyId: '', maximumEstimatedAmount: '', effectiveFrom: `${new Date().getFullYear()}-01-01`, effectiveTo: '' });
@@ -133,8 +133,9 @@ export function PoliciesPage() {
   const saveTravel = async () => { setError(null); const body = { name: t.name, description: t.description || null, organizationId: t.organizationId || null, currency: t.currency, workflowCode: t.workflowCode, expensePolicyId: t.expensePolicyId || null, maximumEstimatedAmount: t.maximumEstimatedAmount || null, effectiveFrom: t.effectiveFrom, effectiveTo: t.effectiveTo || null }; try { if (tEditing === 'new') await m.createTravelPolicy.mutateAsync({ code: t.code, ...body }); else if (tEditing) await m.updateTravelPolicy.mutateAsync({ id: tEditing.id, input: body }); toast.success('Travel policy saved.'); setTEditing(null); } catch (e) { setError(errorMessage(e)); } };
   return (
     <div className="space-y-4">
+      {(conflicts.data?.length ?? 0) > 0 && <Alert>Multiple expense policies apply at the same priority. Please update policy applicability before employees can submit: {conflicts.data!.map((c) => `${c.policies.map((p) => p.code).join(' vs ')} (${c.employeeCount} employee${c.employeeCount === 1 ? '' : 's'})`).join('; ')}.</Alert>}
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4"><CardHeader title="Expense policies" description="Per-category rules (receipts, per-item maximum, age, description) and who the policy applies to. The most specific applicable policy is the default; two at the same level are reported, never guessed. Rules are frozen into each report at submission." /><Button onClick={() => start('new')}><Plus className="h-4 w-4" /> New policy</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4"><CardHeader title="Expense policies" description="Per-category rules (receipts, per-item maximum, age, description) and who the policy applies to. The server assigns each employee the single most specific applicable policy; two at the same level block submission until applicability is fixed. Rules are frozen into each report at submission." /><Button onClick={() => start('new')}><Plus className="h-4 w-4" /> New policy</Button></div>
         <DataTable columns={pcols} rows={policies.data ?? []} rowKey={(p) => p.id} loading={policies.isLoading} emptyTitle="No expense policies yet" />
       </Card>
       <Card>

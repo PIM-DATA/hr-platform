@@ -46,7 +46,7 @@ export type UpdateTravelRequestInput = z.infer<typeof updateTravelRequestSchema>
 export const travelListQuerySchema = paginationQuerySchema.extend({ status: z.enum(TRAVEL_REQUEST_STATUSES).optional(), employeeId: z.string().min(1).optional(), search: z.string().trim().max(120).optional() });
 
 // ---------- expense reports and items ----------
-export const createExpenseReportSchema = z.object({ policyId: z.string().min(1), travelRequestId: z.string().min(1).nullable().optional(), title: z.string().trim().min(2).max(160) }).strict();
+export const createExpenseReportSchema = z.object({ policyId: z.string().min(1).nullable().optional(), travelRequestId: z.string().min(1).nullable().optional(), title: z.string().trim().min(2).max(160) }).strict();
 export type CreateExpenseReportInput = z.infer<typeof createExpenseReportSchema>;
 export const updateExpenseReportSchema = z.object({ title: z.string().trim().min(2).max(160).optional(), travelRequestId: z.string().min(1).nullable().optional() }).strict().refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' });
 export type UpdateExpenseReportInput = z.infer<typeof updateExpenseReportSchema>;
@@ -83,7 +83,10 @@ export interface ExpenseReportDto {
 }
 export interface ExpenseReportDetailDto extends ExpenseReportDto { items: ExpenseItemDto[]; history: ExpenseHistoryDto[]; blockers: string[]; travel: { requestNumber: string; destination: string; startDate: string; endDate: string; estimatedAmount: string } | null; maximumReportAmount: string | null }
 export interface ExpenseReviewDto { report: ExpenseReportDetailDto | null; travel: TravelRequestDetailDto | null; workflowInstanceId: string | null; myStepPending: boolean }
-export interface MyExpensesDto { travelRequests: TravelRequestDto[]; reports: ExpenseReportDto[]; policies: { id: string; code: string; name: string; currency: string; isDefault: boolean }[]; travelPolicies: { id: string; code: string; name: string; currency: string }[]; queue: { instanceId: string; entityType: string; entityId: string; stepName: string; requesterName: string; submittedAt: string }[] }
+export interface ExpensePolicyConflictDto { policies: { id: string; code: string; name: string }[]; employeeCount: number }
+/** How the server resolved the employee's expense policy today. RESOLVED = the unique most-specific policy; AMBIGUOUS = HR must fix applicability; NONE = no policy applies. */
+export interface ExpensePolicyResolutionDto { kind: 'RESOLVED' | 'AMBIGUOUS' | 'NONE'; policy: { id: string; code: string; name: string; currency: string } | null; conflicting: { id: string; code: string; name: string }[]; message: string }
+export interface MyExpensesDto { policyResolution: ExpensePolicyResolutionDto; travelRequests: TravelRequestDto[]; reports: ExpenseReportDto[]; policies: { id: string; code: string; name: string; currency: string; isDefault: boolean }[]; travelPolicies: { id: string; code: string; name: string; currency: string }[]; queue: { instanceId: string; entityType: string; entityId: string; stepName: string; requesterName: string; submittedAt: string }[] }
 export interface ExpenseDashboardDto { travel: { draft: number; pendingApproval: number; approved: number; completed: number }; reports: { draft: number; pendingApproval: number; readyForPayment: number; sentToPayroll: number; paid: number; rejected: number }; money: { currency: string; pendingTotal: string; readyTotal: string; paidThisMonth: string; paidYearToDate: string }[]; definitions: Record<string, string>; generatedAt: string }
 export interface ExpenseReportsDto {
   range: { from: string; to: string };
