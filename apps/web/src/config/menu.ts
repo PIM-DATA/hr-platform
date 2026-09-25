@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart, Milestone, HeartHandshake, Receipt, LifeBuoy } from 'lucide-react';
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart, Milestone, HeartHandshake, Receipt, LifeBuoy, Activity } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
 export interface MenuItem {
@@ -68,12 +68,14 @@ export const MENU: MenuGroup[] = [
   {
     label: 'Administration',
     items: [
-      { label: 'Overview', path: '/admin/settings', icon: Settings, permission: [P.USERS_VIEW, P.ROLES_VIEW, P.AUDIT_VIEW, P.WORKFLOW_MANAGE_DEFINITIONS, P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.ONBOARDING_MANAGE, P.PRIVACY_MANAGE_REQUESTS, P.PRIVACY_EXPORT_DATA, P.SETTINGS_MANAGE] },
+      { label: 'Overview', path: '/admin/settings', icon: Settings, permission: [P.USERS_VIEW, P.ROLES_VIEW, P.AUDIT_VIEW, P.WORKFLOW_MANAGE_DEFINITIONS, P.WORKFLOW_VIEW_ALL, P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.ONBOARDING_MANAGE, P.PRIVACY_MANAGE_REQUESTS, P.PRIVACY_EXPORT_DATA, P.SETTINGS_MANAGE, P.PAYROLL_MANAGE] },
       { label: 'Users', path: '/admin/users', icon: UserCog, permission: P.USERS_VIEW },
       { label: 'Roles', path: '/admin/roles', icon: ShieldCheck, permission: P.ROLES_VIEW },
       { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW },
       { label: 'Audit Logs', path: '/admin/audit-logs', icon: ScrollText, permission: P.AUDIT_VIEW },
       { label: 'Workflows', path: '/admin/workflows', icon: Workflow, permission: P.WORKFLOW_MANAGE_DEFINITIONS },
+      { label: 'Workflow monitor', path: '/admin/workflow-monitor', icon: Activity, permission: P.WORKFLOW_VIEW_ALL },
+      { label: 'Payroll configuration', path: '/hrm/payroll/components', icon: Banknote, permission: P.PAYROLL_MANAGE },
       { label: 'Leave Settings', path: '/admin/leave-settings', icon: CalendarDays, permission: [P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.CALENDAR_VIEW] },
       { label: 'Data import', path: '/admin/onboarding', icon: FileSpreadsheet, permission: P.ONBOARDING_MANAGE },
       { label: 'Privacy', path: '/admin/privacy', icon: FileLock2, permission: [P.PRIVACY_MANAGE_REQUESTS, P.PRIVACY_EXPORT_DATA] },

@@ -35,6 +35,7 @@ export function PeriodsPage() {
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<PayrollPeriodDto | null>(null);
   const list = usePayrollPeriods({ organizationId, year, status, page, pageSize: 20 });
 
   const columns: Column<PayrollPeriodDto>[] = [
@@ -50,6 +51,9 @@ export function PeriodsPage() {
     { key: 'employees', header: 'Employees', className: 'text-right', render: (p) => <span className="tabular-nums">{p.run?.employeeCount ?? '—'}</span> },
     { key: 'net', header: 'Net total', className: 'text-right', render: (p) => (p.run ? <Money amount={p.run.netTotal} currency={p.currencyCode} /> : <span className="text-slate-400">—</span>) },
     { key: 'status', header: 'Status', render: (p) => <PayrollStatusBadge status={p.status} /> },
+    // Dates are editable while the period is still open. Once a run exists the window it was calculated against is
+    // part of that result, so the server refuses the change and the screen does not offer it.
+    { key: 'actions', header: '', render: (p) => (canManage && p.status === 'OPEN' && !p.run ? <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); setEditing(p); }}>Edit dates</Button> : null) },
   ];
 
   return (
@@ -74,6 +78,7 @@ export function PeriodsPage() {
         {list.data?.meta && <Pagination {...list.data.meta} onPageChange={setPage} />}
       </Card>
       <OpenPeriodModal open={creating} onClose={() => setCreating(false)} />
+      {editing && <EditPeriodModal period={editing} onClose={() => setEditing(null)} />}
       <RunReviewPanel periodId={openId} onClose={() => setOpenId(null)} />
     </>
   );
@@ -150,6 +155,44 @@ function OpenPeriodModal({ open, onClose }: { open: boolean; onClose: () => void
           <Input label="Attendance to" type="date" value={attendanceTo} onChange={(e) => setAttendanceTo(e.target.value)} />
         </div>
         <Input label="Payment date" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} hint="Optional — shown on the payslip." />
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Correcting the windows of a period that has not been calculated yet: the salary month, the attendance cut-off and
+ * the payment date. The organization, the year and the month identify the period and never change. Once a run exists
+ * the period's windows are part of a calculated result, so the server refuses the edit and this button is not offered.
+ */
+function EditPeriodModal({ period, onClose }: { period: PayrollPeriodDto; onClose: () => void }) {
+  const m = usePayrollMutations();
+  const toast = useToast();
+  const [d, setD] = useState({ periodStart: period.periodStart, periodEnd: period.periodEnd, attendanceFrom: period.attendanceFrom, attendanceTo: period.attendanceTo, paymentDate: period.paymentDate ?? '' });
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setError(null);
+    try {
+      await m.updatePeriod.mutateAsync({ id: period.id, input: { ...d, paymentDate: d.paymentDate || null } });
+      toast.success('Period updated.');
+      onClose();
+    } catch (e) { setError(errorMessage(e)); }
+  };
+  return (
+    <Modal open onClose={onClose} title={`Edit ${period.label}`} description={`${period.organization?.name ?? 'Organization'} · ${period.currencyCode} · status ${period.status.toLowerCase()}`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={m.updatePeriod.isPending} onClick={save}>Save</Button></>}>
+      <div className="space-y-3">
+        {error && <Alert>{error}</Alert>}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Salary month from" type="date" value={d.periodStart} onChange={(e) => setD({ ...d, periodStart: e.target.value })} />
+          <Input label="Salary month to" type="date" value={d.periodEnd} onChange={(e) => setD({ ...d, periodEnd: e.target.value })} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Attendance window from" type="date" value={d.attendanceFrom} onChange={(e) => setD({ ...d, attendanceFrom: e.target.value })} />
+          <Input label="Attendance window to" type="date" value={d.attendanceTo} onChange={(e) => setD({ ...d, attendanceTo: e.target.value })} />
+        </div>
+        <Input label="Payment date (optional)" type="date" value={d.paymentDate} onChange={(e) => setD({ ...d, paymentDate: e.target.value })} />
+        <p className="text-xs text-slate-500">The attendance window need not be the salary month: a cut-off part-way through the previous month is normal. The server decides whether the change is allowed for this period\u2019s state.</p>
       </div>
     </Modal>
   );

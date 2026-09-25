@@ -30,6 +30,7 @@ export function PayComponentsPage() {
   const [status, setStatus] = useState('active');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<PayComponentDto | null>(null);
   const list = usePayComponents({ type, status, page, pageSize: 20 });
 
   const columns: Column<PayComponentDto>[] = [
@@ -44,6 +45,8 @@ export function PayComponentsPage() {
     { key: 'recurring', header: 'Recurring', hideBelow: 'lg', render: (c) => (c.recurringAllowed ? 'Allowed' : <span className="text-slate-400">No</span>) },
     { key: 'origin', header: 'Origin', hideBelow: 'sm', render: (c) => (c.isSystem ? 'System' : 'Custom') },
     { key: 'status', header: 'Status', render: (c) => <StatusBadge status={c.isActive ? 'Active' : 'Inactive'} tone={c.isActive ? 'success' : 'neutral'} /> },
+    // A system component keeps its meaning for every payslip that already refers to it, so the UI offers no edit for one.
+    { key: 'actions', header: '', render: (c) => (canManage && !c.isSystem ? <Button size="sm" variant="secondary" onClick={() => setEditing(c)}>Edit</Button> : <span className="text-xs text-slate-400">{c.isSystem ? 'Fixed by the engine' : ''}</span>) },
   ];
 
   return (
@@ -59,6 +62,7 @@ export function PayComponentsPage() {
         {list.data?.meta && <Pagination {...list.data.meta} onPageChange={setPage} />}
       </Card>
       <AddComponentModal open={creating} onClose={() => setCreating(false)} />
+      {editing && <EditComponentModal component={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }
@@ -114,6 +118,47 @@ function AddComponentModal({ open, onClose }: { open: boolean; onClose: () => vo
         <Checkbox label="Taxable" checked={taxable} onChange={(e) => setTaxable(e.target.checked)} />
         <p className="text-xs text-slate-500">This release calculates no tax. The taxable flag is recorded for a later statutory engine and nothing reads it yet.</p>
         <Textarea label="Description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Editing a component changes how it is described and whether it may still be used. The code, the type and how the
+ * amount is arrived at are never editable: payslips already issued refer to this component, and changing what it
+ * means would rewrite their meaning after the fact.
+ */
+function EditComponentModal({ component, onClose }: { component: PayComponentDto; onClose: () => void }) {
+  const m = usePayrollMutations();
+  const toast = useToast();
+  const [name, setName] = useState(component.name);
+  const [description, setDescription] = useState(component.description ?? '');
+  const [taxable, setTaxable] = useState(component.taxable);
+  const [recurringAllowed, setRecurringAllowed] = useState(component.recurringAllowed);
+  const [isActive, setIsActive] = useState(component.isActive);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setError(null);
+    try {
+      await m.updateComponent.mutateAsync({ id: component.id, input: { name, description: description || null, taxable, recurringAllowed, isActive } });
+      toast.success('Component updated.');
+      onClose();
+    } catch (e) { setError(errorMessage(e)); }
+  };
+  return (
+    <Modal open onClose={onClose} title={`Edit ${component.code}`} description="The code, the type and how the amount is arrived at are fixed once a component exists, because payslips already refer to it."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={m.updateComponent.isPending} disabled={!name.trim()} onClick={save}>Save</Button></>}>
+      <div className="space-y-3">
+        {error && <Alert>{error}</Alert>}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Code" value={component.code} disabled />
+          <Input label="Type" value={component.type === 'EARNING' ? 'Earning' : 'Deduction'} disabled />
+        </div>
+        <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <Textarea label="Description" rows={2} maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Checkbox label="Taxable" description="Metadata for a future statutory engine. Nothing in this release calculates tax from it." checked={taxable} onChange={(e) => setTaxable(e.target.checked)} />
+        <Checkbox label="May be used as a recurring item" checked={recurringAllowed} onChange={(e) => setRecurringAllowed(e.target.checked)} />
+        <Checkbox label="Active" description="An inactive component cannot be added to new payroll; existing payslips keep it." checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
       </div>
     </Modal>
   );

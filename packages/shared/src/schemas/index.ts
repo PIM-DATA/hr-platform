@@ -36,3 +36,4 @@ export * from './learning';
 export * from './benefits';
 export * from './expense';
 export * from './employee-services';
+export * from './admin';

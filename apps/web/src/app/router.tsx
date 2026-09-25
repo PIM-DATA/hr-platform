@@ -143,9 +143,10 @@ import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents
 import { ReportsLayout, SavedReportsPage, ReportBuilderPage } from '@/features/reports/ReportCenterPage';
 import { ModuleIndex } from '@/components/guards/ModuleIndex';
 import { AdminOverviewPage } from '@/features/admin/AdminOverviewPage';
+import { WorkflowMonitorPage } from '@/features/admin/WorkflowMonitorPage';
 import { TrainingReportsHubPage } from '@/features/training/TrainingReportsHubPage';
 
-const ADMIN_ANY = [PERMISSIONS.USERS_VIEW, PERMISSIONS.ROLES_VIEW, PERMISSIONS.AUDIT_VIEW, PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS, PERMISSIONS.LEAVE_MANAGE_TYPES, PERMISSIONS.LEAVE_MANAGE_POLICIES, PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PRIVACY_MANAGE_REQUESTS, PERMISSIONS.PRIVACY_EXPORT_DATA, PERMISSIONS.SETTINGS_MANAGE];
+const ADMIN_ANY = [PERMISSIONS.USERS_VIEW, PERMISSIONS.ROLES_VIEW, PERMISSIONS.AUDIT_VIEW, PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS, PERMISSIONS.WORKFLOW_VIEW_ALL, PERMISSIONS.LEAVE_MANAGE_TYPES, PERMISSIONS.LEAVE_MANAGE_POLICIES, PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PRIVACY_MANAGE_REQUESTS, PERMISSIONS.PRIVACY_EXPORT_DATA, PERMISSIONS.SETTINGS_MANAGE, PERMISSIONS.PAYROLL_MANAGE];
 
 // Former placeholder routes keep working as redirects to the live pages (bookmarks), never as a "coming soon" page.
 const legacyRedirects = [
@@ -205,6 +206,7 @@ export const router = createBrowserRouter([
           },
           { element: <RequirePermission permission={PERMISSIONS.AUDIT_VIEW} />, children: [{ path: 'admin/audit-logs', element: <AuditLogPage /> }] },
           { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS} />, children: [{ path: 'admin/workflows', element: <WorkflowDefinitionsPage /> }] },
+          { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_VIEW_ALL} />, children: [{ path: 'admin/workflow-monitor', element: <WorkflowMonitorPage /> }] },
           {
             element: <RequirePermission permission={[PERMISSIONS.LEAVE_MANAGE_TYPES, PERMISSIONS.LEAVE_MANAGE_POLICIES, PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, PERMISSIONS.CALENDAR_VIEW]} />,
             children: [{

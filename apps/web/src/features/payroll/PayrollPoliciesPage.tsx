@@ -26,6 +26,7 @@ export function PayrollPoliciesPage() {
   const canManage = usePermission(PERMISSIONS.PAYROLL_MANAGE);
   const [organizationId, setOrganizationId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<PayrollPolicyDto | null>(null);
   const orgs = useOrganizationOptions();
   const list = usePayrollPolicies(organizationId || undefined);
 
@@ -42,6 +43,7 @@ export function PayrollPoliciesPage() {
     { key: 'workflow', header: 'Approval', hideBelow: 'lg', render: (p) => p.workflowDefinitionCode },
     { key: 'period', header: 'Effective', render: (p) => <span className="whitespace-nowrap text-slate-600">{p.effectiveFrom} → {p.effectiveTo ?? 'open'}</span> },
     { key: 'status', header: 'Status', render: (p) => <StatusBadge status={p.isActive ? 'Active' : 'Inactive'} tone={p.isActive ? 'success' : 'neutral'} /> },
+    { key: 'actions', header: '', render: (p) => (canManage ? <Button size="sm" variant="secondary" onClick={() => setEditing(p)}>Edit</Button> : null) },
   ];
 
   return (
@@ -62,6 +64,7 @@ export function PayrollPoliciesPage() {
         />
       </Card>
       <AddPolicyModal open={creating} onClose={() => setCreating(false)} />
+      {editing && <EditPolicyModal policy={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }
@@ -123,6 +126,74 @@ function AddPolicyModal({ open, onClose }: { open: boolean; onClose: () => void 
         <Input label="Effective from" required type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
         <Checkbox label="Deduct for unexcused absence" checked={absenceDeductionEnabled} onChange={(e) => setAbsence(e.target.checked)} />
         <Checkbox label="Deduct for lateness" description="Off by default: many employers handle lateness through discipline rather than pay." checked={lateDeductionEnabled} onChange={(e) => setLate(e.target.checked)} />
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Editing a policy changes how payroll calculated from now on derives its rates. A run that is already calculated
+ * keeps the figures it used, and a closed run is never recalculated — so a divisor change is a decision about future
+ * payroll, not a retrospective correction. The organization, the currency and the start date are fixed: a different
+ * basis is a new policy with its own effective period.
+ */
+function EditPolicyModal({ policy, onClose }: { policy: PayrollPolicyDto; onClose: () => void }) {
+  const m = usePayrollMutations();
+  const toast = useToast();
+  const [d, setD] = useState({
+    name: policy.name, monthlyDivisorDays: policy.monthlyDivisorDays, dailyWorkHours: policy.dailyWorkHours,
+    newHireProration: policy.newHireProration, terminationProration: policy.terminationProration,
+    absenceDeductionEnabled: policy.absenceDeductionEnabled, lateDeductionEnabled: policy.lateDeductionEnabled,
+    workflowDefinitionCode: policy.workflowDefinitionCode, effectiveTo: policy.effectiveTo ?? '', isActive: policy.isActive,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setError(null);
+    // Only what actually changed is sent. A policy that has already calculated a period refuses a change to how it
+    // calculates, and sending an unchanged divisor would trip that refusal on a rename.
+    const input: Record<string, unknown> = {};
+    if (d.name !== policy.name) input.name = d.name;
+    if (Number(d.monthlyDivisorDays) !== Number(policy.monthlyDivisorDays)) input.monthlyDivisorDays = Number(d.monthlyDivisorDays);
+    if (Number(d.dailyWorkHours) !== Number(policy.dailyWorkHours)) input.dailyWorkHours = Number(d.dailyWorkHours);
+    if (d.newHireProration !== policy.newHireProration) input.newHireProration = d.newHireProration;
+    if (d.terminationProration !== policy.terminationProration) input.terminationProration = d.terminationProration;
+    if (d.absenceDeductionEnabled !== policy.absenceDeductionEnabled) input.absenceDeductionEnabled = d.absenceDeductionEnabled;
+    if (d.lateDeductionEnabled !== policy.lateDeductionEnabled) input.lateDeductionEnabled = d.lateDeductionEnabled;
+    if (d.workflowDefinitionCode !== policy.workflowDefinitionCode) input.workflowDefinitionCode = d.workflowDefinitionCode;
+    if ((d.effectiveTo || null) !== policy.effectiveTo) input.effectiveTo = d.effectiveTo || null;
+    if (d.isActive !== policy.isActive) input.isActive = d.isActive;
+    if (Object.keys(input).length === 0) { onClose(); return; }
+    try {
+      await m.updatePolicy.mutateAsync({ id: policy.id, input });
+      toast.success('Policy updated.');
+      onClose();
+    } catch (e) { setError(errorMessage(e)); }
+  };
+  const proration = [{ value: 'CALENDAR_DAYS', label: 'Calendar days' }, { value: 'WORKING_DAYS', label: 'Working days' }];
+  return (
+    <Modal open onClose={onClose} size="lg" title={`Edit ${policy.name}`} description={`${policy.organization?.name ?? 'Organization'} · ${policy.currencyCode} · in force from ${policy.effectiveFrom}`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={m.updatePolicy.isPending} disabled={!d.name || !d.monthlyDivisorDays || !d.dailyWorkHours} onClick={save}>Save</Button></>}>
+      <div className="space-y-3">
+        {error && <Alert>{error}</Alert>}
+        <Input label="Name" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Days a monthly salary is divided by" inputMode="decimal" value={d.monthlyDivisorDays} onChange={(e) => setD({ ...d, monthlyDivisorDays: e.target.value })} />
+          <Input label="Hours in a working day" inputMode="decimal" value={d.dailyWorkHours} onChange={(e) => setD({ ...d, dailyWorkHours: e.target.value })} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select label="New hire proration" options={proration} value={d.newHireProration} onChange={(e) => setD({ ...d, newHireProration: e.target.value as 'CALENDAR_DAYS' })} />
+          <Select label="Termination proration" options={proration} value={d.terminationProration} onChange={(e) => setD({ ...d, terminationProration: e.target.value as 'CALENDAR_DAYS' })} />
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <Checkbox label="Deduct for absence" checked={d.absenceDeductionEnabled} onChange={(e) => setD({ ...d, absenceDeductionEnabled: e.target.checked })} />
+          <Checkbox label="Deduct for lateness" checked={d.lateDeductionEnabled} onChange={(e) => setD({ ...d, lateDeductionEnabled: e.target.checked })} />
+          <Checkbox label="Active" checked={d.isActive} onChange={(e) => setD({ ...d, isActive: e.target.checked })} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Approval workflow code" value={d.workflowDefinitionCode} onChange={(e) => setD({ ...d, workflowDefinitionCode: e.target.value })} />
+          <Input label="In force until (blank = open)" type="date" min={policy.effectiveFrom} value={d.effectiveTo} onChange={(e) => setD({ ...d, effectiveTo: e.target.value })} />
+        </div>
+        <p className="text-xs text-slate-500">Applies to payroll calculated from now on. Runs already calculated keep the figures they used, and a closed run is never recalculated. Once a period has been calculated with this policy the server refuses a change to how it calculates: supersede it with a new policy instead.</p>
       </div>
     </Modal>
   );

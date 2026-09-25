@@ -26,6 +26,7 @@ export function RecurringItemsPage() {
   const [employee, setEmployee] = useState<PayrollEmployeeOption | null>(null);
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<PayItemDto | null>(null);
   const list = usePayItems({ employeeId: employee?.id, page, pageSize: 20 });
 
   const columns: Column<PayItemDto>[] = [
@@ -44,6 +45,7 @@ export function RecurringItemsPage() {
     { key: 'amount', header: 'Amount', className: 'text-right', render: (i) => <Money amount={i.amount} className="font-medium text-slate-900" /> },
     { key: 'period', header: 'Effective', render: (i) => <span className="whitespace-nowrap text-slate-600">{i.effectiveFrom} → {i.effectiveTo ?? 'open'}</span> },
     { key: 'note', header: 'Note', hideBelow: 'lg', render: (i) => i.note ?? <span className="text-slate-400">—</span> },
+    { key: 'actions', header: '', render: (i) => <Button size="sm" variant="secondary" onClick={() => setEditing(i)}>Edit</Button> },
   ];
 
   return (
@@ -65,6 +67,7 @@ export function RecurringItemsPage() {
         {list.data?.meta && <Pagination {...list.data.meta} onPageChange={setPage} />}
       </Card>
       <AddItemModal open={creating} onClose={() => setCreating(false)} />
+      {editing && <EditItemModal item={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }
@@ -129,6 +132,42 @@ function AddItemModal({ open, onClose }: { open: boolean; onClose: () => void })
           <Input label="Effective to" type="date" value={effectiveTo} onChange={(e) => setEffectiveTo(e.target.value)} hint="Leave empty for open-ended." />
         </div>
         <Textarea label="Note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Editing a recurring item changes what future payroll copies onto a payslip. It never touches a run that has been
+ * calculated or closed: those payslips keep the amount they were paid, with the component name frozen at that time.
+ * The employee and the component are fixed — a different employee or component is a different item.
+ */
+function EditItemModal({ item, onClose }: { item: PayItemDto; onClose: () => void }) {
+  const m = usePayrollMutations();
+  const toast = useToast();
+  const [amount, setAmount] = useState(item.amount);
+  const [effectiveTo, setEffectiveTo] = useState(item.effectiveTo ?? '');
+  const [note, setNote] = useState(item.note ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setError(null);
+    try {
+      await m.updatePayItem.mutateAsync({ id: item.id, input: { amount, effectiveTo: effectiveTo || null, note: note || null } });
+      toast.success('Recurring item updated.');
+      onClose();
+    } catch (e) { setError(errorMessage(e)); }
+  };
+  return (
+    <Modal open onClose={onClose} title={`Edit ${item.component.name}`} description={`${item.employee.firstName} ${item.employee.lastName} · in force from ${item.effectiveFrom}`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={m.updatePayItem.isPending} disabled={!amount} onClick={save}>Save</Button></>}>
+      <div className="space-y-3">
+        {error && <Alert>{error}</Alert>}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <Input label="In force until (blank = open)" type="date" min={item.effectiveFrom} value={effectiveTo} onChange={(e) => setEffectiveTo(e.target.value)} />
+        </div>
+        <Textarea label="Note" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+        <p className="text-xs text-slate-500">Applies to payroll calculated from now on. A run that is already calculated or closed is not recalculated, and an end date in the past stops the item from the following run.</p>
       </div>
     </Modal>
   );

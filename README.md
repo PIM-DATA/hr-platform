@@ -7,6 +7,7 @@ One employee data · One organization structure · One permission system · One 
 | Group | Modules | Status |
 |---|---|---|
 | Foundation | Authentication and sessions, RBAC with data scopes, users / roles / permission matrix, organization structure, employee master with history, audit log, dashboard, notifications, account security, workflow engine, work calendars | ✅ |
+| Administration | Users, roles and permissions, audit log, privacy, data import, leave settings, workflow definitions, workflow monitor (41), settings hub (41), payroll configuration UI (41) | ✅ |
 | HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39), Employee services and HR letters (40) | ✅ MVPs with documented limitations |
 | HRD | Competency and skill gaps (24), Training / TNA / IDP (25), OJT / learning paths / certifications (35), Career / talent / 9-box / succession (28) | ✅ |
 | HROD | Workforce planning and organization design (32), Engagement / eNPS surveys (33) | ✅ |
@@ -296,6 +297,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
 - Benefits: no insurer API, hospital/provider integration, medical diagnosis management, dependent insurance workflow, flexible-benefit marketplace, OCR receipt extraction, fraud detection, bank payment, taxability engine, statutory benefits engine, automatic payroll treatment, FX conversion, external reimbursement provider, automated adjudication, recurring payment scheduler, provident-fund/pension engine, stock/equity benefits, AI recommendation, partial approval, or department-level utilization for executives.
+- Administration and settings: no multi-factor sign-in, single sign-on, external monitoring or alerting, secret-manager interface, runtime environment mutation, email/SMS/webhook notification delivery or its settings, retention automation, workflow force-approve/reject/reassign/delete or retry console, deep link from the monitor to an exact record, generic key/value settings editor, statutory payroll configuration (tax, social security, provident fund, bank), or reopening of a closed payroll period.
 - Employee services and HR letters: no public request portal, email or SMS ticketing, chatbot intake, automated SLA escalation, AI classification or reply drafting, external ITSM, asset or procurement fulfilment, arbitrary workflow scripting or template expressions, automatic source-domain updates, electronic signature, public certificate verification or QR check, document OCR, server-generated PDF (letters are browser-printed from a plain-text snapshot), advanced document designer, or external delivery.
 - Expenses and travel: no OCR or receipt extraction, FX conversion, per-diem or mileage engine, corporate-card or bank feed, advances, booking or itinerary integration, budget or cost-centre accounting, tax or VAT decision, partial or line-item approval, approval delegation, reminder scheduler, department-level spend views, or Employee 360 section.
 - Learning (OJT, paths, certifications): no LMS/SCORM, exam engine, external certification registry or accreditation integration, automatic competency level change, AI observation or assessment, certificate PDF, expiry scheduler or reminder delivery, trainer workload balancing, path recommendation, promotion on path completion, or bulk certification import.
@@ -1081,6 +1083,26 @@ follow it; HR works a queue; document requests end in an issued letter.
   Nothing is inferred from a payslip.
 - **Print-ready, not PDF** — letters print from the browser. There is no server-generated PDF, no electronic
   signature and no statutory certification claim.
+
+## Administration, settings and workflow operations (Task 41)
+
+Guide: [docs/administration-settings.md](docs/administration-settings.md). Administration → Overview
+(`/admin/settings`), Workflow monitor (`/admin/workflow-monitor`), and payroll configuration under Payroll.
+
+- **An honest hub** — every administration area states whether it is configurable here, read only, set by the
+  deployment, or not implemented. The list comes from the server, so a badge cannot drift from the code. There are
+  no placeholder cards, no disabled switches and no "coming soon".
+- **Service status** — environment, version, database reachability, cookie security, session lifetime and which
+  optional features are on. No connection string, path, origin, key or token appears, and this is not monitoring.
+- **Workflow monitor** — every approval instance across all modules, with filters, server paging, waiting age and
+  a per-module summary. Read only: there is no force approve, reject, skip, reassign, delete or retry. It never
+  reads the record behind an instance, and an approver's comment or the link to that record needs the source
+  module's own permission.
+- **Payroll configuration UI** — pay components, recurring items, policies and periods are now editable within the
+  semantics payroll already enforced: a system component keeps its meaning, a policy that has calculated a period
+  refuses a change to how it calculates, and a period with a run refuses a window change.
+- **Not** multi-factor sign-in, single sign-on, monitoring, a secret manager, email setup, retention automation or
+  statutory payroll configuration.
 
 ## Pilot release
 

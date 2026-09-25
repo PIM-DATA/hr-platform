@@ -3,6 +3,10 @@ import type {
   AddPayrollAdjustmentInput, CompensationDto, CreateCompensationInput, CreatePayComponentInput, CreatePayItemInput,
   CreatePayrollPeriodInput, CreatePayrollPolicyInput, PayComponentDto, PayItemDto, PayrollPeriodDto,
   PayrollPolicyDto, PayrollReconciliationDto, PayrollResultDto, PayrollRunSummaryDto, PayrollSummaryDto, PayslipDto,
+  UpdatePayComponentInput,
+  UpdatePayItemInput,
+  UpdatePayrollPolicyInput,
+  UpdatePayrollPeriodInput,
 } from '@hr/shared';
 import { api, ApiClientError, getCsrfToken } from '@/lib/api-client';
 
@@ -97,6 +101,11 @@ export function usePayrollMutations() {
     createComponent: useMutation({ mutationFn: (input: CreatePayComponentInput) => api.post<PayComponentDto>('/payroll/components', input).then((r) => r.data), onSuccess: invalidate }),
     createPayItem: useMutation({ mutationFn: (input: CreatePayItemInput) => api.post<PayItemDto>('/payroll/pay-items', input).then((r) => r.data), onSuccess: invalidate }),
     createPolicy: useMutation({ mutationFn: (input: CreatePayrollPolicyInput) => api.post<PayrollPolicyDto>('/payroll/policies', input).then((r) => r.data), onSuccess: invalidate }),
+    // Administration (Task 41): the backend has always accepted these edits; the screens now offer them.
+    updateComponent: useMutation({ mutationFn: ({ id, input }: { id: string; input: UpdatePayComponentInput }) => api.patch<PayComponentDto>(`/payroll/components/${id}`, input).then((r) => r.data), onSuccess: invalidate }),
+    updatePayItem: useMutation({ mutationFn: ({ id, input }: { id: string; input: UpdatePayItemInput }) => api.patch<PayItemDto>(`/payroll/pay-items/${id}`, input).then((r) => r.data), onSuccess: invalidate }),
+    updatePolicy: useMutation({ mutationFn: ({ id, input }: { id: string; input: UpdatePayrollPolicyInput }) => api.patch<PayrollPolicyDto>(`/payroll/policies/${id}`, input).then((r) => r.data), onSuccess: invalidate }),
+    updatePeriod: useMutation({ mutationFn: ({ id, input }: { id: string; input: UpdatePayrollPeriodInput }) => api.patch<PayrollPeriodDto>(`/payroll/periods/${id}`, input).then((r) => r.data), onSuccess: invalidate }),
   };
 }
 

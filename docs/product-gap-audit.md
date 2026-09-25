@@ -219,9 +219,9 @@ erasure automation; multi-instance session and limiter state. These are listed i
 | G-04 | Module index pages for non-employee accounts | "Could not load" / 409 on six modules for HR, executive, system admin | NAV-5 | Confusing first page for administrators | UX_CLEANUP | P1 |
 | G-05 | Executive and HR menu ↔ index permission mismatches | Forbidden landing pages | NAV-6, NAV-7, NAV-8 | Executive cannot reach talent reports from the menu | UX_CLEANUP | P1 |
 | G-06 | README phase tables | Stale "Coming soon" / "in progress" | CS-6 | Misleads readers of the repo | UX_CLEANUP | P1 |
-| G-07 | Administration → Settings | Genuine placeholder | CS-3 | Nothing to configure centrally (organization defaults, notification preferences, feature toggles are env or per-module) | VISIBLE_COMING_SOON | P2 |
-| G-08 | Workflow instance monitor | API only | BO-1 | Stuck approvals invisible to administrators | PARTIAL | P2 |
-| G-09 | Payroll master-data edits | API only | BO-2 | Recreate instead of edit | PARTIAL | P2 |
+| G-07 | Administration → Settings | Shipped (Task 41, `docs/administration-settings.md`) | CS-3 | Resolved: administration hub states per area whether it is configurable, read only, deployment managed or not implemented; no generic key/value editor was built | RESOLVED | — |
+| G-08 | Workflow instance monitor | Shipped (Task 41, `docs/administration-settings.md`) | BO-1 | Resolved: read-only monitor with filters, paging, waiting-age and module summary; comments and the source link need the source-module permission | RESOLVED | — |
+| G-09 | Payroll master-data edits | Shipped (Task 41) | BO-2 | Resolved: components, recurring items, policies and periods are editable in the UI within the semantics payroll already enforced | RESOLVED | — |
 | G-10 | Hire → onboarding / probation | Manual navigation | §8 | Two extra steps HR must know about | DISCONNECTED | P2 |
 | G-11 | Expense / travel claims | Shipped (Task 39, `docs/expense-travel.md`) | §11 | Resolved: travel requests, expense reports with policy rules, receipts, payment and payroll handoff | RESOLVED | — |
 | G-12 | Employee service requests / HR letters | Shipped (Task 40, `docs/employee-services.md`) | §11 | Resolved: service catalogue, request lifecycle, queue, letters with a safe token registry | RESOLVED | — |
@@ -300,4 +300,4 @@ Administration  Overview · Users · Roles · Permissions · Audit Logs · Workf
 
 ### Still open (unchanged priorities)
 
-G-08 workflow instance monitor (P2), G-09 payroll master-data edits (P2), G-13 compensation planning decision (P2), G-15 copilot and executive roll-up of the five newest domains (P3), G-17 timesheets decision (P4), G-18 enterprise-only items (P4), and NAV-9 (HROD group naming, a product decision). A genuine Settings subsystem remains future work; the Administration overview is an index, not a settings page.
+G-13 compensation planning decision (P2), G-15 copilot and executive roll-up of the five newest domains (P3), G-17 timesheets decision (P4), G-18 enterprise-only items (P4), and NAV-9 (HROD group naming, a product decision). Administration itself (G-07, G-08, G-09) shipped in Task 41: the hub reports each area's real capability, the workflow monitor is read-only with source-module confidentiality, and payroll master data is editable in the UI.
