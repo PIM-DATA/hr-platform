@@ -354,3 +354,20 @@ describe('reporting, 360, export and executive', () => {
     expect(exported.notIncluded.some((n: { category: string }) => /review comments/.test(n.category))).toBe(true);
   });
 });
+
+describe('list filters for the recruitment handoff (Task 38)', () => {
+  it('employeeId narrows a lifecycle list inside the caller’s scope and never widens it', async () => {
+    const plans = await as(hrAdmin, 'get', `/api/v1/lifecycle/onboarding?employeeId=${employees['EMP-NEW-001']}&pageSize=5`);
+    expect(plans.status).toBe(200);
+    expect(plans.body.data.every((p: { employeeId: string }) => p.employeeId === employees['EMP-NEW-001'])).toBe(true);
+    expect(plans.body.data.length).toBeGreaterThanOrEqual(1);
+    const cases = await as(hrAdmin, 'get', `/api/v1/lifecycle/probation?employeeId=${employees.EMP003}&pageSize=5`);
+    expect(cases.body.data.every((c: { employeeId: string }) => c.employeeId === employees.EMP003)).toBe(true);
+    expect(cases.body.data.length).toBeGreaterThanOrEqual(1);
+    // a manager of another team asks for EMP003 by id: the scope still applies, so nothing comes back
+    expect((await as(mgrB, 'get', `/api/v1/lifecycle/probation?employeeId=${employees.EMP003}`)).body.data).toEqual([]);
+    expect((await as(mgrB, 'get', `/api/v1/lifecycle/onboarding?employeeId=${employees['EMP-NEW-001']}`)).body.data).toEqual([]);
+    const off = await as(hrAdmin, 'get', `/api/v1/lifecycle/offboarding?employeeId=${employees.EMP003}`);
+    expect(off.body.data.every((c: { employeeId: string }) => c.employeeId === employees.EMP003)).toBe(true);
+  });
+});

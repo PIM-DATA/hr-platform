@@ -7,7 +7,7 @@ import { MyDevelopmentPage } from '@/features/training/MyDevelopmentPage';
 export function TrainingIndex() {
   const { user, hasPermission } = useAuth();
   if (user?.employee && hasPermission(PERMISSIONS.TRAINING_VIEW)) return <MyDevelopmentPage />;
-  if (hasPermission(PERMISSIONS.LEARNING_VIEW_REPORTS)) return <Navigate to="/hrd/training/learning-reports" replace />;
+  if (hasPermission(PERMISSIONS.LEARNING_VIEW_REPORTS)) return <Navigate to="/hrd/training/reports?view=learning" replace />;
   if (hasPermission(PERMISSIONS.TRAINING_VIEW)) return <MyDevelopmentPage />;
   return <Navigate to="/hrd/training/ojt" replace />;
 }

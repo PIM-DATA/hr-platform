@@ -30,6 +30,7 @@ let orgId: string, orgBId: string, salesId: string, mktId: string;
 const employees: Record<string, string> = {};
 let categoryId: string, planId: string, periodId: string, coveragePlanId: string, docCatId: string, receiptId: string, otherReceiptId: string, ent3: string, ent4: string;
 let claimA: string, claimAWf: string, claimB: string;
+const paidAmounts: string[] = []; // whatever the race outcomes produced: the dataset must reflect exactly these
 
 function forbiddenKeys(value: unknown, re: RegExp, path = ''): string[] {
   const hits: string[] = [];
@@ -344,6 +345,7 @@ describe('payment, payroll boundary, coverage, transfer', () => {
     const paid = await as(payAdmin, 'post', `${B}/claims/${claimA}/payment`).send({ paymentMethod: 'EXTERNAL', paymentReference: 'TRF-20260920-0001', paidDate: '2026-09-20' });
     expect(paid.status).toBe(200);
     expect(paid.body.data).toMatchObject({ status: 'PAID', paymentMethod: 'EXTERNAL', paidDate: '2026-09-20' });
+    paidAmounts.push(paid.body.data.approvedAmount);
     expect(err(await as(payAdmin, 'post', `${B}/claims/${claimA}/payment`).send({ paymentMethod: 'EXTERNAL', paidDate: '2026-09-21' }))).toBe('409 BENEFIT_CLAIM_NOT_PAYABLE');
     expect(await prisma.payrollResultItem.count()).toBe(payrollBefore);
     const audit = await prisma.auditLog.findFirst({ where: { action: 'RECORD_BENEFIT_PAYMENT' } });
@@ -387,7 +389,9 @@ describe('payment, payroll boundary, coverage, transfer', () => {
     // the payroll line carries no taxability decision: it is an earning line like any other manual adjustment
     expect(Object.keys(line!)).not.toEqual(expect.arrayContaining(['taxable', 'taxTreatment']));
     // then HR records PAID once payroll is done — a separate human step
-    expect((await as(payAdmin, 'post', `${B}/claims/${claimB}/payment`).send({ paymentMethod: 'PAYROLL', paidDate: '2026-09-28' })).body.data.status).toBe('PAID');
+    const paidB = await as(payAdmin, 'post', `${B}/claims/${claimB}/payment`).send({ paymentMethod: 'PAYROLL', paidDate: '2026-09-28' });
+    expect(paidB.body.data.status).toBe('PAID');
+    paidAmounts.push(paidB.body.data.approvedAmount);
   });
 
   it('a coverage-only plan has enrolment and coverage dates and no money (§92); an employee-selectable plan can be self-enrolled and waived', async () => {
@@ -457,7 +461,7 @@ describe('who sees what', () => {
     const run = (s: Session, datasetId: string, columns: string[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns, filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50 }, page: 1 });
     const c = await run(exec, 'benefit_claim_summary', ['plan', 'status', 'currency', 'claimedAmount', 'approvedAmount']);
     expect(err(c)).toBe('200');
-    expect(c.body.data.rows.filter((x: { status: string; plan: string }) => x.status === 'PAID' && x.plan === '2026 Health & Wellness Allowance').map((x: { claimedAmount: string; approvedAmount: string; currency: string }) => [x.claimedAmount, x.approvedAmount, x.currency]).sort()).toEqual([['2000.00', '2000.00', 'THB'], ['3250.50', '3250.50', 'THB']]);
+    expect(c.body.data.rows.filter((x: { status: string; plan: string }) => x.status === 'PAID' && x.plan === '2026 Health & Wellness Allowance').map((x: { claimedAmount: string; approvedAmount: string; currency: string }) => [x.claimedAmount, x.approvedAmount, x.currency]).sort()).toEqual([...paidAmounts].sort().map((a) => [a, a, 'THB'])); // the approve/reject race earlier decides which claim reached payroll
     const e = await run(exec, 'benefit_entitlement_summary', ['plan', 'currency', 'granted', 'consumed', 'available']);
     expect(e.body.data.rows.find((x: { plan: string }) => x.plan === 'Decimal plan')).toMatchObject({ granted: '1000.10', consumed: '1000.10', available: '0.00' });
     const n = await run(hrAdmin, 'benefit_enrollment_summary', ['plan', 'status', 'organization']);
@@ -479,7 +483,8 @@ describe('who sees what', () => {
     const x = await as(hrAdmin, 'post', `/api/v1/privacy/employees/${employees.EMP003}/export`);
     const exported = JSON.parse(x.text);
     expect(exported.data.benefits.claims.find((c: { status: string }) => c.status === 'PAID')).toMatchObject({ claimedAmount: '3250.50', description: 'Annual check-up', paymentMethod: 'EXTERNAL' });
-    expect(exported.data.benefits.entitlements[0].ledger.length).toBeGreaterThanOrEqual(4);
+    const hwEntitlement = exported.data.benefits.entitlements.find((e: { plan: { name: string }; period: { name: string } }) => e.plan.name === '2026 Health & Wellness Allowance' && e.period.name === '2026 Annual Health Benefit'); // export order is unspecified
+    expect(hwEntitlement.ledger.length).toBeGreaterThanOrEqual(4);
     expect(x.text).not.toMatch(/not itemised|ok again|Relocation support/);
     expect(exported.notIncluded.some((n: { category: string }) => /reviewer comments/.test(n.category))).toBe(true);
   });

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
-  BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
+  BriefcaseBusiness, BarChart3, UserCog, ShieldCheck, KeyRound,
   ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart, Milestone, HeartHandshake,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
@@ -12,8 +12,6 @@ export interface MenuItem {
   icon: LucideIcon;
   /** Item is hidden unless the current user has this permission (any of, when an array). */
   permission?: PermissionCode | PermissionCode[];
-  /** Not implemented yet → renders ComingSoonPage. */
-  comingSoon?: boolean;
   /** Hidden when the named optional feature is disabled on this installation (UX only; the API decides). */
   feature?: 'copilot';
 }
@@ -62,8 +60,6 @@ export const MENU: MenuGroup[] = [
     items: [
       { label: 'Workforce planning', path: '/hrod/workforce', icon: BriefcaseBusiness, permission: [P.WORKFORCE_VIEW, P.WORKFORCE_PLAN, P.WORKFORCE_MANAGE, P.ORG_DESIGN_VIEW, P.ORG_DESIGN_MANAGE] },
       { label: 'Engagement', path: '/hrod/engagement', icon: MessageSquareHeart, permission: [P.ENGAGEMENT_RESPOND, P.ENGAGEMENT_VIEW_RESULTS, P.ENGAGEMENT_MANAGE] },
-      { label: 'Talent', path: '/hrod/talent', icon: Star, comingSoon: true },
-      { label: 'Succession', path: '/hrod/succession', icon: GitBranch, comingSoon: true },
     ],
   },
   { label: 'Analytics', items: [{ label: 'Executive dashboard', path: '/analytics/executive', icon: BarChart3, permission: P.ANALYTICS_VIEW_EXECUTIVE }] },
@@ -71,15 +67,15 @@ export const MENU: MenuGroup[] = [
   {
     label: 'Administration',
     items: [
+      { label: 'Overview', path: '/admin/settings', icon: Settings, permission: [P.USERS_VIEW, P.ROLES_VIEW, P.AUDIT_VIEW, P.WORKFLOW_MANAGE_DEFINITIONS, P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.ONBOARDING_MANAGE, P.PRIVACY_MANAGE_REQUESTS, P.PRIVACY_EXPORT_DATA, P.SETTINGS_MANAGE] },
       { label: 'Users', path: '/admin/users', icon: UserCog, permission: P.USERS_VIEW },
       { label: 'Roles', path: '/admin/roles', icon: ShieldCheck, permission: P.ROLES_VIEW },
       { label: 'Permissions', path: '/admin/permissions', icon: KeyRound, permission: P.ROLES_VIEW },
       { label: 'Audit Logs', path: '/admin/audit-logs', icon: ScrollText, permission: P.AUDIT_VIEW },
       { label: 'Workflows', path: '/admin/workflows', icon: Workflow, permission: P.WORKFLOW_MANAGE_DEFINITIONS },
       { label: 'Leave Settings', path: '/admin/leave-settings', icon: CalendarDays, permission: [P.LEAVE_MANAGE_TYPES, P.LEAVE_MANAGE_POLICIES, P.LEAVE_MANAGE_ENTITLEMENTS, P.CALENDAR_VIEW] },
-      { label: 'Onboarding', path: '/admin/onboarding', icon: FileSpreadsheet, permission: P.ONBOARDING_MANAGE },
+      { label: 'Data import', path: '/admin/onboarding', icon: FileSpreadsheet, permission: P.ONBOARDING_MANAGE },
       { label: 'Privacy', path: '/admin/privacy', icon: FileLock2, permission: [P.PRIVACY_MANAGE_REQUESTS, P.PRIVACY_EXPORT_DATA] },
-      { label: 'Settings', path: '/admin/settings', icon: Settings, permission: P.SETTINGS_MANAGE, comingSoon: true },
     ],
   },
 ];

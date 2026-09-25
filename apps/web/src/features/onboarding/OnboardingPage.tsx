@@ -114,7 +114,7 @@ export function OnboardingPage() {
 
   return (
     <>
-      <PageHeader title="Onboarding" description="Create a new customer's organization structure and employees from one Excel workbook." />
+      <PageHeader title="Data import" description="Customer onboarding: create a new customer's organization structure and employees from one Excel workbook. Onboarding checklists for individual new joiners live under Employee lifecycle." />
 
       <div className="space-y-5">
         <Card className="p-4">

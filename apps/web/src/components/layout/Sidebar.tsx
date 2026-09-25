@@ -84,9 +84,6 @@ function SidebarLink({ item, onNavigate }: { item: MenuItem; onNavigate: () => v
     >
       <Icon className="h-4 w-4 shrink-0 opacity-80" />
       <span className="flex-1 truncate">{item.label}</span>
-      {item.comingSoon && (
-        <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 group-hover:bg-white/15">Soon</span>
-      )}
     </NavLink>
   );
 }

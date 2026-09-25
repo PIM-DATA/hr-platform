@@ -72,14 +72,12 @@ import { TrainingLayout } from '@/features/training/training-ui';
 import { OjtPage } from '@/features/learning/OjtPage';
 import { LearningPathsPage } from '@/features/learning/LearningPathsPage';
 import { CertificationsPage } from '@/features/learning/CertificationsPage';
-import { LearningReportsPage } from '@/features/learning/LearningReportsPage';
 import { TrainingIndex } from '@/features/learning/TrainingIndex';
 import { TeamDevelopmentPage } from '@/features/training/TeamDevelopmentPage';
 import { TrainingNeedsPage } from '@/features/training/TrainingNeedsPage';
 import { CoursesPage } from '@/features/training/CoursesPage';
 import { SessionsPage } from '@/features/training/SessionsPage';
 import { IdpsPage } from '@/features/training/IdpsPage';
-import { TrainingReportsPage } from '@/features/training/TrainingReportsPage';
 import { ErLayout } from '@/features/employee-relations/er-ui';
 import { MyRecordsPage } from '@/features/employee-relations/MyRecordsPage';
 import { ApprovalsPage as ErApprovalsPage } from '@/features/employee-relations/ApprovalsPage';
@@ -137,17 +135,18 @@ import { DocumentsLayout } from '@/features/documents/documents-ui';
 import { MyDocumentsPage } from '@/features/documents/MyDocumentsPage';
 import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents/DocumentCenterPage';
 import { ReportsLayout, SavedReportsPage, ReportBuilderPage } from '@/features/reports/ReportCenterPage';
-import { MENU } from '@/config/menu';
+import { ModuleIndex } from '@/components/guards/ModuleIndex';
+import { AdminOverviewPage } from '@/features/admin/AdminOverviewPage';
+import { TrainingReportsHubPage } from '@/features/training/TrainingReportsHubPage';
 
-// Every menu item that is not implemented yet renders ComingSoonPage — behind its permission when it has one.
-const comingSoonRoutes = MENU.flatMap((group) => group.items)
-  .filter((item) => item.comingSoon)
-  .map((item) => {
-    const page = <ComingSoonPage title={item.label} />;
-    return item.permission
-      ? { element: <RequirePermission permission={item.permission} />, children: [{ path: item.path.replace(/^\//, ''), element: page }] }
-      : { path: item.path.replace(/^\//, ''), element: page };
-  });
+const ADMIN_ANY = [PERMISSIONS.USERS_VIEW, PERMISSIONS.ROLES_VIEW, PERMISSIONS.AUDIT_VIEW, PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS, PERMISSIONS.LEAVE_MANAGE_TYPES, PERMISSIONS.LEAVE_MANAGE_POLICIES, PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PRIVACY_MANAGE_REQUESTS, PERMISSIONS.PRIVACY_EXPORT_DATA, PERMISSIONS.SETTINGS_MANAGE];
+
+// Former placeholder routes keep working as redirects to the live pages (bookmarks), never as a "coming soon" page.
+const legacyRedirects = [
+  { path: 'hrod/talent', element: <Navigate to="/hrd/career/talent" replace /> },
+  { path: 'hrod/succession', element: <Navigate to="/hrd/career/succession" replace /> },
+  { path: 'hrd/training/learning-reports', element: <Navigate to="/hrd/training/reports?view=learning" replace /> },
+];
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -205,7 +204,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'admin/leave-settings', element: <LeaveSettingsLayout />,
               children: [
-                { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_TYPES} />, children: [{ index: true, element: <LeaveTypesPage /> }] },
+                { index: true, element: <ModuleIndex own={<LeaveTypesPage />} ownPermission={PERMISSIONS.LEAVE_MANAGE_TYPES} employeeRequired={false} fallbacks={[{ to: '/admin/leave-settings/policies', permission: PERMISSIONS.LEAVE_MANAGE_POLICIES }, { to: '/admin/leave-settings/entitlements', permission: PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS }, { to: '/admin/leave-settings/calendars', permission: PERMISSIONS.CALENDAR_VIEW }]} /> },
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_POLICIES} />, children: [{ path: 'policies', element: <PoliciesPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS} />, children: [{ path: 'entitlements', element: <EntitlementsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.CALENDAR_VIEW} />, children: [{ path: 'calendars', element: <CalendarsPage /> }] },
@@ -218,7 +217,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrm/leave', element: <LeaveLayout />,
               children: [
-                { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ index: true, element: <MyLeavePage /> }] },
+                { index: true, element: <ModuleIndex own={<MyLeavePage />} ownPermission={PERMISSIONS.LEAVE_VIEW} fallbacks={[{ to: '/hrm/leave/approvals', permission: PERMISSIONS.WORKFLOW_APPROVE }, { to: '/hrm/leave/team', permission: PERMISSIONS.LEAVE_VIEW }]} /> },
                 { element: <RequirePermission permission={PERMISSIONS.WORKFLOW_APPROVE} />, children: [{ path: 'approvals', element: <ApprovalsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.LEAVE_VIEW} />, children: [{ path: 'team', element: <TeamLeavePage /> }, { path: 'requests', element: <AllRequestsPage /> }, { path: 'reports', element: <ReportsPage /> }] },
               ],
@@ -231,7 +230,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrm/attendance', element: <AttendanceLayout />,
               children: [
-                { element: <RequirePermission permission={PERMISSIONS.ATTENDANCE_CLOCK} />, children: [{ index: true, element: <MyAttendancePage /> }] },
+                { index: true, element: <ModuleIndex own={<MyAttendancePage />} ownPermission={PERMISSIONS.ATTENDANCE_CLOCK} fallbacks={[{ to: '/hrm/attendance/team', permission: PERMISSIONS.ATTENDANCE_VIEW }, { to: '/hrm/attendance/overtime', permission: PERMISSIONS.OT_VIEW }]} /> },
                 {
                   element: <RequirePermission permission={PERMISSIONS.ATTENDANCE_VIEW} />,
                   children: [
@@ -261,7 +260,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrm/payroll', element: <PayrollLayout />,
               children: [
-                { element: <RequirePermission permission={PERMISSIONS.PAYROLL_VIEW_OWN} />, children: [{ index: true, element: <MyPayslipsPage /> }] },
+                { index: true, element: <ModuleIndex own={<MyPayslipsPage />} ownPermission={PERMISSIONS.PAYROLL_VIEW_OWN} fallbacks={[{ to: '/hrm/payroll/periods', permission: [PERMISSIONS.PAYROLL_MANAGE, PERMISSIONS.PAYROLL_RUN, PERMISSIONS.PAYROLL_APPROVE] }]} /> },
                 {
                   element: <RequirePermission permission={[PERMISSIONS.PAYROLL_MANAGE, PERMISSIONS.PAYROLL_RUN, PERMISSIONS.PAYROLL_APPROVE]} />,
                   children: [
@@ -305,7 +304,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrd/competency', element: <CompetencyLayout />,
               children: [
-                { index: true, element: <MyCompetenciesPage /> },
+                { index: true, element: <ModuleIndex own={<MyCompetenciesPage />} ownPermission={PERMISSIONS.COMPETENCY_VIEW} fallbacks={[{ to: '/hrd/competency/assessments', permission: PERMISSIONS.COMPETENCY_ASSESS }, { to: '/hrd/competency/library', permission: PERMISSIONS.COMPETENCY_VIEW }]} /> },
                 { element: <RequirePermission permission={PERMISSIONS.COMPETENCY_ASSESS} />, children: [{ path: 'assessments', element: <TeamAssessmentsPage /> }] },
                 { path: 'library', element: <CompetencyLibraryPage /> },
                 {
@@ -332,9 +331,9 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={[PERMISSIONS.OJT_VIEW, PERMISSIONS.OJT_MANAGE, PERMISSIONS.OJT_TRAIN]} />, children: [{ path: 'ojt', element: <OjtPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.LEARNING_PATH_VIEW, PERMISSIONS.LEARNING_PATH_MANAGE]} />, children: [{ path: 'paths', element: <LearningPathsPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.CERTIFICATION_VIEW, PERMISSIONS.CERTIFICATION_MANAGE]} />, children: [{ path: 'certifications', element: <CertificationsPage /> }] },
-                { element: <RequirePermission permission={[PERMISSIONS.LEARNING_VIEW_REPORTS, PERMISSIONS.OJT_MANAGE, PERMISSIONS.LEARNING_PATH_MANAGE, PERMISSIONS.CERTIFICATION_MANAGE]} />, children: [{ path: 'learning-reports', element: <LearningReportsPage /> }] },
                 { path: 'team', element: <TeamDevelopmentPage /> },
-                { element: <RequirePermission permission={PERMISSIONS.TRAINING_MANAGE} />, children: [{ path: 'needs', element: <TrainingNeedsPage /> }, { path: 'reports', element: <TrainingReportsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.TRAINING_MANAGE} />, children: [{ path: 'needs', element: <TrainingNeedsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.TRAINING_MANAGE, PERMISSIONS.LEARNING_VIEW_REPORTS, PERMISSIONS.OJT_MANAGE, PERMISSIONS.LEARNING_PATH_MANAGE, PERMISSIONS.CERTIFICATION_MANAGE]} />, children: [{ path: 'reports', element: <TrainingReportsHubPage /> }] },
                 { path: 'courses', element: <CoursesPage /> },
                 { path: 'sessions', element: <SessionsPage /> },
                 { element: <RequirePermission permission={PERMISSIONS.IDP_MANAGE} />, children: [{ path: 'idps', element: <IdpsPage /> }] },
@@ -365,7 +364,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrd/career', element: <TalentLayout />,
               children: [
-                { element: <RequirePermission permission={PERMISSIONS.CAREER_VIEW} />, children: [{ index: true, element: <MyCareerPage /> }] },
+                { index: true, element: <ModuleIndex own={<MyCareerPage />} ownPermission={PERMISSIONS.CAREER_VIEW} fallbacks={[{ to: '/hrd/career/talent', permission: [PERMISSIONS.TALENT_VIEW, PERMISSIONS.TALENT_MANAGE] }, { to: '/hrd/career/succession', permission: [PERMISSIONS.SUCCESSION_VIEW, PERMISSIONS.SUCCESSION_MANAGE] }, { to: '/hrd/career/reports', permission: PERMISSIONS.TALENT_VIEW_REPORTS }]} /> },
                 { element: <RequirePermission permission={[PERMISSIONS.TALENT_VIEW, PERMISSIONS.TALENT_MANAGE]} />, children: [{ path: 'team', element: <TeamCareerPage /> }, { path: 'talent', element: <TalentReviewsPage /> }, { path: 'pools', element: <TalentPoolsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.CAREER_MANAGE} />, children: [{ path: 'paths', element: <CareerPathsPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.SUCCESSION_VIEW, PERMISSIONS.SUCCESSION_MANAGE]} />, children: [{ path: 'succession', element: <SuccessionPage /> }] },
@@ -396,7 +395,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrm/documents', element: <DocumentsLayout />,
               children: [
-                { element: <RequirePermission permission={PERMISSIONS.DOCUMENTS_VIEW_OWN} />, children: [{ index: true, element: <MyDocumentsPage /> }] },
+                { index: true, element: <ModuleIndex own={<MyDocumentsPage />} ownPermission={PERMISSIONS.DOCUMENTS_VIEW_OWN} fallbacks={[{ to: '/hrm/documents/center', permission: [PERMISSIONS.DOCUMENTS_VIEW, PERMISSIONS.DOCUMENTS_MANAGE] }]} /> },
                 { element: <RequirePermission permission={[PERMISSIONS.DOCUMENTS_VIEW, PERMISSIONS.DOCUMENTS_MANAGE]} />, children: [{ path: 'center', element: <DocumentCenterPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.DOCUMENTS_MANAGE} />, children: [{ path: 'categories', element: <DocumentCategoriesPage /> }] },
               ],
@@ -426,7 +425,7 @@ export const router = createBrowserRouter([
             children: [{
               path: 'hrod/engagement', element: <EngagementLayout />,
               children: [
-                { index: true, element: <MySurveysPage /> },
+                { index: true, element: <ModuleIndex own={<MySurveysPage />} ownPermission={PERMISSIONS.ENGAGEMENT_RESPOND} fallbacks={[{ to: '/hrod/engagement/dashboard', permission: [PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE] }]} /> },
                 { element: <RequirePermission permission={[PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE]} />, children: [
                   { path: 'team', element: <TeamEngagementPage /> }, { path: 'dashboard', element: <EngagementDashboardPage /> }, { path: 'surveys', element: <EngagementSurveysPage /> }, { path: 'results', element: <EngagementResultsPage /> }, { path: 'reports', element: <EngagementReportsPage /> },
                 ] },
@@ -476,7 +475,8 @@ export const router = createBrowserRouter([
           },
           { path: 'account/security', element: <AccountSecurityPage /> }, // your own account: authentication only
           { path: 'notifications', element: <NotificationsPage /> }, // the caller's own inbox: authentication only, no permission
-          ...comingSoonRoutes,
+          ...legacyRedirects,
+          { element: <RequirePermission permission={ADMIN_ANY} />, children: [{ path: 'admin/settings', element: <AdminOverviewPage /> }] },
           { path: '*', element: <ComingSoonPage title="Page not found" description="The page you are looking for does not exist." /> },
         ],
       },

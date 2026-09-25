@@ -24,8 +24,9 @@ import { ChangeManagerModal } from './ChangeManagerModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useEmployee360 } from '@/features/analytics/analytics.api';
 import { CareerTalentSection, DevelopmentSection, OverviewCards, PerformanceSection, RelationsSection, TimeLeaveSection, TimelineSection } from '@/features/analytics/Employee360Sections';
+import { BenefitsSection, LifecycleSection } from '@/features/analytics/Employee360LifecycleBenefits';
 
-type Tab = 'overview' | 'employment' | 'positions' | 'managers' | 'time' | 'performance' | 'development' | 'career' | 'relations';
+type Tab = 'overview' | 'employment' | 'positions' | 'managers' | 'time' | 'performance' | 'development' | 'career' | 'relations' | 'lifecycle' | 'benefits';
 const BASE_TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'employment', label: 'Employment' },
@@ -39,6 +40,9 @@ const TAB_FOR_SECTION: { key: Tab; label: string; sections: string[] }[] = [
   { key: 'development', label: 'Development', sections: ['competency', 'development'] },
   { key: 'career', label: 'Career & talent', sections: ['career', 'talent'] },
   { key: 'relations', label: 'Relations', sections: ['employeeRelations', 'recruitment'] },
+  // Lifecycle (Task 34) and benefits (Task 36): the API returns these only to the subject or an authorized administrator; a manager's team scope never receives benefits.
+  { key: 'lifecycle', label: 'Lifecycle', sections: ['lifecycle'] },
+  { key: 'benefits', label: 'Benefits', sections: ['benefits'] },
 ];
 
 function useAuthEmployeeId() { return useAuth().user?.employee?.id ?? null; }
@@ -117,6 +121,8 @@ export function EmployeeDetailPage() {
       {tab === 'development' && three60.data && <DevelopmentSection s={three60.data.sections} selfLinks={selfLinks} />}
       {tab === 'career' && three60.data && <CareerTalentSection s={three60.data.sections} selfLinks={selfLinks} />}
       {tab === 'relations' && three60.data && <RelationsSection s={three60.data.sections} />}
+      {tab === 'lifecycle' && three60.data && <LifecycleSection s={three60.data.sections} selfLinks={selfLinks} />}
+      {tab === 'benefits' && three60.data && <BenefitsSection s={three60.data.sections} selfLinks={selfLinks} />}
       {tab === 'employment' && <EmploymentTab e={e} onChangePosition={() => setPositionOpen(true)} onChangeManager={() => setManagerOpen(true)} />}
       {tab === 'positions' && <PositionHistoryTab id={e.id} />}
       {tab === 'managers' && <ManagerHistoryTab id={e.id} />}

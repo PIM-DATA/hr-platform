@@ -77,16 +77,16 @@ function PoliciesModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+export function CreateCaseModal({ onClose, onCreated, presetEmployeeId }: { onClose: () => void; onCreated: (id: string) => void; presetEmployeeId?: string }) {
   const m = useLifecycleMutations();
   const policies = useProbationPolicies();
-  const [employee, setEmployee] = useState<PayrollEmployeeOption | null>(null);
+  const [employee, setEmployee] = useState<PayrollEmployeeOption | null>(presetEmployeeId ? ({ id: presetEmployeeId } as PayrollEmployeeOption) : null);
   const [form, setForm] = useState({ policyId: '', startDate: '', durationDays: '' });
   const [err, setErr] = useState<string | null>(null);
   const submit = async () => { setErr(null); if (!employee) return; try { const c = await m.createProbation.mutateAsync({ employeeId: employee.id, policyId: form.policyId || null, startDate: form.startDate || undefined, durationDays: form.durationDays ? Number(form.durationDays) : undefined }); onCreated(c.id); } catch (e) { setErr(errorMessage(e)); } };
   return (
     <Modal open onClose={onClose} title="Open a probation case" description="The end date is computed from the policy; the reviewer defaults to the employee's manager." footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={submit} loading={m.createProbation.isPending} disabled={!employee || (!form.policyId && !form.durationDays)}>Create</Button></>}>
-      <div className="space-y-3">{err && <Alert>{err}</Alert>}<EmployeePicker value={employee} onChange={setEmployee} endpoint="/workforce/employee-options" /><div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><Select label="Policy" options={(policies.data ?? []).map((p) => ({ value: p.id, label: `${p.name} (${p.durationDays} days)` }))} placeholder="Custom duration" value={form.policyId} onChange={(e) => setForm({ ...form, policyId: e.target.value })} /><Input label="Start (defaults to hire date)" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />{!form.policyId && <Input label="Duration (days)" type="number" min={1} value={form.durationDays} onChange={(e) => setForm({ ...form, durationDays: e.target.value })} />}</div></div>
+      <div className="space-y-3">{err && <Alert>{err}</Alert>}{!presetEmployeeId && <EmployeePicker value={employee} onChange={setEmployee} endpoint="/workforce/employee-options" />}<div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><Select label="Policy" options={(policies.data ?? []).map((p) => ({ value: p.id, label: `${p.name} (${p.durationDays} days)` }))} placeholder="Custom duration" value={form.policyId} onChange={(e) => setForm({ ...form, policyId: e.target.value })} /><Input label="Start (defaults to hire date)" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />{!form.policyId && <Input label="Duration (days)" type="number" min={1} value={form.durationDays} onChange={(e) => setForm({ ...form, durationDays: e.target.value })} />}</div></div>
     </Modal>
   );
 }

@@ -102,7 +102,8 @@ export function OvertimePoliciesPage() {
 function PolicyFormModal({ open, policy, onClose }: { open: boolean; policy: OvertimePolicyDto | null; onClose: () => void }) {
   const { createPolicy, updatePolicy } = useOvertimeMutations();
   const organizations = useOrganizationOptions();
-  const workflows = useWorkflowDefinitions();
+  const canPickWorkflow = usePermission(PERMISSIONS.WORKFLOW_MANAGE_DEFINITIONS);
+  const workflows = useWorkflowDefinitions(canPickWorkflow); // the picker is for editors; viewers never fire a request they may not make
   const toast = useToast();
   const empty = {
     organizationId: '', name: '', effectiveFrom: '', effectiveTo: '',

@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Building2, CalendarCheck, CalendarOff, GraduationCap, Network, RefreshCw, ScrollText, Target, UserCog, UserPlus, Users, UserCheck, Eye } from 'lucide-react';
+import { Building2, Network, RefreshCw, ScrollText, UserCog, UserPlus, Users, UserCheck, Eye } from 'lucide-react';
+import { MENU } from '@/config/menu';
+import { useCopilotStatus } from '@/features/copilot/copilot.api';
 import { DATA_SCOPE_LABELS, PERMISSIONS, type PermissionCode } from '@hr/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -19,17 +21,15 @@ const QUICK_ACTIONS: { label: string; description: string; to: string; icon: Luc
   { label: 'Audit logs', description: 'Who changed what, and when', to: '/admin/audit-logs', icon: ScrollText, permission: PERMISSIONS.AUDIT_VIEW },
 ];
 
-const COMING_SOON = [
-  { label: 'Attendance', icon: CalendarCheck },
-  { label: 'Leave', icon: CalendarOff },
-  { label: 'Performance', icon: Target },
-  { label: 'Training', icon: GraduationCap },
-];
 
 export function DashboardPage() {
   const { user, hasPermission } = useAuth();
   const summary = useDashboardSummary();
   const actions = QUICK_ACTIONS.filter((a) => hasPermission(a.permission));
+  const copilot = useCopilotStatus();
+  // Every module the caller may open, from the same definition as the sidebar: no card leads anywhere its reader cannot go.
+  const allowed = (p?: PermissionCode | PermissionCode[]) => !p || (Array.isArray(p) ? p.some(hasPermission) : hasPermission(p));
+  const modules = MENU.filter((g) => g.label && g.label !== 'Administration').map((g) => ({ label: g.label!, items: g.items.filter((i) => allowed(i.permission) && (!i.feature || (i.feature === 'copilot' && copilot.data?.enabled === true))) })).filter((g) => g.items.length > 0);
   const scopeLabel = DATA_SCOPE_LABELS[summary.data?.scope ?? user?.dataScope ?? ''] ?? '';
 
   const stats: { label: string; value: number | undefined; icon: LucideIcon; hint: string; title: string }[] = [
@@ -87,19 +87,18 @@ export function DashboardPage() {
         </section>
       )}
 
-      <section className="mt-8">
-        <h2 className="mb-1 text-sm font-semibold text-slate-900">Coming soon</h2>
-        <p className="mb-3 text-xs text-slate-500">Planned modules on the same employee, organization and permission foundation. Not available yet.</p>
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {COMING_SOON.map(({ label, icon: Icon }) => (
-            <div key={label} className="flex items-center gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-4 text-slate-500" aria-disabled>
-              <Icon className="h-5 w-5 text-slate-400" />
-              <span className="text-sm">{label}</span>
-              <span className="ml-auto rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">Soon</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {modules.map((g) => (
+        <section key={g.label} className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">{g.label}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            {g.items.map(({ label, path, icon: Icon }) => (
+              <Link key={path} to={path} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
+                <Icon className="h-5 w-5 shrink-0 text-brand-600" /><span className="truncate">{label}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
 
       <p className="mt-6 flex items-center gap-1 text-xs text-slate-400"><Eye className="h-3.5 w-3.5" /> Numbers are computed on the same population as your Employees list.</p>
     </>

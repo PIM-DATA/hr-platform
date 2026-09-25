@@ -55,11 +55,11 @@ export function OnboardingPage() {
   );
 }
 
-function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+export function CreatePlanModal({ onClose, onCreated, presetEmployeeId }: { onClose: () => void; onCreated: (id: string) => void; presetEmployeeId?: string }) {
   const m = useLifecycleMutations();
   const templates = useTemplates({ type: 'ONBOARDING' });
   const policies = useProbationPolicies();
-  const [employee, setEmployee] = useState<PayrollEmployeeOption | null>(null);
+  const [employee, setEmployee] = useState<PayrollEmployeeOption | null>(presetEmployeeId ? ({ id: presetEmployeeId } as PayrollEmployeeOption) : null);
   const [form, setForm] = useState({ templateId: '', startDate: '', createProbation: false, probationPolicyId: '' });
   const [err, setErr] = useState<string | null>(null);
   const submit = async () => { setErr(null); if (!employee) return; try { const p = await m.createPlan.mutateAsync({ employeeId: employee.id, templateId: form.templateId || null, startDate: form.startDate || undefined, createProbation: form.createProbation, probationPolicyId: form.probationPolicyId || null }); onCreated(p.id); } catch (e) { setErr(errorMessage(e)); } };
@@ -67,7 +67,7 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
     <Modal open onClose={onClose} title="Start onboarding" description="For an employee record that already exists (created by HR or by a recruitment hire). No account is created here." footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={submit} loading={m.createPlan.isPending} disabled={!employee}>Create draft plan</Button></>}>
       <div className="space-y-3">
         {err && <Alert>{err}</Alert>}
-        <EmployeePicker value={employee} onChange={setEmployee} endpoint="/workforce/employee-options" />
+        {!presetEmployeeId && <EmployeePicker value={employee} onChange={setEmployee} endpoint="/workforce/employee-options" />}
         <Select label="Template" options={(templates.data ?? []).map((t) => ({ value: t.id, label: `${t.name} (${t.taskCount} tasks)` }))} placeholder="No template (add tasks by hand)" value={form.templateId} onChange={(e) => setForm({ ...form, templateId: e.target.value })} />
         <Input label="Start date (defaults to the hire date)" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
         <Checkbox label="Also open a probation case" checked={form.createProbation} onChange={(e) => setForm({ ...form, createProbation: e.target.checked })} />

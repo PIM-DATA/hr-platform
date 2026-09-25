@@ -20,7 +20,7 @@ export function WorkforceReportsPage() {
   const design = hasPermission(PERMISSIONS.ORG_DESIGN_VIEW) || hasPermission(PERMISSIONS.ORG_DESIGN_MANAGE);
   const sel = useSelectedCycle();
   const dash = useWorkforceDashboard(view ? sel.selected : null);
-  const scenarios = useScenarios({ page: 1, pageSize: 100 });
+  const scenarios = useScenarios({ page: 1, pageSize: 100 }, hasPermission(PERMISSIONS.ORG_DESIGN_VIEW) || hasPermission(PERMISSIONS.ORG_DESIGN_MANAGE));
   const [a, setA] = useState(''); const [b, setB] = useState('');
   const single = useScenarioComparison(design && a && !b ? a : null);
   const pair = useCompareScenarios(design && a && b ? a : null, design && a && b ? b : null);

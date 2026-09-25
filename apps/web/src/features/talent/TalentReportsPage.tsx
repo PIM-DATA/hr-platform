@@ -49,6 +49,6 @@ export function TalentReportsPage() {
 const Breakdown = ({ title, rows }: { title: string; rows: { label: string; cells: string[] }[] }) => (
   <Card>
     <CardHeader title={title} />
-    {rows.length === 0 ? <p className="p-4 text-sm text-slate-500">Nothing yet.</p> : <ul className="divide-y divide-slate-100">{rows.map((r) => <li key={r.label} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm"><span className="text-slate-800">{r.label}</span><span className="flex flex-wrap gap-3 text-xs tabular-nums text-slate-500">{r.cells.map((c, i) => <span key={i}>{c}</span>)}</span></li>)}</ul>}
+    {rows.length === 0 ? <p className="p-4 text-sm text-slate-500">Nothing yet.</p> : <ul className="divide-y divide-slate-100">{rows.map((r, i) => <li key={`${i}-${r.label}`} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm"><span className="text-slate-800">{r.label}</span><span className="flex flex-wrap gap-3 text-xs tabular-nums text-slate-500">{r.cells.map((c, i) => <span key={i}>{c}</span>)}</span></li>)}</ul>}
   </Card>
 );

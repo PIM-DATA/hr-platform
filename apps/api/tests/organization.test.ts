@@ -261,14 +261,14 @@ describe('positions', () => {
   });
   it('27. create position with derived organization', async () => {
     const res = await as(admin, 'post', '/api/v1/positions').send({ departmentId: dept, jobId: jobSE, code: 'POS-SE-1', title: 'Sales Executive' });
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201); // the body is the diagnosis when this ever fails
     expect(res.body.data.department.organization.code).toBe('ACME');
     expect(res.body.data.job.code).toBe('SE');
     expect((await as(admin, 'post', '/api/v1/positions').send({ departmentId: dept, jobId: jobSE, code: 'pos-se-1', title: 'Dup' })).body.error.code).toBe('POSITION_CODE_EXISTS');
   });
   it('28. invalid department → 404; 29. invalid job → 404', async () => {
     const d = await as(admin, 'post', '/api/v1/positions').send({ departmentId: 'nope', jobId: jobSE, code: 'P1', title: 'X' });
-    expect(d.status).toBe(404);
+    expect(d.status, JSON.stringify(d.body)).toBe(404);
     expect(d.body.error.code).toBe('DEPARTMENT_NOT_FOUND');
     const j = await as(admin, 'post', '/api/v1/positions').send({ departmentId: dept, jobId: 'nope', code: 'P1', title: 'X' });
     expect(j.status).toBe(404);

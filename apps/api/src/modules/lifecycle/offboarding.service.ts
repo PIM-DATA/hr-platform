@@ -63,8 +63,8 @@ async function refreshReadiness(tx: Tx, caseId: string, actor: Actor) {
 }
 
 export const offboardingService = {
-  async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; search?: string }) {
-    const where: Prisma.OffboardingCaseWhereInput = { ...(await lifecycleEmployeeWhere(auth) as Prisma.OffboardingCaseWhereInput), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.search ? { OR: [{ employeeNameSnapshot: { contains: q.search, mode: 'insensitive' } }, { employeeCodeSnapshot: { contains: q.search, mode: 'insensitive' } }] } : {}) };
+  async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; search?: string; employeeId?: string }) {
+    const where: Prisma.OffboardingCaseWhereInput = { ...(await lifecycleEmployeeWhere(auth) as Prisma.OffboardingCaseWhereInput), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.employeeId ? { AND: [{ employeeId: q.employeeId }] } : {}), ...(q.search ? { OR: [{ employeeNameSnapshot: { contains: q.search, mode: 'insensitive' } }, { employeeCodeSnapshot: { contains: q.search, mode: 'insensitive' } }] } : {}) };
     const [total, rows] = await prisma.$transaction([prisma.offboardingCase.count({ where }), prisma.offboardingCase.findMany({ where, include, orderBy: [{ plannedLastWorkingDate: 'asc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: await Promise.all(rows.map((r) => dto(prisma, auth, r, false))), meta: { page: q.page, pageSize: q.pageSize, total } };
   },

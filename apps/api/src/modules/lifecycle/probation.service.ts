@@ -57,8 +57,8 @@ export const probationService = {
     return policyDto(prisma, row);
   },
 
-  async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; dueWithinDays?: number; mine?: string }) {
-    const where: Prisma.ProbationCaseWhereInput = { ...(await lifecycleEmployeeWhere(auth) as Prisma.ProbationCaseWhereInput), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.dueWithinDays !== undefined ? { status: { in: ['ACTIVE', 'PENDING_REVIEW', 'EXTENDED'] }, currentEndDate: { lte: addCalendarDays(today(), q.dueWithinDays) } } : {}) };
+  async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; dueWithinDays?: number; mine?: string; employeeId?: string }) {
+    const where: Prisma.ProbationCaseWhereInput = { ...(await lifecycleEmployeeWhere(auth) as Prisma.ProbationCaseWhereInput), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.employeeId ? { AND: [{ employeeId: q.employeeId }] } : {}), ...(q.dueWithinDays !== undefined ? { status: { in: ['ACTIVE', 'PENDING_REVIEW', 'EXTENDED'] }, currentEndDate: { lte: addCalendarDays(today(), q.dueWithinDays) } } : {}) };
     const final: Prisma.ProbationCaseWhereInput = q.mine ? { OR: [where, { reviewerUserId: auth.userId }] } : where;
     const [total, rows] = await prisma.$transaction([prisma.probationCase.count({ where: final }), prisma.probationCase.findMany({ where: final, include, orderBy: [{ currentEndDate: 'asc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: await Promise.all(rows.map((r) => dto(prisma, auth, r, r.employeeId === auth.employeeId && !has(auth, P.PROBATION_MANAGE)))), meta: { page: q.page, pageSize: q.pageSize, total } };

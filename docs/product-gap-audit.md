@@ -261,3 +261,43 @@ and 2 P4.
 Not recommended now: compensation planning (G-13) is a large domain that should follow a decision on whether pay
 decisions belong in this product; timesheets (G-17) only on customer demand; all §13 items belong to the final
 enterprise readiness phase.
+
+---
+
+## 16. Task 38 remediation addendum (2026-09-25)
+
+Inspection-only findings above are kept as written. This section records what Task 38 changed and what remains.
+
+### Resolved
+
+| ID | What changed |
+|---|---|
+| G-01 / CS-1, CS-2 | The HROD "Talent" and "Succession" placeholder items were removed from the menu; `/hrod/talent` and `/hrod/succession` now redirect to `/hrd/career/talent` and `/hrd/career/succession` so bookmarks keep working. The `comingSoon` menu flag and the sidebar "Soon" badge were removed. |
+| G-02 / CS-4, CS-5 | The dashboard "Coming soon" section is gone. The dashboard now lists every module the caller may open, grouped as in the sidebar and filtered by the same permissions and feature flags, beside the existing quick actions. |
+| G-03 / INT-3 | Employee 360 renders the Lifecycle and Benefits tabs from the sections the API already returns (subject or authorized administrator; a manager's team scope still receives no benefits section, verified in the browser). No description, note, reason or reference is shown. |
+| G-04 / NAV-5 | Attendance, Leave, Payroll, Documents, Competency, Career & talent, Engagement and Leave Settings open through a module index resolver: an account with an employee record gets its "My …" page; an account without one is sent to the first administrative tab it may open; when there is none, a plain "not linked to an employee profile" state replaces the former load error. Self-service requests are no longer fired for accounts that cannot satisfy them. |
+| G-05 / NAV-6, NAV-7, NAV-8 | Executive → Attendance lands on Team; Executive → Career & talent lands on Reports (talent reporting is reachable from the menu); HR → Leave Settings lands on Entitlements. No backend permission changed. |
+| G-06 / CS-6 | README phase tables replaced by the delivered feature map; "Phase 2 in progress" corrected. |
+| G-07 / CS-3 | `/admin/settings` is now an Administration overview: cards for Users, Roles, Permissions, Audit logs, Workflows, Leave settings, Data import, Privacy, Organization and Employees, each shown only with its permission. No settings control exists and none is implied; the page states what is still absent. The menu item is "Overview" and appears for any administrative permission. |
+| G-10 / INT-4 | A hired application shows "Next steps": onboarding status with **Start onboarding** (`onboarding.manage`) or **View onboarding** when a plan exists, and probation status with **Open probation case** (`probation.manage`) or **View probation**. Both use the lifecycle module's own dialogs and endpoints; nothing is created automatically; the hire transaction is untouched. The lifecycle list endpoints accept an `employeeId` filter that narrows within the caller's scope (API test added). |
+| G-14 / NAV-3, NAV-4 | Training & development has one Reports tab with a Training / OJT-paths-certifications switch; `/hrd/training/learning-reports` redirects. Administration → "Onboarding" (Excel customer import) is now "Data import" with a title that says so. |
+| G-16 / NAV-10 | The duplicate React key came from the talent reports breakdown, keyed by cycle label (two dev cycles share a name); rows are keyed by index and label now. Two ungated queries that produced 403 spam (workflow definitions on the OT policies page for non-editors, org-design scenarios on the workforce reports page for readers) are gated on the permission the API requires. |
+
+Remaining generic placeholder routes: none. `ComingSoonPage` survives only as the "Page not found" element.
+
+### Current menu tree after cleanup (HR_ADMIN / SYSTEM_ADMIN)
+
+```
+Dashboard                      module cards for every permitted module
+People        Employees · Organization
+HRM           Attendance · Leave · Payroll · Employee relations · Performance · Recruitment · Documents · Reports · Employee lifecycle · Benefits
+HRD           Competency · Training & development (one Reports tab) · Career & talent
+HROD          Workforce planning · Engagement
+Analytics     Executive dashboard
+Assistant     HR Copilot
+Administration  Overview · Users · Roles · Permissions · Audit Logs · Workflows · Leave Settings · Data import · Privacy
+```
+
+### Still open (unchanged priorities)
+
+G-08 workflow instance monitor (P2), G-09 payroll master-data edits (P2), G-11 expense / travel claims (P2), G-12 employee service requests and HR letters (P2), G-13 compensation planning decision (P2), G-15 copilot and executive roll-up of the five newest domains (P3), G-17 timesheets decision (P4), G-18 enterprise-only items (P4), and NAV-9 (HROD group naming, a product decision). A genuine Settings subsystem remains future work; the Administration overview is an index, not a settings page.

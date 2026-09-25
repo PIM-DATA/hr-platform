@@ -4,8 +4,8 @@ import { api } from '@/lib/api-client';
 
 const KEY = 'workflow';
 
-export const useWorkflowDefinitions = () =>
-  useQuery({ queryKey: [KEY, 'definitions'], queryFn: () => api.get<WorkflowDefinitionDto[]>('/workflow/definitions').then((r) => r.data) });
+export const useWorkflowDefinitions = (enabled = true) =>
+  useQuery({ queryKey: [KEY, 'definitions'], queryFn: () => api.get<WorkflowDefinitionDto[]>('/workflow/definitions').then((r) => r.data), enabled });
 
 export function useWorkflowDefinitionMutations() {
   const qc = useQueryClient();

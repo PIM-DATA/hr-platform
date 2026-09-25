@@ -22,7 +22,7 @@ export const templateListQuerySchema = z.object({ type: z.enum(LIFECYCLE_TEMPLAT
 // ---------- onboarding ----------
 export const createOnboardingPlanSchema = z.object({ employeeId: z.string().min(1), templateId: z.string().min(1).nullable().optional(), startDate: date.optional(), hrOwnerUserId: z.string().min(1).nullable().optional(), applicationId: z.string().min(1).nullable().optional(), createProbation: z.boolean().optional(), probationPolicyId: z.string().min(1).nullable().optional() }).strict();
 export type CreateOnboardingPlanInput = z.infer<typeof createOnboardingPlanSchema>;
-export const onboardingListQuerySchema = paginationQuerySchema.extend({ status: z.enum(ONBOARDING_PLAN_STATUSES).optional(), departmentId: z.string().min(1).optional(), search: z.string().trim().max(120).optional() });
+export const onboardingListQuerySchema = paginationQuerySchema.extend({ status: z.enum(ONBOARDING_PLAN_STATUSES).optional(), departmentId: z.string().min(1).optional(), employeeId: z.string().min(1).optional(), search: z.string().trim().max(120).optional() });
 export const addPlanTaskSchema = z.object({ title: z.string().trim().min(2).max(160), description: text(1000), category, assigneeType: z.enum(TASK_ASSIGNEE_TYPES), assigneeUserId: z.string().min(1).nullable().optional(), dueDate: date, required: z.boolean().optional(), requiresDocument: z.boolean().optional() }).strict();
 export type AddPlanTaskInput = z.infer<typeof addPlanTaskSchema>;
 /** Task update: a status move and/or a note and/or a document; assignment changes need manage. */
@@ -36,7 +36,7 @@ export const updateProbationPolicySchema = createProbationPolicySchema.partial()
 export type UpdateProbationPolicyInput = z.infer<typeof updateProbationPolicySchema>;
 export const createProbationCaseSchema = z.object({ employeeId: z.string().min(1), policyId: z.string().min(1).nullable().optional(), startDate: date.optional(), durationDays: z.number().int().min(1).max(730).optional(), reviewerUserId: z.string().min(1).nullable().optional() }).strict();
 export type CreateProbationCaseInput = z.infer<typeof createProbationCaseSchema>;
-export const probationListQuerySchema = paginationQuerySchema.extend({ status: z.enum(PROBATION_CASE_STATUSES).optional(), departmentId: z.string().min(1).optional(), dueWithinDays: z.coerce.number().int().min(0).max(365).optional(), mine: z.enum(['true']).optional() });
+export const probationListQuerySchema = paginationQuerySchema.extend({ status: z.enum(PROBATION_CASE_STATUSES).optional(), departmentId: z.string().min(1).optional(), employeeId: z.string().min(1).optional(), dueWithinDays: z.coerce.number().int().min(0).max(365).optional(), mine: z.enum(['true']).optional() });
 export const reassignProbationReviewerSchema = z.object({ reviewerUserId: z.string().min(1) }).strict();
 export const submitProbationReviewSchema = z.object({ outcome: z.enum(PROBATION_OUTCOMES), comment: text(4000), reviewDate: date.optional(), extensionEndDate: date.nullable().optional() }).strict()
   .refine((v) => v.outcome !== 'EXTEND' || !!v.extensionEndDate, { message: 'An extension needs its new end date', path: ['extensionEndDate'] });
@@ -47,7 +47,7 @@ export const createOffboardingCaseSchema = z.object({ employeeId: z.string().min
 export type CreateOffboardingCaseInput = z.infer<typeof createOffboardingCaseSchema>;
 export const updateOffboardingCaseSchema = z.object({ reasonCode: z.enum(OFFBOARDING_REASONS).optional(), reasonNote: text(2000), plannedLastWorkingDate: date.optional(), hrOwnerUserId: z.string().min(1).nullable().optional() }).strict().refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' });
 export type UpdateOffboardingCaseInput = z.infer<typeof updateOffboardingCaseSchema>;
-export const offboardingListQuerySchema = paginationQuerySchema.extend({ status: z.enum(OFFBOARDING_CASE_STATUSES).optional(), departmentId: z.string().min(1).optional(), search: z.string().trim().max(120).optional() });
+export const offboardingListQuerySchema = paginationQuerySchema.extend({ status: z.enum(OFFBOARDING_CASE_STATUSES).optional(), departmentId: z.string().min(1).optional(), employeeId: z.string().min(1).optional(), search: z.string().trim().max(120).optional() });
 export const completeSeparationSchema = z.object({ actualLastWorkingDate: date.optional(), disableAccount: z.boolean().optional() }).strict();
 export type CompleteSeparationInput = z.infer<typeof completeSeparationSchema>;
 export const exitInterviewSchema = z.object({ interviewDate: date, reasonCategory: z.enum(EXIT_REASON_CATEGORIES).nullable().optional(), wouldRejoin: z.boolean().nullable().optional(), note: text(4000) }).strict();

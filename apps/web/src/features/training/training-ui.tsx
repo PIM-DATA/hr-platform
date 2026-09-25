@@ -59,16 +59,15 @@ export function useTrainingTabs() {
   const teamScope = user?.dataScope === 'TEAM' || user?.dataScope === 'ALL';
   return [
     !!user?.employee && hasPermission(PERMISSIONS.TRAINING_VIEW) && { label: 'My development', to: '/hrd/training', end: true },
-    teamScope && !manage && { label: 'Team development', to: '/hrd/training/team' },
+    hasPermission(PERMISSIONS.TRAINING_VIEW) && teamScope && !manage && { label: 'Team development', to: '/hrd/training/team' },
     manage && { label: 'Training needs', to: '/hrd/training/needs' },
-    { label: 'Courses', to: '/hrd/training/courses' },
-    { label: 'Sessions', to: '/hrd/training/sessions' },
+    hasPermission(PERMISSIONS.TRAINING_VIEW) && { label: 'Courses', to: '/hrd/training/courses' },
+    hasPermission(PERMISSIONS.TRAINING_VIEW) && { label: 'Sessions', to: '/hrd/training/sessions' },
     hasPermission(PERMISSIONS.IDP_MANAGE) && { label: 'Development plans', to: '/hrd/training/idps' },
     (hasPermission(PERMISSIONS.OJT_VIEW) || hasPermission(PERMISSIONS.OJT_MANAGE)) && { label: 'OJT', to: '/hrd/training/ojt' },
     (hasPermission(PERMISSIONS.LEARNING_PATH_VIEW) || hasPermission(PERMISSIONS.LEARNING_PATH_MANAGE)) && { label: 'Learning paths', to: '/hrd/training/paths' },
     (hasPermission(PERMISSIONS.CERTIFICATION_VIEW) || hasPermission(PERMISSIONS.CERTIFICATION_MANAGE)) && { label: 'Certifications', to: '/hrd/training/certifications' },
-    manage && { label: 'Reports', to: '/hrd/training/reports' },
-    hasPermission(PERMISSIONS.LEARNING_VIEW_REPORTS) && { label: 'Learning reports', to: '/hrd/training/learning-reports' },
+    (manage || hasPermission(PERMISSIONS.LEARNING_VIEW_REPORTS) || hasPermission(PERMISSIONS.OJT_MANAGE) || hasPermission(PERMISSIONS.LEARNING_PATH_MANAGE) || hasPermission(PERMISSIONS.CERTIFICATION_MANAGE)) && { label: 'Reports', to: '/hrd/training/reports' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];
 }
 

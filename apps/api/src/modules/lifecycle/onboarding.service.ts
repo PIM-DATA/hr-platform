@@ -50,8 +50,9 @@ async function notifyAssignees(tx: Tx, kind: 'ONBOARDING', planId: string, emplo
 }
 
 export const onboardingService = {
-  async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; search?: string }) {
-    const where: Prisma.OnboardingPlanWhereInput = { ...(await lifecycleEmployeeWhere(auth)), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.search ? { OR: [{ employeeNameSnapshot: { contains: q.search, mode: 'insensitive' } }, { employeeCodeSnapshot: { contains: q.search, mode: 'insensitive' } }] } : {}) };
+  async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; search?: string; employeeId?: string }) {
+    // employeeId narrows within the caller's lifecycle scope (an AND with the scope where), never widens it.
+    const where: Prisma.OnboardingPlanWhereInput = { ...(await lifecycleEmployeeWhere(auth)), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.employeeId ? { AND: [{ employeeId: q.employeeId }] } : {}), ...(q.search ? { OR: [{ employeeNameSnapshot: { contains: q.search, mode: 'insensitive' } }, { employeeCodeSnapshot: { contains: q.search, mode: 'insensitive' } }] } : {}) };
     const [total, rows] = await prisma.$transaction([prisma.onboardingPlan.count({ where }), prisma.onboardingPlan.findMany({ where, include, orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: await Promise.all(rows.map((r) => dto(prisma, auth, r, false))), meta: { page: q.page, pageSize: q.pageSize, total } };
   },

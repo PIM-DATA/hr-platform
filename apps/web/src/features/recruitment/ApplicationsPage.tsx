@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { LifecycleHandoff } from './LifecycleHandoff';
 import { Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { APPLICATION_STAGES, PERMISSIONS, REJECTION_REASONS, type ApplicationDetailDto, type ApplicationDto, type CandidateDto } from '@hr/shared';
@@ -108,6 +109,7 @@ export function ApplicationDetailModal({ id, onClose }: { id: string | null; onC
             {a.rejection && <Alert tone="info">Rejected {a.rejection.at.slice(0, 10)} · {label(REJECTION_LABEL, a.rejection.reasonCode)}{a.rejection.note && ` · ${a.rejection.note}`}</Alert>}
             {a.withdrawal && <Alert tone="info">Candidate withdrew {a.withdrawal.at.slice(0, 10)}{a.withdrawal.note && ` · ${a.withdrawal.note}`} (recorded by HR)</Alert>}
             {a.hiredEmployeeId && <Alert tone="success">Hired {a.hiredAt?.slice(0, 10)} — employee record created. No user account and no payroll compensation were created by this step.</Alert>}
+            {a.hiredEmployeeId && <LifecycleHandoff employeeId={a.hiredEmployeeId} employeeName={`${a.candidate.firstName} ${a.candidate.lastName}`} />}
             <Section title="Pipeline history"><StageTimeline history={a.stageHistory} /></Section>
             <Section title="Interviews">
               {a.interviews.length === 0 ? <p className="text-slate-500">No interviews scheduled.</p> : (

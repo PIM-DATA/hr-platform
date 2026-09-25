@@ -2,22 +2,23 @@
 
 One employee data · One organization structure · One permission system · One workflow · One platform.
 
-## Foundation Phase — Complete
+## Delivered feature map (as of Task 38, 2026-09-25)
 
-| Area | Status | Notes |
+| Group | Modules | Status |
 |---|---|---|
-| Authentication | ✅ | DB-backed sessions, httpOnly cookie, CSRF, login rate limit |
-| RBAC + data scope | ✅ | permission codes, SELF/TEAM/ALL, admin-safety and escalation guards |
-| User management | ✅ | users, roles, permission matrix |
-| Organization structure | ✅ | organizations → departments (tree) → positions → jobs, department head |
-| Employee master | ✅ | single source of truth, position/manager history, assignment rules |
-| Audit log | ✅ | append-only, transactional for admin mutations, redacted, filterable UI |
-| Dashboard | ✅ | scope-aware KPIs + permission-based quick actions |
-| Attendance · Leave · Performance · Competency · Training · IDP · Workforce · Talent · Succession · Analytics · Settings | ⏳ Coming soon | menu placeholders only; Phase 2 is designed before implementation |
+| Foundation | Authentication and sessions, RBAC with data scopes, users / roles / permission matrix, organization structure, employee master with history, audit log, dashboard, notifications, account security, workflow engine, work calendars | ✅ |
+| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36) | ✅ MVPs with documented limitations |
+| HRD | Competency and skill gaps (24), Training / TNA / IDP (25), OJT / learning paths / certifications (35), Career / talent / 9-box / succession (28) | ✅ |
+| HROD | Workforce planning and organization design (32), Engagement / eNPS surveys (33) | ✅ |
+| Analytics and AI | Employee 360 and executive analytics (29), grounded HR Copilot (31) | ✅ |
+| Operations | Production configuration, backups and runbook (15–16), customer data import (17), account recovery and privacy operations (18), pilot review (19) | ✅ |
 
-Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same core without changing it.
+Not yet available (tracked in [docs/product-gap-audit.md](docs/product-gap-audit.md)): a central settings
+subsystem (the Administration page lists the tools that exist), a workflow instance monitor, editing payroll
+components and policies after creation, executive roll-up of the newest domains, expense / travel claims,
+employee service requests, compensation planning, timesheets, and the enterprise items under "Known limitations".
 
-### Phase 2 — HRM Operations (in progress)
+### Phase 2 — HRM Operations (complete)
 
 | Task | Status |
 |---|---|
@@ -25,14 +26,14 @@ Later phases add HRM / HRD / HROD / Analytics / AI Copilot on top of the same co
 | 8.1 Approver resolution hardening | ✅ |
 | 8.2 Workflow transition concurrency (instance row lock) | ✅ |
 | 9 Leave master data + shared work calendars | ✅ |
-| 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only, no HTTP surface yet) |
+| 10 Leave entitlement + ledger | ✅ (BalanceService reserve/release/use/refund = service-level only, no HTTP surface) |
 | 10.5 PostgreSQL migration + balance concurrency validation | ✅ |
 | 10.6 Request policy vs entitlement policy semantics | ✅ |
-| 11 Leave request + workflow + reservation concurrency | ✅ (API + tests; Leave UI is Task 12) |
+| 11 Leave request + workflow + reservation concurrency | ✅ |
 | 12 Leave UI + approval inbox | ✅ |
 | 13 Notification foundation (in-app) | ✅ |
 | 14 Leave reporting + Phase 2 review | ✅ |
-| Attendance | Phase 2B |
+| Attendance | ✅ (Task 20) |
 
 ## Stack
 
