@@ -223,7 +223,7 @@ erasure automation; multi-instance session and limiter state. These are listed i
 | G-08 | Workflow instance monitor | API only | BO-1 | Stuck approvals invisible to administrators | PARTIAL | P2 |
 | G-09 | Payroll master-data edits | API only | BO-2 | Recreate instead of edit | PARTIAL | P2 |
 | G-10 | Hire → onboarding / probation | Manual navigation | §8 | Two extra steps HR must know about | DISCONNECTED | P2 |
-| G-11 | Expense / travel claims | Absent | §11 | No business-expense claim for employees | MISSING_MAJOR_DOMAIN | P2 |
+| G-11 | Expense / travel claims | Shipped (Task 39, `docs/expense-travel.md`) | §11 | Resolved: travel requests, expense reports with policy rules, receipts, payment and payroll handoff | RESOLVED | — |
 | G-12 | Employee requests / HR letters | Absent | §11 | Most common ESS request has no home | MISSING_MAJOR_DOMAIN | P2 |
 | G-13 | Compensation planning cycles | Absent | §11 | Talent and performance outputs stop short of pay decisions | MISSING_MAJOR_DOMAIN | P2 |
 | G-14 | Training module: two report tabs; Onboarding label collision; HROD grouping | Naming and grouping | NAV-3, NAV-4, NAV-9 | Minor confusion | UX_CLEANUP | P3 |
@@ -300,4 +300,4 @@ Administration  Overview · Users · Roles · Permissions · Audit Logs · Workf
 
 ### Still open (unchanged priorities)
 
-G-08 workflow instance monitor (P2), G-09 payroll master-data edits (P2), G-11 expense / travel claims (P2), G-12 employee service requests and HR letters (P2), G-13 compensation planning decision (P2), G-15 copilot and executive roll-up of the five newest domains (P3), G-17 timesheets decision (P4), G-18 enterprise-only items (P4), and NAV-9 (HROD group naming, a product decision). A genuine Settings subsystem remains future work; the Administration overview is an index, not a settings page.
+G-08 workflow instance monitor (P2), G-09 payroll master-data edits (P2), G-12 employee service requests and HR letters (P2), G-13 compensation planning decision (P2), G-15 copilot and executive roll-up of the five newest domains (P3), G-17 timesheets decision (P4), G-18 enterprise-only items (P4), and NAV-9 (HROD group naming, a product decision). A genuine Settings subsystem remains future work; the Administration overview is an index, not a settings page.

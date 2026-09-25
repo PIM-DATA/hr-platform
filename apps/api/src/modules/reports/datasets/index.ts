@@ -492,3 +492,46 @@ registerDataset(memoryDataset({
     return rows.map((r): Row => ({ plan: r.planNameSnapshot, category: r.categorySnapshot, period: r.period.name, organization: r.organizationSnapshot, status: r.status, currency: r.currency, submittedMonth: r.submittedDate ? r.submittedDate.slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, paymentMethod: r.paymentMethod, claimedAmount: toMoneyString(r.claimedAmount), approvedAmount: r.approvedAmount ? toMoneyString(r.approvedAmount) : null }));
   },
 }));
+
+// ---------- expense and travel (Task 39): policy, category, month, status, currency and exact totals — organization at snapshot, never a person, a number, a merchant, a description, a receipt or a reference ----------
+const EXPENSE_REPORTS = [PERMISSIONS.EXPENSE_VIEW_REPORTS, PERMISSIONS.EXPENSE_MANAGE];
+registerDataset(memoryDataset({
+  id: 'travel_request_summary', name: 'Travel request summary', description: 'One row per submitted travel request: travel policy, organization, submitted month, trip month, status, currency and the requested estimate. No names, purposes or destinations.',
+  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'travelPolicy', label: 'Travel policy', type: 'STRING', column: 'travelPolicy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'tripMonth', label: 'Trip month', type: 'STRING', column: 'tripMonth', groupable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'tripDays', label: 'Trip days', type: 'NUMBER', column: 'tripDays', aggregatable: true }), f({ id: 'estimatedAmount', label: 'Estimated', type: 'DECIMAL', column: 'estimatedAmount', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...EXPENSE_REPORTS);
+    const rows = await prisma.travelRequest.findMany({ where: { status: { not: 'DRAFT' } }, select: { travelPolicyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, startDate: true, endDate: true, status: true, currency: true, estimatedAmount: true }, orderBy: { createdAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ travelPolicy: r.travelPolicyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, tripMonth: r.startDate.slice(0, 7), status: r.status, currency: r.currency, tripDays: Math.round((Date.parse(`${r.endDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) + 1, estimatedAmount: toMoneyString(r.estimatedAmount) }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'expense_report_summary', name: 'Expense report summary', description: 'One row per submitted expense report: policy, organization, submitted and paid months, status, currency, item count and exact total. No names, report numbers, merchants, descriptions or references.',
+  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'policy', label: 'Policy', type: 'STRING', column: 'policy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'paidMonth', label: 'Paid month', type: 'STRING', column: 'paidMonth', groupable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'paymentMethod', label: 'Payment method', type: 'STRING', column: 'paymentMethod', groupable: true }), f({ id: 'linkedToTravel', label: 'Linked to travel', type: 'BOOLEAN', column: 'linkedToTravel', groupable: true }),
+    f({ id: 'items', label: 'Items', type: 'NUMBER', column: 'items', aggregatable: true }), f({ id: 'total', label: 'Total', type: 'DECIMAL', column: 'total', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...EXPENSE_REPORTS);
+    const rows = await prisma.expenseReport.findMany({ where: { status: { not: 'DRAFT' } }, select: { policyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, paidDate: true, status: true, currency: true, paymentMethod: true, travelRequestId: true, totalAmount: true, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ policy: r.policyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, status: r.status, currency: r.currency, paymentMethod: r.paymentMethod, linkedToTravel: !!r.travelRequestId, items: r._count.items, total: toMoneyString(r.totalAmount) }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'expense_category_summary', name: 'Expense category summary', description: 'One row per item of a submitted expense report: category, policy, organization, expense month, report status, currency and exact amount. No names, merchants, descriptions or receipts.',
+  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'policy', label: 'Policy', type: 'STRING', column: 'policy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'expenseMonth', label: 'Expense month', type: 'STRING', column: 'expenseMonth', groupable: true }),
+    f({ id: 'reportStatus', label: 'Report status', type: 'ENUM', column: 'reportStatus', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'receiptRequired', label: 'Receipt required', type: 'BOOLEAN', column: 'receiptRequired', groupable: true }), f({ id: 'amount', label: 'Amount', type: 'DECIMAL', column: 'amount', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...EXPENSE_REPORTS);
+    const rows = await prisma.expenseItem.findMany({ where: { report: { status: { not: 'DRAFT' } } }, select: { categoryNameSnapshot: true, expenseDate: true, amount: true, receiptRequiredSnapshot: true, report: { select: { policyNameSnapshot: true, organizationSnapshot: true, status: true, currency: true } } }, orderBy: { expenseDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ category: r.categoryNameSnapshot, policy: r.report.policyNameSnapshot, organization: r.report.organizationSnapshot, expenseMonth: r.expenseDate.slice(0, 7), reportStatus: r.report.status, currency: r.report.currency, receiptRequired: r.receiptRequiredSnapshot, amount: toMoneyString(r.amount) }));
+  },
+}));

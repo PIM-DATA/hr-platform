@@ -140,6 +140,16 @@ export const PERMISSIONS = {
   BENEFITS_REVIEW_CLAIMS: 'benefits.review_claims',
   BENEFITS_RECORD_PAYMENT: 'benefits.record_payment',
   BENEFITS_VIEW_REPORTS: 'benefits.view_reports',
+
+  // Expense and travel (Task 39). Business expenditure, not welfare: separate tables, separate permissions. A manager's
+  // TEAM scope never opens a subordinate's expenses; approvers see what they must decide, through the workflow.
+  EXPENSE_VIEW_OWN: 'expense.view_own',
+  EXPENSE_SUBMIT: 'expense.submit',
+  EXPENSE_VIEW: 'expense.view',
+  EXPENSE_MANAGE: 'expense.manage',
+  EXPENSE_REVIEW: 'expense.review',
+  EXPENSE_RECORD_PAYMENT: 'expense.record_payment',
+  EXPENSE_VIEW_REPORTS: 'expense.view_reports',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -285,6 +295,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.BENEFITS_REVIEW_CLAIMS, module: 'benefits', description: 'Open the review view of any claim, including confidential descriptions' },
   { code: PERMISSIONS.BENEFITS_RECORD_PAYMENT, module: 'benefits', description: 'Record that an approved claim was paid, or hand it to payroll (with the payroll permission)' },
   { code: PERMISSIONS.BENEFITS_VIEW_REPORTS, module: 'benefits', description: 'Aggregate benefits reporting: plan, enrolment, entitlement and claim totals; no person' },
+  { code: PERMISSIONS.EXPENSE_VIEW_OWN, module: 'expense', description: 'See your own travel requests, expense reports and reimbursements' },
+  { code: PERMISSIONS.EXPENSE_SUBMIT, module: 'expense', description: 'Create and submit your own travel requests and expense reports' },
+  { code: PERMISSIONS.EXPENSE_VIEW, module: 'expense', description: 'Expense administration view: travel requests, expense reports and payments (organization-wide scope only; never widened by a team scope)' },
+  { code: PERMISSIONS.EXPENSE_MANAGE, module: 'expense', description: 'Configure expense categories, expense and travel policies' },
+  { code: PERMISSIONS.EXPENSE_REVIEW, module: 'expense', description: 'Open the review view of any travel request or expense report' },
+  { code: PERMISSIONS.EXPENSE_RECORD_PAYMENT, module: 'expense', description: 'Record that an approved reimbursement was paid, or hand it to payroll (with the payroll permission)' },
+  { code: PERMISSIONS.EXPENSE_VIEW_REPORTS, module: 'expense', description: 'Aggregate expense and travel reporting by policy, category and month; no person' },
 ];
 
 /**

@@ -3934,3 +3934,239 @@ model BenefitClaimStatusHistory {
   @@index([claimId, createdAt])
   @@map("benefit_claim_status_history")
 }
+
+// ---------------------------------------------------------------------------
+// Expense and travel (Task 39)
+// Business expenditure reimbursed to an employee. Separate from Benefits (welfare entitlements) by design: no shared
+// table, no shared status. Money is NUMERIC(18,2); employee ids are plain references with snapshots.
+// ---------------------------------------------------------------------------
+model ExpenseSequence {
+  kind String
+  year Int
+  next Int    @default(1)
+
+  @@id([kind, year])
+  @@map("expense_sequences")
+}
+
+model ExpenseCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  type        String   @default("GENERAL") // GENERAL | TRAVEL
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rules ExpensePolicyRule[]
+  items ExpenseItem[]
+
+  @@map("expense_categories")
+}
+
+model ExpensePolicy {
+  id                  String    @id @default(cuid())
+  code                String    @unique
+  name                String
+  description         String?
+  organizationId      String?   @map("organization_id")
+  currency            String
+  effectiveFrom       String    @map("effective_from")
+  effectiveTo         String?   @map("effective_to")
+  workflowCode        String    @map("workflow_code")
+  maximumReportAmount Decimal?  @map("maximum_report_amount") @db.Decimal(18, 2)
+  status              String    @default("DRAFT") // DRAFT | ACTIVE | INACTIVE | ARCHIVED
+  createdByUserId     String    @map("created_by_user_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  rules         ExpensePolicyRule[]
+  applicability ExpensePolicyApplicability[]
+  reports       ExpenseReport[]
+  travelPolicies TravelPolicy[]
+
+  @@index([status, effectiveFrom, effectiveTo])
+  @@map("expense_policies")
+}
+
+/// Per-category rules of a policy. Money limits are Decimal; the receipt threshold is inclusive (amount >= threshold).
+model ExpensePolicyRule {
+  id                   String          @id @default(cuid())
+  policyId             String          @map("policy_id")
+  policy               ExpensePolicy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  categoryId           String          @map("category_id")
+  category             ExpenseCategory @relation(fields: [categoryId], references: [id])
+  requiresReceipt      Boolean         @default(false) @map("requires_receipt")
+  receiptRequiredAbove Decimal?        @map("receipt_required_above") @db.Decimal(18, 2)
+  perItemMaximum       Decimal?        @map("per_item_maximum") @db.Decimal(18, 2)
+  maximumAgeDays       Int?            @map("maximum_age_days")
+  allowedForTravelOnly Boolean         @default(false) @map("allowed_for_travel_only")
+  descriptionRequired  Boolean         @default(false) @map("description_required")
+
+  @@unique([policyId, categoryId])
+  @@map("expense_policy_rules")
+}
+
+/// Allow-listed employee-master criteria only (organization, department, job, position, employment type / status).
+model ExpensePolicyApplicability {
+  id       String        @id @default(cuid())
+  policyId String        @map("policy_id")
+  policy   ExpensePolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  ruleType String        @map("rule_type")
+  value    String
+
+  @@index([policyId])
+  @@map("expense_policy_applicability")
+}
+
+model TravelPolicy {
+  id                     String         @id @default(cuid())
+  code                   String         @unique
+  name                   String
+  description            String?
+  organizationId         String?        @map("organization_id")
+  currency               String
+  workflowCode           String         @map("workflow_code")
+  expensePolicyId        String?        @map("expense_policy_id")
+  expensePolicy          ExpensePolicy? @relation(fields: [expensePolicyId], references: [id])
+  maximumEstimatedAmount Decimal?       @map("maximum_estimated_amount") @db.Decimal(18, 2)
+  status                 String         @default("DRAFT")
+  effectiveFrom          String         @map("effective_from")
+  effectiveTo            String?        @map("effective_to")
+  createdByUserId        String         @map("created_by_user_id")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+
+  requests TravelRequest[]
+
+  @@index([status, effectiveFrom, effectiveTo])
+  @@map("travel_policies")
+}
+
+model TravelRequest {
+  id                    String       @id @default(cuid())
+  requestNumber         String       @unique @map("request_number")
+  employeeId            String       @map("employee_id")
+  travelPolicyId        String       @map("travel_policy_id")
+  travelPolicy          TravelPolicy @relation(fields: [travelPolicyId], references: [id])
+  travelPolicyNameSnapshot String    @map("travel_policy_name_snapshot")
+  employeeCodeSnapshot  String       @map("employee_code_snapshot")
+  employeeNameSnapshot  String       @map("employee_name_snapshot")
+  organizationSnapshot  String?      @map("organization_snapshot")
+  departmentSnapshot    String?      @map("department_snapshot")
+  jobSnapshot           String?      @map("job_snapshot")
+  positionSnapshot      String?      @map("position_snapshot")
+  /// Business-sensitive text: never copied into a notification, an audit payload or a report.
+  purpose               String
+  destination           String
+  startDate             String       @map("start_date")
+  endDate               String       @map("end_date")
+  estimatedAmount       Decimal      @map("estimated_amount") @db.Decimal(18, 2)
+  currency              String
+  status                String       @default("DRAFT") // DRAFT | PENDING_APPROVAL | APPROVED | REJECTED | CANCELLED | COMPLETED
+  workflowInstanceId    String?      @unique @map("workflow_instance_id")
+  submittedAt           DateTime?    @map("submitted_at")
+  approvedAt            DateTime?    @map("approved_at")
+  rejectedAt            DateTime?    @map("rejected_at")
+  cancelledAt           DateTime?    @map("cancelled_at")
+  completedAt           DateTime?    @map("completed_at")
+  createdByUserId       String       @map("created_by_user_id")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  reports ExpenseReport[]
+
+  @@index([employeeId, status])
+  @@index([status, startDate])
+  @@index([startDate, endDate])
+  @@map("travel_requests")
+}
+
+model ExpenseReport {
+  id                     String         @id @default(cuid())
+  reportNumber           String         @unique @map("report_number")
+  title                  String
+  employeeId             String         @map("employee_id")
+  policyId               String         @map("policy_id")
+  policy                 ExpensePolicy  @relation(fields: [policyId], references: [id])
+  travelRequestId        String?        @map("travel_request_id")
+  travelRequest          TravelRequest? @relation(fields: [travelRequestId], references: [id])
+  policyCodeSnapshot     String         @map("policy_code_snapshot")
+  policyNameSnapshot     String         @map("policy_name_snapshot")
+  maximumReportAmountSnapshot Decimal?  @map("maximum_report_amount_snapshot") @db.Decimal(18, 2)
+  employeeCodeSnapshot   String         @map("employee_code_snapshot")
+  employeeNameSnapshot   String         @map("employee_name_snapshot")
+  organizationSnapshot   String?        @map("organization_snapshot")
+  departmentSnapshot     String?        @map("department_snapshot")
+  jobSnapshot            String?        @map("job_snapshot")
+  positionSnapshot       String?        @map("position_snapshot")
+  currency               String
+  /// CACHE of Σ item amounts, recomputed on every item change and frozen at submit. The items are the truth.
+  totalAmount            Decimal        @default(0) @map("total_amount") @db.Decimal(18, 2)
+  status                 String         @default("DRAFT") // DRAFT | PENDING_APPROVAL | READY_FOR_PAYMENT | SENT_TO_PAYROLL | PAID | REJECTED | CANCELLED
+  workflowInstanceId     String?        @unique @map("workflow_instance_id")
+  submittedAt            DateTime?      @map("submitted_at")
+  approvedAt             DateTime?      @map("approved_at")
+  rejectedAt             DateTime?      @map("rejected_at")
+  cancelledAt            DateTime?      @map("cancelled_at")
+  paymentMethod          String?        @map("payment_method")
+  paymentReference       String?        @map("payment_reference")
+  paidDate               String?        @map("paid_date")
+  paidAt                 DateTime?      @map("paid_at")
+  paidByUserId           String?        @map("paid_by_user_id")
+  payrollResultItemId    String?        @unique @map("payroll_result_item_id")
+  createdByUserId        String         @map("created_by_user_id")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+
+  items ExpenseItem[]
+
+  @@index([employeeId, status])
+  @@index([policyId, status])
+  @@index([travelRequestId])
+  @@index([status, submittedAt])
+  @@index([paidDate])
+  @@map("expense_reports")
+}
+
+model ExpenseItem {
+  id                     String          @id @default(cuid())
+  reportId               String          @map("report_id")
+  report                 ExpenseReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  categoryId             String          @map("category_id")
+  category               ExpenseCategory @relation(fields: [categoryId], references: [id])
+  categoryCodeSnapshot   String          @map("category_code_snapshot")
+  categoryNameSnapshot   String          @map("category_name_snapshot")
+  expenseDate            String          @map("expense_date")
+  /// Informational: never logged in full, never reported.
+  merchant               String?
+  description            String?
+  amount                 Decimal         @db.Decimal(18, 2)
+  /// Informational only: an overseas receipt as it read. No conversion is computed; `amount` is entered in the report currency.
+  originalAmount         Decimal?        @map("original_amount") @db.Decimal(18, 2)
+  originalCurrency       String?         @map("original_currency")
+  receiptRequiredSnapshot Boolean        @default(false) @map("receipt_required_snapshot")
+  perItemMaximumSnapshot Decimal?        @map("per_item_maximum_snapshot") @db.Decimal(18, 2)
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  @@index([reportId, expenseDate])
+  @@index([categoryId])
+  @@map("expense_items")
+}
+
+/// Append-only status trail for travel requests and expense reports. Reason codes only; free text stays on the workflow timeline.
+model ExpenseStatusHistory {
+  id          String   @id @default(cuid())
+  entityType  String   @map("entity_type") // TRAVEL_REQUEST | EXPENSE_REPORT
+  entityId    String   @map("entity_id")
+  fromStatus  String?  @map("from_status")
+  toStatus    String   @map("to_status")
+  actorUserId String?  @map("actor_user_id")
+  reasonCode  String?  @map("reason_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, createdAt])
+  @@map("expense_status_history")
+}

@@ -29,6 +29,7 @@ import { engagementRouter } from './modules/engagement/engagement.routes';
 import { lifecycleRouter } from './modules/lifecycle/lifecycle.routes';
 import { learningRouter } from './modules/learning/learning.routes';
 import { benefitsRouter } from './modules/benefits/benefits.routes';
+import { expenseRouter, registerExpenseWorkflowHandlers } from './modules/expense/expense.routes';
 import { registerBenefitsWorkflowHandlers } from './modules/benefits/claim.service';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
@@ -77,5 +78,7 @@ apiRouter.use('/engagement', engagementRouter);
 apiRouter.use('/lifecycle', lifecycleRouter);
 apiRouter.use('/learning', learningRouter);
 apiRouter.use('/benefits', benefitsRouter);
+apiRouter.use('/expense', expenseRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)
 registerBenefitsWorkflowHandlers(); // benefit claims ↔ workflow (reserve → consume / release)
+registerExpenseWorkflowHandlers(); // travel requests and expense reports ↔ workflow

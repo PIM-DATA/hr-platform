@@ -146,6 +146,15 @@ async function assertLinkAuthority(tx: Db, auth: AuthContext, entityType: Docume
       if (c.status !== 'DRAFT' && c.status !== 'PENDING_APPROVAL') throw new AppError(409, 'BENEFIT_CLAIM_CLOSED', 'Documents are attached while a claim is open');
       return c.claimNumber;
     }
+    case 'EXPENSE_ITEM': {
+      // The report owner attaches a receipt to an item of their own open report; an expense manager may attach on their behalf.
+      const i = await tx.expenseItem.findUnique({ where: { id: entityId }, select: { categoryNameSnapshot: true, expenseDate: true, report: { select: { employeeId: true, status: true, reportNumber: true } } } });
+      if (!i) throw new AppError(404, 'EXPENSE_ITEM_NOT_FOUND', 'Expense item not found');
+      const own = !!auth.employeeId && i.report.employeeId === auth.employeeId && hasPermission(auth, PERMISSIONS.EXPENSE_SUBMIT);
+      if (!(own || hasPermission(auth, PERMISSIONS.EXPENSE_MANAGE))) throw new AppError(403, 'FORBIDDEN', 'Only the report owner or an expense manager may attach receipts');
+      if (i.report.status !== 'DRAFT' && i.report.status !== 'PENDING_APPROVAL') throw new AppError(409, 'EXPENSE_REPORT_CLOSED', 'Receipts are attached while a report is open');
+      return `${i.report.reportNumber} · ${i.categoryNameSnapshot} ${i.expenseDate}`;
+    }
     case 'RECRUITMENT_APPLICATION': {
       need(PERMISSIONS.RECRUITMENT_MANAGE);
       const r = await tx.recruitmentApplication.findUnique({ where: { id: entityId }, select: { applicationNumber: true } });

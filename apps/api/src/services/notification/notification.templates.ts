@@ -31,6 +31,8 @@ export interface TemplateVars {
   /** A benefit claim number and plan name. Never an amount, a description or a receipt name. */
   claimNumber?: string;
   planName?: string;
+  /** A travel request or expense report number. Never a purpose, merchant, description, receipt or reference. */
+  referenceNumber?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -154,6 +156,17 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Talent review assigned',
     body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your potential assessment.`,
   }),
+  // Expense and travel (Task 39): request / report number and status only.
+  [NOTIFICATION_TYPES.TRAVEL_REQUEST_SUBMITTED]: (v) => ({ title: 'Travel request submitted', body: `Travel request ${v.referenceNumber ?? ''} was submitted and is waiting for approval.` }),
+  [NOTIFICATION_TYPES.TRAVEL_APPROVAL_REQUIRED]: (v) => ({ title: 'Travel request to review', body: `${v.employeeName ?? 'An employee'} submitted travel request ${v.referenceNumber ?? ''}. Please review it.` }),
+  [NOTIFICATION_TYPES.TRAVEL_REQUEST_APPROVED]: (v) => ({ title: 'Travel request approved', body: `Travel request ${v.referenceNumber ?? ''} was approved. You can create an expense report from it after the trip.` }),
+  [NOTIFICATION_TYPES.TRAVEL_REQUEST_REJECTED]: (v) => ({ title: 'Travel request not approved', body: `Travel request ${v.referenceNumber ?? ''} was not approved.` }),
+  [NOTIFICATION_TYPES.EXPENSE_REPORT_SUBMITTED]: (v) => ({ title: 'Expense report submitted', body: `Expense report ${v.referenceNumber ?? ''} was submitted and is waiting for approval.` }),
+  [NOTIFICATION_TYPES.EXPENSE_APPROVAL_REQUIRED]: (v) => ({ title: 'Expense report to review', body: `${v.employeeName ?? 'An employee'} submitted expense report ${v.referenceNumber ?? ''}. Please review it.` }),
+  [NOTIFICATION_TYPES.EXPENSE_REPORT_APPROVED]: (v) => ({ title: 'Expense report approved', body: `Expense report ${v.referenceNumber ?? ''} was approved and is ready for payment.` }),
+  [NOTIFICATION_TYPES.EXPENSE_REPORT_REJECTED]: (v) => ({ title: 'Expense report not approved', body: `Expense report ${v.referenceNumber ?? ''} was not approved.` }),
+  [NOTIFICATION_TYPES.EXPENSE_READY_FOR_PAYMENT]: (v) => ({ title: 'Expense report ready for payment', body: `Expense report ${v.referenceNumber ?? ''} is ready for payment.` }),
+  [NOTIFICATION_TYPES.EXPENSE_PAID]: (v) => ({ title: 'Expense report paid', body: `Expense report ${v.referenceNumber ?? ''} is recorded as paid.` }),
   // Benefits (Task 36): claim number, plan name, status. Never an amount, a description, a receipt or a reviewer's words.
   [NOTIFICATION_TYPES.BENEFIT_ENROLLMENT_CONFIRMED]: (v) => ({ title: 'Benefit enrolment confirmed', body: `You are enrolled in ${v.planName ?? 'a benefit plan'}.` }),
   [NOTIFICATION_TYPES.BENEFIT_CLAIM_SUBMITTED]: (v) => ({ title: 'Claim submitted', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} was submitted and is waiting for approval.` }),

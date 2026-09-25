@@ -23,3 +23,4 @@ export * from './lifecycle';
 export * from './learning';
 export * from './schemas';
 export * from './benefits';
+export * from './expense';

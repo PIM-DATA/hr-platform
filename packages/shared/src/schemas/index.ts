@@ -34,3 +34,4 @@ export * from './engagement';
 export * from './lifecycle';
 export * from './learning';
 export * from './benefits';
+export * from './expense';

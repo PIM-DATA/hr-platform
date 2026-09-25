@@ -121,6 +121,9 @@ import { QuestionBankPage } from '@/features/engagement/QuestionBankPage';
 import { EngagementCommentsPage, EngagementParticipationPage, EngagementReportsPage, EngagementResultsPage } from '@/features/engagement/ResultsPage';
 import { LifecycleLayout } from '@/features/lifecycle/lifecycle-ui';
 import { BenefitsIndex, BenefitsLayout } from '@/features/benefits/benefits-ui';
+import { ExpenseIndex, ExpenseLayout } from '@/features/expense/expense-ui';
+import { MyExpensesPage } from '@/features/expense/MyExpensesPage';
+import { CategoriesPage as ExpenseCategoriesPage, ExpenseAnalyticsPage, ExpenseDashboardPage, ExpenseReportsPage, PoliciesPage as ExpensePoliciesPage, TravelRequestsPage } from '@/features/expense/AdminPages';
 import { MyBenefitsPage } from '@/features/benefits/MyBenefitsPage';
 import { PlansPage as BenefitPlansPage } from '@/features/benefits/PlansPage';
 import { BenefitsDashboardPage, BenefitsReportsPage, ClaimsPage as BenefitClaimsPage, EnrollmentsPage as BenefitEnrollmentsPage, EntitlementsPage as BenefitEntitlementsPage, PeriodsPage as BenefitPeriodsPage } from '@/features/benefits/AdminPages';
@@ -458,6 +461,20 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={[PERMISSIONS.BENEFITS_VIEW_REPORTS, PERMISSIONS.BENEFITS_MANAGE]} />, children: [{ path: 'dashboard', element: <BenefitsDashboardPage /> }, { path: 'reports', element: <BenefitsReportsPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.BENEFITS_VIEW, PERMISSIONS.BENEFITS_MANAGE]} />, children: [{ path: 'plans', element: <BenefitPlansPage /> }, { path: 'periods', element: <BenefitPeriodsPage /> }, { path: 'enrollments', element: <BenefitEnrollmentsPage /> }, { path: 'entitlements', element: <BenefitEntitlementsPage /> }, { path: 'claims', element: <BenefitClaimsPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.BENEFITS_RECORD_PAYMENT} />, children: [{ path: 'payments', element: <BenefitClaimsPage payments /> }] },
+              ],
+            }],
+          },
+          {
+            // Expenses and travel (Task 39). Own records need expense.view_own; administration needs the expense permissions and an
+            // organization-wide data scope (enforced by the API; a manager's TEAM scope never widens this module).
+            element: <RequirePermission permission={[PERMISSIONS.EXPENSE_VIEW_OWN, PERMISSIONS.EXPENSE_SUBMIT, PERMISSIONS.EXPENSE_VIEW, PERMISSIONS.EXPENSE_MANAGE, PERMISSIONS.EXPENSE_REVIEW, PERMISSIONS.EXPENSE_RECORD_PAYMENT, PERMISSIONS.EXPENSE_VIEW_REPORTS]} />,
+            children: [{
+              path: 'hrm/expenses', element: <ExpenseLayout />,
+              children: [
+                { index: true, element: <ExpenseIndex my={<MyExpensesPage />} /> },
+                { element: <RequirePermission permission={[PERMISSIONS.EXPENSE_VIEW_REPORTS, PERMISSIONS.EXPENSE_MANAGE]} />, children: [{ path: 'dashboard', element: <ExpenseDashboardPage /> }, { path: 'analytics', element: <ExpenseAnalyticsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.EXPENSE_VIEW, PERMISSIONS.EXPENSE_MANAGE]} />, children: [{ path: 'travel', element: <TravelRequestsPage /> }, { path: 'reports', element: <ExpenseReportsPage /> }, { path: 'policies', element: <ExpensePoliciesPage /> }, { path: 'categories', element: <ExpenseCategoriesPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.EXPENSE_RECORD_PAYMENT} />, children: [{ path: 'payments', element: <ExpenseReportsPage payments /> }] },
               ],
             }],
           },

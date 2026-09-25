@@ -7,7 +7,7 @@ One employee data · One organization structure · One permission system · One 
 | Group | Modules | Status |
 |---|---|---|
 | Foundation | Authentication and sessions, RBAC with data scopes, users / roles / permission matrix, organization structure, employee master with history, audit log, dashboard, notifications, account security, workflow engine, work calendars | ✅ |
-| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36) | ✅ MVPs with documented limitations |
+| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39) | ✅ MVPs with documented limitations |
 | HRD | Competency and skill gaps (24), Training / TNA / IDP (25), OJT / learning paths / certifications (35), Career / talent / 9-box / succession (28) | ✅ |
 | HROD | Workforce planning and organization design (32), Engagement / eNPS surveys (33) | ✅ |
 | Analytics and AI | Employee 360 and executive analytics (29), grounded HR Copilot (31) | ✅ |
@@ -296,6 +296,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
 - Benefits: no insurer API, hospital/provider integration, medical diagnosis management, dependent insurance workflow, flexible-benefit marketplace, OCR receipt extraction, fraud detection, bank payment, taxability engine, statutory benefits engine, automatic payroll treatment, FX conversion, external reimbursement provider, automated adjudication, recurring payment scheduler, provident-fund/pension engine, stock/equity benefits, AI recommendation, partial approval, or department-level utilization for executives.
+- Expenses and travel: no OCR or receipt extraction, FX conversion, per-diem or mileage engine, corporate-card or bank feed, advances, booking or itinerary integration, budget or cost-centre accounting, tax or VAT decision, partial or line-item approval, approval delegation, reminder scheduler, department-level spend views, or Employee 360 section.
 - Learning (OJT, paths, certifications): no LMS/SCORM, exam engine, external certification registry or accreditation integration, automatic competency level change, AI observation or assessment, certificate PDF, expiry scheduler or reminder delivery, trainer workload balancing, path recommendation, promotion on path completion, or bulk certification import.
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
 - Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
@@ -1036,6 +1037,26 @@ claims waiting for them there.
   team scope opens nothing, and executives see organization-wide totals by plan and category only.
 - **Not** insurance adjudication, a medical system, bank payment, tax calculation, statutory benefit compliance,
   fraud detection or automatic payroll payment.
+
+## Expenses and travel (Task 39)
+
+Guide: [docs/expense-travel.md](docs/expense-travel.md). HRM → Expenses & travel (Dashboard, Travel requests,
+Expense reports, Policies, Categories, Payments, Reports); employees get My expenses with travel requests, expense
+reports, receipts and payments; approvers see the requests waiting for them there.
+
+- **Policies** — categories, one policy per set of employees with per-category rules (receipt required, receipt
+  from an amount with an inclusive threshold, per-item maximum, age, travel-only, description) and allow-listed
+  applicability (organization, department, job, position, employment type and status); the most specific
+  applicable policy is the default and an overlap at the same level is reported, never guessed.
+- **Travel** — `TRV-` requests approved through the generic workflow before the trip; approval books and pays
+  nothing; the expense report is created from the approved trip only by an explicit action; the purpose never
+  leaves the request, its review view and the owner's export.
+- **Expense reports** — `EXP-` reports with items and Document Center receipts; the total is the server's exact
+  Σ of the items; submission freezes the rules and starts one workflow even under a double submit; no partial
+  approval; approval makes a report ready for payment; payment is a human record; the payroll handoff is
+  explicit, idempotent and ends in "sent to payroll", not "paid". Managers see nothing outside their queue;
+  executives see aggregates by policy, category and month only.
+- **Not** benefit claims, OCR, FX, per diem, corporate cards, booking, budgets, tax, or bank payment.
 
 ## Pilot release
 

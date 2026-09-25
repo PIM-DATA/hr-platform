@@ -308,7 +308,7 @@ export const DOCUMENT_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
 export const DOCUMENT_EXPIRY_STATES = ['VALID', 'EXPIRING_SOON', 'EXPIRED', 'NONE'] as const;
 export type DocumentExpiryState = (typeof DOCUMENT_EXPIRY_STATES)[number];
 /** The only things a document may be attached to. A table name never comes from a request. */
-export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION', 'BENEFIT_CLAIM'] as const;
+export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION', 'BENEFIT_CLAIM', 'EXPENSE_ITEM'] as const;
 export type DocumentLinkEntityType = (typeof DOCUMENT_LINK_ENTITY_TYPES)[number];
 export const REPORT_VISIBILITIES = ['PRIVATE', 'SHARED'] as const;
 export const REPORT_FIELD_TYPES = ['STRING', 'NUMBER', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN', 'ENUM'] as const;
@@ -378,6 +378,17 @@ export const NOTIFICATION_TYPES = {
   BENEFIT_CLAIM_REJECTED: 'BENEFIT_CLAIM_REJECTED',
   BENEFIT_CLAIM_READY_FOR_PAYMENT: 'BENEFIT_CLAIM_READY_FOR_PAYMENT',
   BENEFIT_CLAIM_PAID: 'BENEFIT_CLAIM_PAID',
+  // Expense and travel (Task 39): request / report number and status only. Never a purpose, a merchant, a description, a receipt name or a payment reference.
+  TRAVEL_REQUEST_SUBMITTED: 'TRAVEL_REQUEST_SUBMITTED',
+  TRAVEL_APPROVAL_REQUIRED: 'TRAVEL_APPROVAL_REQUIRED',
+  TRAVEL_REQUEST_APPROVED: 'TRAVEL_REQUEST_APPROVED',
+  TRAVEL_REQUEST_REJECTED: 'TRAVEL_REQUEST_REJECTED',
+  EXPENSE_REPORT_SUBMITTED: 'EXPENSE_REPORT_SUBMITTED',
+  EXPENSE_APPROVAL_REQUIRED: 'EXPENSE_APPROVAL_REQUIRED',
+  EXPENSE_REPORT_APPROVED: 'EXPENSE_REPORT_APPROVED',
+  EXPENSE_REPORT_REJECTED: 'EXPENSE_REPORT_REJECTED',
+  EXPENSE_READY_FOR_PAYMENT: 'EXPENSE_READY_FOR_PAYMENT',
+  EXPENSE_PAID: 'EXPENSE_PAID',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -395,7 +406,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'expense', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -709,6 +720,30 @@ export const AUDIT_ACTIONS = {
   CANCEL_BENEFIT_CLAIM: 'CANCEL_BENEFIT_CLAIM',
   RECORD_BENEFIT_PAYMENT: 'RECORD_BENEFIT_PAYMENT',
   SEND_BENEFIT_TO_PAYROLL: 'SEND_BENEFIT_TO_PAYROLL',
+  CREATE_EXPENSE_CATEGORY: 'CREATE_EXPENSE_CATEGORY',
+  UPDATE_EXPENSE_CATEGORY: 'UPDATE_EXPENSE_CATEGORY',
+  CREATE_EXPENSE_POLICY: 'CREATE_EXPENSE_POLICY',
+  UPDATE_EXPENSE_POLICY: 'UPDATE_EXPENSE_POLICY',
+  ACTIVATE_EXPENSE_POLICY: 'ACTIVATE_EXPENSE_POLICY',
+  CREATE_TRAVEL_POLICY: 'CREATE_TRAVEL_POLICY',
+  UPDATE_TRAVEL_POLICY: 'UPDATE_TRAVEL_POLICY',
+  CREATE_TRAVEL_REQUEST: 'CREATE_TRAVEL_REQUEST',
+  UPDATE_TRAVEL_REQUEST: 'UPDATE_TRAVEL_REQUEST',
+  SUBMIT_TRAVEL_REQUEST: 'SUBMIT_TRAVEL_REQUEST',
+  APPROVE_TRAVEL_REQUEST: 'APPROVE_TRAVEL_REQUEST',
+  REJECT_TRAVEL_REQUEST: 'REJECT_TRAVEL_REQUEST',
+  CANCEL_TRAVEL_REQUEST: 'CANCEL_TRAVEL_REQUEST',
+  COMPLETE_TRAVEL_REQUEST: 'COMPLETE_TRAVEL_REQUEST',
+  CREATE_EXPENSE_REPORT: 'CREATE_EXPENSE_REPORT',
+  UPDATE_EXPENSE_REPORT: 'UPDATE_EXPENSE_REPORT',
+  UPDATE_EXPENSE_ITEM: 'UPDATE_EXPENSE_ITEM',
+  LINK_EXPENSE_RECEIPT: 'LINK_EXPENSE_RECEIPT',
+  SUBMIT_EXPENSE_REPORT: 'SUBMIT_EXPENSE_REPORT',
+  APPROVE_EXPENSE_REPORT: 'APPROVE_EXPENSE_REPORT',
+  REJECT_EXPENSE_REPORT: 'REJECT_EXPENSE_REPORT',
+  CANCEL_EXPENSE_REPORT: 'CANCEL_EXPENSE_REPORT',
+  RECORD_EXPENSE_PAYMENT: 'RECORD_EXPENSE_PAYMENT',
+  SEND_EXPENSE_TO_PAYROLL: 'SEND_EXPENSE_TO_PAYROLL',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -782,6 +817,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   lifecycle: 'Employee lifecycle',
   learning: 'OJT, learning paths and certifications',
   benefits: 'Benefits, welfare and claims',
+  expense: 'Expenses and travel',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

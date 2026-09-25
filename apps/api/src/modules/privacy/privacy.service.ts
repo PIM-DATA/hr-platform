@@ -181,7 +181,7 @@ export const privacyService = {
         },
         orderBy: { submittedAt: 'asc' },
         take: MAX_ROWS,
-      }).then((rows) => rows.map((w) => (w.module !== 'benefits' ? w : {
+      }).then((rows) => rows.map((w) => (w.module !== 'benefits' && w.module !== 'expense' ? w : {
         // Benefits (Task 36): a claim reviewer's comment is the reviewer's confidential word about the claim; the decision and its timing are exported, the words are not.
         ...w, steps: w.steps.map((s) => ({ ...s, comment: s.comment === null ? null : '[reviewer comment not exported]' })), actions: w.actions.map((a) => ({ ...a, comment: a.comment === null ? null : '[reviewer comment not exported]' })),
       })));
@@ -257,12 +257,22 @@ export const privacyService = {
         tx.benefitEntitlement.findMany({ where: { employeeId }, select: { currency: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true, plan: { select: { code: true, name: true } }, period: { select: { name: true, periodStart: true, periodEnd: true } }, ledger: { select: { entryType: true, amount: true, claimId: true, reasonCode: true, createdAt: true }, orderBy: { createdAt: 'asc' } } } }),
         tx.benefitClaim.findMany({ where: { employeeId }, select: { claimNumber: true, planNameSnapshot: true, currency: true, claimedAmount: true, approvedAmount: true, serviceDate: true, submittedDate: true, description: true, status: true, approvedAt: true, rejectedAt: true, cancelledAt: true, paymentMethod: true, paymentReference: true, paidDate: true }, orderBy: { createdAt: 'asc' } }),
       ]);
+      // Expense and travel (Task 39): the subject's own travel requests, expense reports, items, amounts, statuses and payment
+      // records. Approver comments stay on the workflow timeline (redacted there, like benefits); receipts stay in the Document Center.
+      const [travelRequests, expenseReports] = await Promise.all([
+        tx.travelRequest.findMany({ where: { employeeId }, select: { requestNumber: true, travelPolicyNameSnapshot: true, purpose: true, destination: true, startDate: true, endDate: true, estimatedAmount: true, currency: true, status: true, submittedAt: true, approvedAt: true, rejectedAt: true, cancelledAt: true, completedAt: true }, orderBy: { createdAt: 'asc' } }),
+        tx.expenseReport.findMany({ where: { employeeId }, select: { reportNumber: true, title: true, policyNameSnapshot: true, currency: true, totalAmount: true, status: true, submittedAt: true, approvedAt: true, rejectedAt: true, cancelledAt: true, paymentMethod: true, paymentReference: true, paidDate: true, travelRequest: { select: { requestNumber: true } }, items: { select: { categoryNameSnapshot: true, expenseDate: true, amount: true, merchant: true, description: true, originalAmount: true, originalCurrency: true, receiptRequiredSnapshot: true }, orderBy: { expenseDate: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
+      ]);
+      const expenses = {
+        travelRequests: travelRequests.map((t) => ({ ...t, estimatedAmount: t.estimatedAmount.toFixed(2) })),
+        expenseReports: expenseReports.map((r) => ({ ...r, travelRequestNumber: r.travelRequest?.requestNumber ?? null, travelRequest: undefined, totalAmount: r.totalAmount.toFixed(2), items: r.items.map((i) => ({ ...i, amount: i.amount.toFixed(2), originalAmount: i.originalAmount?.toFixed(2) ?? null })) })),
+      };
       const benefits = {
         enrollments: benefitEnrollments,
         entitlements: benefitEntitlements.map((e) => ({ plan: e.plan, period: e.period, currency: e.currency, granted: e.grantedAmount.toFixed(2), adjustment: e.adjustmentAmount.toFixed(2), reserved: e.reservedAmount.toFixed(2), consumed: e.consumedAmount.toFixed(2), ledger: e.ledger.map((l) => ({ ...l, amount: l.amount.toFixed(2) })) })),
         claims: benefitClaims.map((c) => ({ ...c, claimedAmount: c.claimedAmount.toFixed(2), approvedAmount: c.approvedAmount?.toFixed(2) ?? null })),
       };
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning, benefits };
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning, benefits, expenses };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -287,6 +297,7 @@ export const privacyService = {
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
         { category: 'potential assessments, 9-box placement, reviewer comments and succession notes', reason: 'These are internal organizational judgments about the subject made by named reviewers and nominators. The export carries the factual records (review participation, pool membership, nominations and recorded readiness); disclosing the judgments themselves is a policy decision made outside this export.' },
+        { category: 'travel and expense approver comments', reason: 'Approver comments live on the approval workflow timeline and are the approver\'s confidential words; the export carries the requests, reports, items, amounts, statuses and payment records themselves.' },
         { category: 'benefit claim reviewer comments and entitlement adjustment notes', reason: 'Reviewer comments live on the approval workflow timeline and adjustment notes are HR\'s working notes; the export carries the claims, amounts, statuses, ledger movements and payment records themselves.' },
         { category: 'OJT trainer comments and observation comments', reason: 'These are the trainer\'s and HR\'s words about the subject\'s work; the export carries the observation results, the subject\'s own reflections, activity completion and the assessment outcomes.' },
         { category: 'probation review comments, offboarding reason notes and exit-interview notes', reason: 'These are internal HR and reviewer records about the subject; the export carries the dates, statuses and outcomes of each process and the subject\'s own task list.' },
@@ -310,6 +321,7 @@ export const privacyService = {
           onboardingPlans: data.lifecycle.onboardingPlans.length, probationCases: data.lifecycle.probationCases.length, offboardingCases: data.lifecycle.offboardingCases.length,
           ojtPlans: data.learning.ojtPlans.length, learningPathAssignments: data.learning.pathAssignments.length, certifications: data.learning.certifications.length,
           benefitEnrollments: data.benefits.enrollments.length, benefitEntitlements: data.benefits.entitlements.length, benefitClaims: data.benefits.claims.length,
+          travelRequests: data.expenses.travelRequests.length, expenseReports: data.expenses.expenseReports.length,
         },
       },
     });
