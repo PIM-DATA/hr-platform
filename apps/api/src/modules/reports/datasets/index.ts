@@ -11,6 +11,8 @@ import { visibleDepartmentIds } from '../../workforce/workforce.types';
 import { responseRate } from '@hr/shared';
 import { aggregateEngagement, loadSurveyQuestions } from '../../engagement/results.service';
 import { visibleDepartmentIds as engagementVisibleDepartments } from '../../engagement/engagement.types';
+import { checklistProgress } from '@hr/shared';
+import { lifecycleEmployeeWhere } from '../../lifecycle/lifecycle.types';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
 
@@ -345,4 +347,52 @@ registerDataset(memoryDataset({
     f({ id: 'responseRate', label: 'Response rate %', type: 'NUMBER', column: 'responseRate' }), f({ id: 'enps', label: 'eNPS', type: 'NUMBER', column: 'enps' }),
   ],
   load: (auth) => engagementRows(auth, 'department'),
+}));
+
+// ---------- lifecycle (Task 34): departments, statuses, dates and progress — never a name, a note or a comment ----------
+const LIFECYCLE_VIEW = [PERMISSIONS.LIFECYCLE_VIEW_REPORTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PROBATION_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE];
+const monthOf = (d: Date | string | null) => (d ? (typeof d === 'string' ? d : d.toISOString()).slice(0, 7) : null);
+registerDataset(memoryDataset({
+  id: 'onboarding_summary', name: 'Onboarding summary', description: 'One row per onboarding plan: department and job at creation, start month, status, task counts and progress. No names, no task notes.',
+  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
+    f({ id: 'startMonth', label: 'Start month', type: 'STRING', column: 'startMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED']) }),
+    f({ id: 'tasks', label: 'Tasks', type: 'NUMBER', column: 'tasks', aggregatable: true }), f({ id: 'done', label: 'Done', type: 'NUMBER', column: 'done', aggregatable: true }), f({ id: 'overdue', label: 'Overdue', type: 'NUMBER', column: 'overdue', aggregatable: true }), f({ id: 'progressPct', label: 'Progress %', type: 'NUMBER', column: 'progressPct' }),
+  ],
+  async load(auth) {
+    need(auth, ...LIFECYCLE_VIEW);
+    const t = new Date().toISOString().slice(0, 10);
+    const rows = await prisma.onboardingPlan.findMany({ where: await lifecycleEmployeeWhere(auth), select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, status: true, tasks: { select: { status: true, required: true, dueDate: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, tasks: p.total, done: p.done, overdue: r.status === 'ACTIVE' ? r.tasks.filter((x) => (x.status === 'PENDING' || x.status === 'IN_PROGRESS') && x.dueDate < t).length : 0, progressPct: p.pct }; });
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'probation_summary', name: 'Probation summary', description: 'One row per probation case: department and job at creation, start and end months, status, outcome and extension count. No names, no review comments.',
+  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
+    f({ id: 'startMonth', label: 'Start month', type: 'STRING', column: 'startMonth', groupable: true }), f({ id: 'endMonth', label: 'Current end month', type: 'STRING', column: 'endMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'PENDING_REVIEW', 'PASSED', 'EXTENDED', 'NOT_PASSED', 'CANCELLED']) }),
+    f({ id: 'outcome', label: 'Final outcome', type: 'ENUM', column: 'outcome', groupable: true, options: opts(['PASS', 'NOT_PASS']) }), f({ id: 'extensions', label: 'Extensions', type: 'NUMBER', column: 'extensions', aggregatable: true }), f({ id: 'durationDays', label: 'Duration (days)', type: 'NUMBER', column: 'durationDays', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...LIFECYCLE_VIEW);
+    const rows = await prisma.probationCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, currentEndDate: true, status: true, finalOutcome: true, reviews: { select: { outcome: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), endMonth: r.currentEndDate.slice(0, 7), status: r.status, outcome: r.finalOutcome, extensions: r.reviews.filter((x) => x.outcome === 'EXTEND').length, durationDays: Math.round((Date.parse(`${r.currentEndDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'offboarding_summary', name: 'Offboarding summary', description: 'One row per offboarding case: department and job at creation, reason category, planned and actual last-day months, status and task counts. No names, no reason notes, no exit-interview notes.',
+  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
+    f({ id: 'reason', label: 'Reason', type: 'ENUM', column: 'reason', groupable: true, options: opts(['RESIGNATION', 'END_OF_CONTRACT', 'RETIREMENT', 'TERMINATION', 'REDUNDANCY', 'TRANSFER_OUT', 'OTHER']) }),
+    f({ id: 'plannedMonth', label: 'Planned last-day month', type: 'STRING', column: 'plannedMonth', groupable: true }), f({ id: 'completedMonth', label: 'Completed month', type: 'STRING', column: 'completedMonth', groupable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'READY_TO_COMPLETE', 'COMPLETED', 'CANCELLED']) }), f({ id: 'tasks', label: 'Tasks', type: 'NUMBER', column: 'tasks', aggregatable: true }), f({ id: 'done', label: 'Done', type: 'NUMBER', column: 'done', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...LIFECYCLE_VIEW);
+    const rows = await prisma.offboardingCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, reasonCode: true, plannedLastWorkingDate: true, completedAt: true, status: true, tasks: { select: { status: true, required: true } } }, orderBy: { plannedLastWorkingDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, reason: r.reasonCode, plannedMonth: r.plannedLastWorkingDate.slice(0, 7), completedMonth: monthOf(r.completedAt), status: r.status, tasks: p.total, done: p.done }; });
+  },
 }));

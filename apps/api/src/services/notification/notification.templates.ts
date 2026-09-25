@@ -26,6 +26,8 @@ export interface TemplateVars {
   /** A survey's name and closing date. Never an answer, a result or a manager's request to respond. */
   surveyName?: string;
   closingDate?: string;
+  /** Lifecycle: a task count (names and dates reuse the fields above). Never a reason note, a review comment or a security detail. */
+  taskCount?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -149,6 +151,14 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Talent review assigned',
     body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your potential assessment.`,
   }),
+  // Lifecycle (Task 34): names, counts and dates only.
+  [NOTIFICATION_TYPES.ONBOARDING_PLAN_STARTED]: (v) => ({ title: 'Your onboarding has started', body: `Your onboarding checklist is ready${v.date ? ` (start date ${v.date})` : ''}. Open My Onboarding to see your tasks.` }),
+  [NOTIFICATION_TYPES.ONBOARDING_TASK_ASSIGNED]: (v) => ({ title: 'Onboarding tasks assigned to you', body: `${v.taskCount ?? 'Some'} onboarding task(s) for ${v.employeeName ?? 'a new joiner'} are assigned to you.` }),
+  [NOTIFICATION_TYPES.PROBATION_REVIEW_REQUIRED]: (v) => ({ title: 'Probation review due', body: `${v.employeeName ?? 'An employee'}'s probation ends on ${v.date ?? 'the scheduled date'}. Please record your review.` }),
+  [NOTIFICATION_TYPES.PROBATION_OUTCOME_RECORDED]: (v) => ({ title: 'Probation outcome recorded', body: `A probation outcome has been recorded for your probation period${v.date ? ` ending ${v.date}` : ''}.` }),
+  [NOTIFICATION_TYPES.OFFBOARDING_STARTED]: (v) => ({ title: 'Offboarding checklist started', body: `Your offboarding checklist is ready${v.date ? ` (planned last working day ${v.date})` : ''}.` }),
+  [NOTIFICATION_TYPES.OFFBOARDING_TASK_ASSIGNED]: (v) => ({ title: 'Offboarding tasks assigned to you', body: `${v.taskCount ?? 'Some'} offboarding task(s) for ${v.employeeName ?? 'a colleague'} are assigned to you.` }),
+  [NOTIFICATION_TYPES.OFFBOARDING_COMPLETED]: (v) => ({ title: 'Employment separation completed', body: `The separation process for ${v.employeeName ?? 'an employee'} was completed${v.date ? ` (last working day ${v.date})` : ''}.` }),
   // Engagement: the survey name and, when set, its closing date. Nothing about answers or results.
   [NOTIFICATION_TYPES.ENGAGEMENT_SURVEY_OPENED]: (v) => ({
     title: 'A survey is open for you',

@@ -135,6 +135,28 @@ export async function createEmployeeWithTx(tx: Tx, input: CreateEmployeeInput, a
   return created;
 }
 
+/**
+ * Employment separation — the one master change the lifecycle module may cause, composable inside the caller's
+ * transaction. Locks the employee, refuses a second separation, requires that direct reports and headed
+ * departments were reassigned (the same rule as deactivation), sets TERMINATED + terminationDate, closes the open
+ * position and manager history rows on the last working date, and audits. It does not touch the user account, pay
+ * or documents; the caller decides about the account with the users domain helper.
+ */
+export async function separateEmployeeWithTx(tx: Tx, employeeId: string, input: { terminationDate: string; reason: string }, actor: Actor): Promise<{ userId: string | null; employeeCode: string }> {
+  await tx.$executeRaw`SELECT "id" FROM "employees" WHERE "id" = ${employeeId} FOR UPDATE`;
+  const before = await tx.employee.findUnique({ where: { id: employeeId }, include: detailInclude });
+  if (!before) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
+  if (before.employmentStatus === 'TERMINATED') throw new AppError(409, 'EMPLOYEE_ALREADY_TERMINATED', `${before.employeeCode} has already left`);
+  const activeDirectReports = before._count.directReports; const headedDepartments = before.headOfDepartments.length;
+  if (activeDirectReports > 0 || headedDepartments > 0) throw new AppError(409, 'EMPLOYEE_IN_USE', `${before.employeeCode} still manages ${activeDirectReports} active employee(s) and heads ${headedDepartments} department(s); reassign them first`, [{ field: 'activeDirectReports', message: String(activeDirectReports) }, { field: 'headedDepartments', message: String(headedDepartments) }]);
+  const end = new Date(`${input.terminationDate}T00:00:00Z`);
+  await tx.employee.update({ where: { id: employeeId }, data: { employmentStatus: 'TERMINATED', terminationDate: end, updatedBy: actor.auth.userId } });
+  await tx.employeePosition.updateMany({ where: { employeeId, endDate: null }, data: { endDate: end } });
+  await tx.employeeManager.updateMany({ where: { employeeId, endDate: null }, data: { endDate: end } });
+  await auditService.log(audit(actor, 'TERMINATE_EMPLOYEE', employeeId, { employmentStatus: before.employmentStatus, terminationDate: before.terminationDate?.toISOString() ?? null }, { employmentStatus: 'TERMINATED', terminationDate: input.terminationDate, reason: input.reason }), tx);
+  return { userId: before.user?.id ?? null, employeeCode: before.employeeCode };
+}
+
 export const employeesService = {
   async list(auth: AuthContext, q: EmployeeListQuery) {
     const filters: Prisma.EmployeeWhereInput = {};

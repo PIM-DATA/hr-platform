@@ -1,4 +1,4 @@
-import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem } from '@hr/shared';
+import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem, checklistProgress } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { hasPermission } from '../../services/authorization/authorization.service';
@@ -83,9 +83,11 @@ export const employee360Service = {
       recruitment: !self && has(auth, PERMISSIONS.RECRUITMENT_MANAGE),
       career: self ? has(auth, PERMISSIONS.CAREER_VIEW) : has(auth, PERMISSIONS.CAREER_MANAGE) || has(auth, PERMISSIONS.TALENT_MANAGE) || (has(auth, PERMISSIONS.TALENT_VIEW) && isManagerOf),
       talent: !self && (has(auth, PERMISSIONS.TALENT_MANAGE) || has(auth, PERMISSIONS.SUCCESSION_MANAGE) || (has(auth, PERMISSIONS.TALENT_VIEW) && isManagerOf)),
+      // Lifecycle (Task 34): statuses and dates only, under each process's own view permission. Never a note, a comment or a reason note.
+      lifecycle: has(auth, PERMISSIONS.ONBOARDING_VIEW) || has(auth, PERMISSIONS.PROBATION_VIEW) || has(auth, PERMISSIONS.OFFBOARDING_VIEW) || has(auth, PERMISSIONS.ONBOARDING_MANAGE) || has(auth, PERMISSIONS.PROBATION_MANAGE) || has(auth, PERMISSIONS.OFFBOARDING_MANAGE),
     };
 
-    const [employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent] = await Promise.all([
+    const [employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle] = await Promise.all([
       section('employment', async () => {
         const [positions, managers] = await Promise.all([employeesService.positionHistory(auth, employeeId), employeesService.managerHistory(auth, employeeId)]);
         const timeline = timelineFrom(positions, managers, profile.hireDate, profile.terminationDate, profile.employmentStatus);
@@ -168,9 +170,22 @@ export const employee360Service = {
         if (s.latestTalentReview?.finalizedAt) activity.push({ date: s.latestTalentReview.finalizedAt.slice(0, 10), domain: 'talent', title: `Talent review finalized — ${s.latestTalentReview.cycleName}`, detail: null });
         return s;
       }) : null,
+      may.lifecycle ? section('lifecycle', async () => {
+        const [plan, probation, offboarding] = await Promise.all([
+          has(auth, PERMISSIONS.ONBOARDING_VIEW) || has(auth, PERMISSIONS.ONBOARDING_MANAGE) ? prisma.onboardingPlan.findFirst({ where: { employeeId }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, startDate: true, completedAt: true, tasks: { select: { status: true, required: true } } } }) : null,
+          has(auth, PERMISSIONS.PROBATION_VIEW) || has(auth, PERMISSIONS.PROBATION_MANAGE) ? prisma.probationCase.findFirst({ where: { employeeId, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, startDate: true, currentEndDate: true, finalOutcome: true } }) : null,
+          has(auth, PERMISSIONS.OFFBOARDING_VIEW) || has(auth, PERMISSIONS.OFFBOARDING_MANAGE) ? prisma.offboardingCase.findFirst({ where: { employeeId, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, plannedLastWorkingDate: true, actualLastWorkingDate: true } }) : null,
+        ]);
+        const progress = plan ? checklistProgress(plan.tasks) : null;
+        return {
+          onboarding: plan ? { id: plan.id, status: plan.status, startDate: plan.startDate, progressPct: progress!.pct, completedAt: plan.completedAt?.toISOString() ?? null } : null,
+          probation: probation ? { id: probation.id, status: probation.status, startDate: probation.startDate, currentEndDate: probation.currentEndDate, finalOutcome: probation.finalOutcome } : null,
+          offboarding: offboarding ? { id: offboarding.id, status: offboarding.status, plannedLastWorkingDate: offboarding.plannedLastWorkingDate, actualLastWorkingDate: offboarding.actualLastWorkingDate } : null,
+        };
+      }) : null,
     ]);
 
-    const sections: Sections = { employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent };
+    const sections: Sections = { employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle };
     const visibleSections = (Object.keys(sections) as (keyof Sections)[]).filter((k) => sections[k] !== null || (k === 'recruitment' && may.recruitment));
     return {
       profile, visibleSections, sections,

@@ -112,6 +112,16 @@ export const PERMISSIONS = {
   ENGAGEMENT_RESPOND: 'engagement.respond',
   ENGAGEMENT_VIEW_RESULTS: 'engagement.view_results',
   ENGAGEMENT_MANAGE: 'engagement.manage',
+  ONBOARDING_VIEW: 'onboarding.view',
+  ONBOARDING_COMPLETE_TASKS: 'onboarding.complete_tasks',
+  PROBATION_VIEW: 'probation.view',
+  PROBATION_REVIEW: 'probation.review',
+  PROBATION_MANAGE: 'probation.manage',
+  OFFBOARDING_VIEW: 'offboarding.view',
+  OFFBOARDING_MANAGE: 'offboarding.manage',
+  OFFBOARDING_COMPLETE_TASKS: 'offboarding.complete_tasks',
+  OFFBOARDING_COMPLETE_SEPARATION: 'offboarding.complete_separation',
+  LIFECYCLE_VIEW_REPORTS: 'lifecycle.view_reports',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -157,7 +167,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.LEAVE_MANAGE_ENTITLEMENTS, module: 'leave', description: 'Generate and adjust leave entitlements, view ledgers' },
   { code: PERMISSIONS.LEAVE_VIEW, module: 'leave', description: 'View leave requests and balances within my data scope' },
   { code: PERMISSIONS.LEAVE_REQUEST, module: 'leave', description: 'Create, submit and cancel my own leave requests' },
-  { code: PERMISSIONS.ONBOARDING_MANAGE, module: 'onboarding', description: 'Import a customer onboarding workbook (creates organizations, departments, jobs, positions and employees)' },
+  { code: PERMISSIONS.ONBOARDING_MANAGE, module: 'onboarding', description: 'Manage onboarding: templates, plans and task assignment, plus the customer data import workbook' },
   { code: PERMISSIONS.ACCOUNT_MANAGE_RECOVERY, module: 'account', description: 'Issue one-time password reset links and revoke other users\' sessions' },
   { code: PERMISSIONS.PRIVACY_MANAGE_REQUESTS, module: 'privacy', description: 'Record and track privacy requests from data subjects' },
   { code: PERMISSIONS.PRIVACY_EXPORT_DATA, module: 'privacy', description: 'Export an employee\'s personal data' },
@@ -231,6 +241,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.ENGAGEMENT_RESPOND, module: 'engagement', description: 'Answer surveys assigned to me' },
   { code: PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, module: 'engagement', description: 'See aggregate survey results within the data scope — never an individual answer' },
   { code: PERMISSIONS.ENGAGEMENT_MANAGE, module: 'engagement', description: 'Run surveys: question bank, audiences, open/close, participation, identified-survey respondent detail and closed anonymous comments' },
+  { code: PERMISSIONS.ONBOARDING_VIEW, module: 'lifecycle', description: 'See onboarding plans and tasks within the data scope (own plan for an employee)' },
+  { code: PERMISSIONS.ONBOARDING_COMPLETE_TASKS, module: 'lifecycle', description: 'Complete onboarding tasks assigned to me' },
+  { code: PERMISSIONS.PROBATION_VIEW, module: 'lifecycle', description: 'See probation cases within the data scope (own dates and outcome for an employee)' },
+  { code: PERMISSIONS.PROBATION_REVIEW, module: 'lifecycle', description: 'Submit the probation review I am assigned as reviewer' },
+  { code: PERMISSIONS.PROBATION_MANAGE, module: 'lifecycle', description: 'Configure probation policies, open cases and reassign reviewers' },
+  { code: PERMISSIONS.OFFBOARDING_VIEW, module: 'lifecycle', description: 'See offboarding cases within the data scope (own checklist for an employee)' },
+  { code: PERMISSIONS.OFFBOARDING_MANAGE, module: 'lifecycle', description: 'Manage offboarding: templates, cases, tasks, dates, reason notes and exit interview notes' },
+  { code: PERMISSIONS.OFFBOARDING_COMPLETE_TASKS, module: 'lifecycle', description: 'Complete offboarding tasks assigned to me' },
+  { code: PERMISSIONS.OFFBOARDING_COMPLETE_SEPARATION, module: 'lifecycle', description: 'Complete an employment separation from a ready offboarding case (the one action that changes the employee master)' },
+  { code: PERMISSIONS.LIFECYCLE_VIEW_REPORTS, module: 'lifecycle', description: 'Aggregate lifecycle reporting: joiners, onboarding completion, probation outcomes, departures — counts only' },
 ];
 
 /**

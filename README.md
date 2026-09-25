@@ -301,9 +301,10 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Documents: local filesystem storage adapter only, no malware scanning, no OCR, no e-signature, no approval workflow, no retention automation, no content search, no external DMS, no PDF generation, no expiry reminders.
 - Reports: no arbitrary SQL, custom joins, calculated fields, pivots, charts, dashboard designer, scheduled/emailed reports, warehouse, BI connector, PDF designer or background export job.
 - Workforce planning: no headcount approval workflow, financial budgeting, salary-cost simulation, predictive demand, attrition forecasting, automatic position creation, automatic restructuring, automatic employee movement, termination planning, optimization algorithm, skills-based hiring recommendation, advanced org-chart graphics or external planning integration.
+- Lifecycle: no external onboarding portal, user/email provisioning, ITSM, asset or device management, background check, e-signature, payroll settlement, severance or statutory termination engine, leave payout, external deprovisioning, automated replacement requisition, exit-interview sentiment AI, automatic probation decision or reminder scheduler.
 - Engagement: no external survey link, email/SMS delivery, scheduled reminders, recurring pulse scheduler, AI sentiment or topic modelling, benchmark provider, action-plan workflow, statistics engine, branching, matrix questions, attachments, multilingual questionnaire engine, or cryptographic anonymity guarantee.
 - HR Copilot: one provider adapter (Anthropic), no streaming, no conversation persistence, no embeddings/semantic search, pattern-based decision-boundary classifier, in-memory rate limiter, no proactive insights or actions; real-provider answers are non-deterministic (tests use the fake provider).
-- Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
+- Department head is set from the Departments page only; termination happens only through offboarding separation completion (`terminationDate` is otherwise read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
 
 ## Workflow engine (shared service)
@@ -976,6 +977,24 @@ Surveys, Question bank, Results, Comments, Participation, Reports).
   frozen audience. Themes average identical scales only; there is no invented engagement index.
 - **No employment decisions** — nothing feeds performance, talent, relations, payroll or the Employee 360. **Not**
   AI sentiment, mood detection, attrition prediction, automatic action planning, or perfect anonymity.
+
+## Onboarding, probation and offboarding (Task 34)
+
+Guide: [docs/employee-lifecycle.md](docs/employee-lifecycle.md). HRM → Employee lifecycle (Dashboard, Onboarding,
+Probation, Offboarding, Templates, Reports); employees get My lifecycle; managers get Team onboarding, Probation
+reviews and Team offboarding.
+
+- **Onboarding** — checklist templates copied into a plan per new joiner (snapshotted context, due dates from the
+  start date), tasks for the employee, the manager, HR or a named user, document-backed tasks through the Document
+  Center, progress as bookkeeping. A new hire without an account keeps unassigned tasks; no account is created.
+- **Probation** — configurable policies (duration, extension limit), cases with a computed end date and the manager
+  as default reviewer, a human review recorded as PASS / EXTEND / NOT_PASS with full history. No score, no
+  recommendation, and NOT PASS changes nothing in employment.
+- **Offboarding** — cases with a reason, confidential reason note, planned and actual last day, exit checklist and
+  HR-only exit interview. The one explicit action, **Complete employment separation**, terminates the employee
+  through the employees domain, disables the account and revokes sessions through the users domain, in one
+  transaction. **Not** automatic IT provisioning or deprovisioning, statutory termination, final payroll, severance,
+  leave payout, asset management, or AI probation decisions.
 
 ## Pilot release
 

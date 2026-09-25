@@ -117,6 +117,14 @@ import { EngagementDashboardPage } from '@/features/engagement/DashboardPage';
 import { SurveysPage as EngagementSurveysPage } from '@/features/engagement/SurveysPage';
 import { QuestionBankPage } from '@/features/engagement/QuestionBankPage';
 import { EngagementCommentsPage, EngagementParticipationPage, EngagementReportsPage, EngagementResultsPage } from '@/features/engagement/ResultsPage';
+import { LifecycleLayout } from '@/features/lifecycle/lifecycle-ui';
+import { MyLifecyclePage } from '@/features/lifecycle/MyLifecyclePage';
+import { LifecycleDashboardPage } from '@/features/lifecycle/DashboardPage';
+import { OnboardingPage as LifecycleOnboardingPage } from '@/features/lifecycle/OnboardingPage';
+import { ProbationPage } from '@/features/lifecycle/ProbationPage';
+import { OffboardingPage } from '@/features/lifecycle/OffboardingPage';
+import { TemplatesPage as LifecycleTemplatesPage } from '@/features/lifecycle/TemplatesPage';
+import { LifecycleReportsPage } from '@/features/lifecycle/ReportsPage';
 import { DocumentsLayout } from '@/features/documents/documents-ui';
 import { MyDocumentsPage } from '@/features/documents/MyDocumentsPage';
 import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents/DocumentCenterPage';
@@ -410,6 +418,20 @@ export const router = createBrowserRouter([
                   { path: 'team', element: <TeamEngagementPage /> }, { path: 'dashboard', element: <EngagementDashboardPage /> }, { path: 'surveys', element: <EngagementSurveysPage /> }, { path: 'results', element: <EngagementResultsPage /> }, { path: 'reports', element: <EngagementReportsPage /> },
                 ] },
                 { element: <RequirePermission permission={PERMISSIONS.ENGAGEMENT_MANAGE} />, children: [{ path: 'questions', element: <QuestionBankPage /> }, { path: 'comments', element: <EngagementCommentsPage /> }, { path: 'participation', element: <EngagementParticipationPage /> }] },
+              ],
+            }],
+          },
+          {
+            element: <RequirePermission permission={[PERMISSIONS.ONBOARDING_VIEW, PERMISSIONS.PROBATION_VIEW, PERMISSIONS.OFFBOARDING_VIEW, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PROBATION_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE, PERMISSIONS.LIFECYCLE_VIEW_REPORTS]} />,
+            children: [{
+              path: 'hrm/lifecycle', element: <LifecycleLayout />,
+              children: [
+                { index: true, element: <MyLifecyclePage /> }, { path: 'dashboard', element: <LifecycleDashboardPage /> },
+                { element: <RequirePermission permission={[PERMISSIONS.ONBOARDING_VIEW, PERMISSIONS.ONBOARDING_MANAGE]} />, children: [{ path: 'onboarding', element: <LifecycleOnboardingPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.PROBATION_VIEW, PERMISSIONS.PROBATION_MANAGE]} />, children: [{ path: 'probation', element: <ProbationPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.OFFBOARDING_VIEW, PERMISSIONS.OFFBOARDING_MANAGE]} />, children: [{ path: 'offboarding', element: <OffboardingPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE]} />, children: [{ path: 'templates', element: <LifecycleTemplatesPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.LIFECYCLE_VIEW_REPORTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PROBATION_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE]} />, children: [{ path: 'reports', element: <LifecycleReportsPage /> }] },
               ],
             }],
           },

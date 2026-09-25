@@ -68,6 +68,8 @@ export interface Employee360Dto {
     recruitment: { candidateNumber: string; source: string; openingTitle: string; applicationNumber: string; appliedAt: string; hiredAt: string | null } | null;
     career: MyCareerDto | null;
     talent: TalentSummaryDto | null;
+    /** Lifecycle statuses and dates under each process's own view permission. Never a note, a comment or a reason note. */
+    lifecycle: { onboarding: { id: string; status: string; startDate: string; progressPct: number; completedAt: string | null } | null; probation: { id: string; status: string; startDate: string; currentEndDate: string; finalOutcome: string | null } | null; offboarding: { id: string; status: string; plannedLastWorkingDate: string; actualLastWorkingDate: string | null } | null } | null;
   };
   /** Curated cross-domain events the caller is allowed to see. Never the audit table. */
   activity: { date: string; domain: string; title: string; detail: string | null }[];

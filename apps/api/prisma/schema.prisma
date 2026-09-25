@@ -3063,3 +3063,254 @@ model EngagementResponseAnswer {
   @@index([questionId, numericValue])
   @@map("engagement_response_answers")
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Task 34 — Employee lifecycle: onboarding, probation, offboarding. Checklists and decisions beside the employee
+// master. The master changes only through the explicit separation completion, via the employees domain helper.
+// ---------------------------------------------------------------------------------------------------------------
+
+model LifecycleTemplate {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  description    String?
+  type           String // ONBOARDING | OFFBOARDING
+  organizationId String?  @map("organization_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tasks LifecycleTemplateTask[]
+
+  @@index([type, isActive])
+  @@map("lifecycle_templates")
+}
+
+model LifecycleTemplateTask {
+  id                 String            @id @default(cuid())
+  templateId         String            @map("template_id")
+  template           LifecycleTemplate @relation(fields: [templateId], references: [id])
+  title              String
+  description        String?
+  category           String
+  assigneeType       String            @map("assignee_type") // EMPLOYEE | MANAGER | HR | SPECIFIC_USER
+  specificUserId     String?           @map("specific_user_id")
+  dueOffsetDays      Int               @map("due_offset_days")
+  relativeTo         String            @map("relative_to") // HIRE_DATE | START_DATE | LAST_WORKING_DATE | CASE_START
+  required           Boolean           @default(true)
+  sortOrder          Int               @default(0) @map("sort_order")
+  documentCategoryId String?           @map("document_category_id")
+  requiresDocument   Boolean           @default(false) @map("requires_document")
+
+  @@index([templateId, sortOrder])
+  @@map("lifecycle_template_tasks")
+}
+
+/// A checklist for one new joiner. Snapshots the employee's context at creation; tasks are copies of the template.
+model OnboardingPlan {
+  id                   String    @id @default(cuid())
+  employeeId           String    @map("employee_id")
+  templateId           String?   @map("template_id")
+  templateNameSnapshot String?   @map("template_name_snapshot")
+  employeeCodeSnapshot String    @map("employee_code_snapshot")
+  employeeNameSnapshot String    @map("employee_name_snapshot")
+  organizationSnapshot String?   @map("organization_snapshot")
+  departmentSnapshot   String?   @map("department_snapshot")
+  jobSnapshot          String?   @map("job_snapshot")
+  positionSnapshot     String?   @map("position_snapshot")
+  managerIdSnapshot    String?   @map("manager_id_snapshot")
+  managerNameSnapshot  String?   @map("manager_name_snapshot")
+  managerCodeSnapshot  String?   @map("manager_code_snapshot")
+  departmentIdSnapshot String?   @map("department_id_snapshot")
+  hireDateSnapshot     String    @map("hire_date_snapshot")
+  startDate            String    @map("start_date")
+  status               String    @default("DRAFT") // DRAFT | ACTIVE | COMPLETED | CANCELLED
+  hrOwnerUserId        String?   @map("hr_owner_user_id")
+  applicationId        String?   @map("application_id")
+  probationCaseId      String?   @map("probation_case_id")
+  createdByUserId      String    @map("created_by_user_id")
+  activatedAt          DateTime? @map("activated_at")
+  completedAt          DateTime? @map("completed_at")
+  cancelledAt          DateTime? @map("cancelled_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  tasks OnboardingTask[]
+
+  @@index([employeeId, status])
+  @@index([status])
+  @@map("onboarding_plans")
+}
+
+model OnboardingTask {
+  id                  String         @id @default(cuid())
+  planId              String         @map("plan_id")
+  plan                OnboardingPlan @relation(fields: [planId], references: [id])
+  titleSnapshot       String         @map("title_snapshot")
+  descriptionSnapshot String?        @map("description_snapshot")
+  categorySnapshot    String         @map("category_snapshot")
+  assigneeType        String         @map("assignee_type")
+  assigneeUserId      String?        @map("assignee_user_id")
+  assigneeEmployeeId  String?        @map("assignee_employee_id")
+  dueDate             String         @map("due_date")
+  required            Boolean        @default(true)
+  requiresDocument    Boolean        @default(false) @map("requires_document")
+  documentId          String?        @map("document_id")
+  status              String         @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED | CANCELLED
+  completedAt         DateTime?      @map("completed_at")
+  completedByUserId   String?        @map("completed_by_user_id")
+  /// Operational note. Never a password or a secret; audited by length only.
+  note                String?
+  sortOrder           Int            @default(0) @map("sort_order")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  @@index([planId, status])
+  @@index([assigneeUserId, status])
+  @@map("onboarding_tasks")
+}
+
+/// Customer-configurable probation terms. No duration is hardcoded anywhere.
+model ProbationPolicy {
+  id               String   @id @default(cuid())
+  name             String
+  organizationId   String?  @map("organization_id")
+  durationDays     Int      @map("duration_days")
+  reviewLeadDays   Int?     @map("review_lead_days")
+  allowExtension   Boolean  @default(true) @map("allow_extension")
+  maxExtensionDays Int?     @map("max_extension_days")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  cases ProbationCase[]
+
+  @@map("probation_policies")
+}
+
+model ProbationCase {
+  id                   String           @id @default(cuid())
+  employeeId           String           @map("employee_id")
+  policyId             String?          @map("policy_id")
+  policy               ProbationPolicy? @relation(fields: [policyId], references: [id])
+  policyNameSnapshot   String?          @map("policy_name_snapshot")
+  allowExtension       Boolean          @default(true) @map("allow_extension")
+  maxExtensionDays     Int?             @map("max_extension_days")
+  employeeCodeSnapshot String           @map("employee_code_snapshot")
+  employeeNameSnapshot String           @map("employee_name_snapshot")
+  organizationSnapshot String?          @map("organization_snapshot")
+  departmentSnapshot   String?          @map("department_snapshot")
+  departmentIdSnapshot String?          @map("department_id_snapshot")
+  jobSnapshot          String?          @map("job_snapshot")
+  positionSnapshot     String?          @map("position_snapshot")
+  managerIdSnapshot    String?          @map("manager_id_snapshot")
+  managerNameSnapshot  String?          @map("manager_name_snapshot")
+  managerCodeSnapshot  String?          @map("manager_code_snapshot")
+  startDate            String           @map("start_date")
+  originalEndDate      String           @map("original_end_date")
+  currentEndDate       String           @map("current_end_date")
+  reviewerUserId       String?          @map("reviewer_user_id")
+  status               String           @default("ACTIVE") // ACTIVE | PENDING_REVIEW | PASSED | EXTENDED | NOT_PASSED | CANCELLED
+  finalOutcome         String?          @map("final_outcome")
+  finalizedAt          DateTime?        @map("finalized_at")
+  cancelledAt          DateTime?        @map("cancelled_at")
+  createdByUserId      String           @map("created_by_user_id")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  reviews ProbationReview[]
+
+  @@index([employeeId, status])
+  @@index([status, currentEndDate])
+  @@index([reviewerUserId, status])
+  @@map("probation_cases")
+}
+
+/// One review event. Never overwritten; an extension keeps the previous event.
+model ProbationReview {
+  id               String        @id @default(cuid())
+  caseId           String        @map("case_id")
+  case             ProbationCase @relation(fields: [caseId], references: [id])
+  reviewerUserId   String        @map("reviewer_user_id")
+  reviewDate       String        @map("review_date")
+  outcome          String // PASS | EXTEND | NOT_PASS
+  /// Reviewer's words. HR and the reviewer only; never the employee, never the executive, never audited.
+  comment          String?
+  extensionEndDate String?       @map("extension_end_date")
+  previousEndDate  String        @map("previous_end_date")
+  submittedAt      DateTime      @default(now()) @map("submitted_at")
+
+  @@index([caseId, submittedAt])
+  @@map("probation_reviews")
+}
+
+model OffboardingCase {
+  id                        String    @id @default(cuid())
+  employeeId                String    @map("employee_id")
+  templateId                String?   @map("template_id")
+  templateNameSnapshot      String?   @map("template_name_snapshot")
+  reasonCode                String    @map("reason_code")
+  /// HR-confidential. Never to the employee, the manager or the executive; audited by length only.
+  reasonNote                String?   @map("reason_note")
+  plannedLastWorkingDate    String    @map("planned_last_working_date")
+  actualLastWorkingDate     String?   @map("actual_last_working_date")
+  employeeCodeSnapshot      String    @map("employee_code_snapshot")
+  employeeNameSnapshot      String    @map("employee_name_snapshot")
+  organizationSnapshot      String?   @map("organization_snapshot")
+  departmentSnapshot        String?   @map("department_snapshot")
+  departmentIdSnapshot      String?   @map("department_id_snapshot")
+  jobSnapshot               String?   @map("job_snapshot")
+  positionSnapshot          String?   @map("position_snapshot")
+  managerIdSnapshot         String?   @map("manager_id_snapshot")
+  managerNameSnapshot       String?   @map("manager_name_snapshot")
+  managerCodeSnapshot       String?   @map("manager_code_snapshot")
+  status                    String    @default("DRAFT") // DRAFT | ACTIVE | READY_TO_COMPLETE | COMPLETED | CANCELLED
+  hrOwnerUserId             String?   @map("hr_owner_user_id")
+  exitInterviewDate         String?   @map("exit_interview_date")
+  exitReasonCategory        String?   @map("exit_reason_category")
+  exitWouldRejoin           Boolean?  @map("exit_would_rejoin")
+  /// HR-confidential exit interview note. No sentiment analysis, no cross-domain effect.
+  exitInterviewNote         String?   @map("exit_interview_note")
+  exitInterviewerUserId     String?   @map("exit_interviewer_user_id")
+  separationAccountDisabled Boolean?  @map("separation_account_disabled")
+  separationSessionsRevoked Int?      @map("separation_sessions_revoked")
+  createdByUserId           String    @map("created_by_user_id")
+  activatedAt               DateTime? @map("activated_at")
+  completedAt               DateTime? @map("completed_at")
+  cancelledAt               DateTime? @map("cancelled_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  tasks OffboardingTask[]
+
+  @@index([employeeId, status])
+  @@index([status, plannedLastWorkingDate])
+  @@map("offboarding_cases")
+}
+
+model OffboardingTask {
+  id                  String          @id @default(cuid())
+  caseId              String          @map("case_id")
+  case                OffboardingCase @relation(fields: [caseId], references: [id])
+  titleSnapshot       String          @map("title_snapshot")
+  descriptionSnapshot String?         @map("description_snapshot")
+  categorySnapshot    String          @map("category_snapshot")
+  assigneeType        String          @map("assignee_type")
+  assigneeUserId      String?         @map("assignee_user_id")
+  assigneeEmployeeId  String?         @map("assignee_employee_id")
+  dueDate             String          @map("due_date")
+  required            Boolean         @default(true)
+  requiresDocument    Boolean         @default(false) @map("requires_document")
+  documentId          String?         @map("document_id")
+  status              String          @default("PENDING")
+  completedAt         DateTime?       @map("completed_at")
+  completedByUserId   String?         @map("completed_by_user_id")
+  note                String?
+  sortOrder           Int             @default(0) @map("sort_order")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  @@index([caseId, status])
+  @@index([assigneeUserId, status])
+  @@map("offboarding_tasks")
+}

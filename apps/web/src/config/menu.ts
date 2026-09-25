@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart,
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart, Milestone,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -45,6 +45,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Recruitment', path: '/hrm/recruitment', icon: UserPlus, permission: [P.RECRUITMENT_VIEW, P.RECRUITMENT_MANAGE, P.RECRUITMENT_INTERVIEW] },
       { label: 'Documents', path: '/hrm/documents', icon: FolderOpen, permission: [P.DOCUMENTS_VIEW_OWN, P.DOCUMENTS_VIEW, P.DOCUMENTS_MANAGE] },
       { label: 'Reports', path: '/hrm/reports', icon: Table2, permission: P.REPORTS_VIEW },
+      { label: 'Employee lifecycle', path: '/hrm/lifecycle', icon: Milestone, permission: [P.ONBOARDING_VIEW, P.PROBATION_VIEW, P.OFFBOARDING_VIEW, P.ONBOARDING_MANAGE, P.PROBATION_MANAGE, P.OFFBOARDING_MANAGE, P.LIFECYCLE_VIEW_REPORTS] },
     ],
   },
   {

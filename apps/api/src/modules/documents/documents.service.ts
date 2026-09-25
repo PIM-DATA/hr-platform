@@ -113,6 +113,15 @@ async function assertLinkAuthority(tx: Db, auth: AuthContext, entityType: Docume
       if (!r) throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'Candidate not found');
       return r.candidateNumber;
     }
+    case 'ONBOARDING_TASK': case 'OFFBOARDING_TASK': {
+      // The lifecycle module owns the task: its assignee (with the complete-tasks permission) or a lifecycle manager may attach.
+      const task = entityType === 'ONBOARDING_TASK' ? await tx.onboardingTask.findUnique({ where: { id: entityId }, select: { titleSnapshot: true, assigneeUserId: true } }) : await tx.offboardingTask.findUnique({ where: { id: entityId }, select: { titleSnapshot: true, assigneeUserId: true } });
+      if (!task) throw new AppError(404, 'LIFECYCLE_TASK_NOT_FOUND', 'Task not found');
+      const manage = entityType === 'ONBOARDING_TASK' ? PERMISSIONS.ONBOARDING_MANAGE : PERMISSIONS.OFFBOARDING_MANAGE;
+      const complete = entityType === 'ONBOARDING_TASK' ? PERMISSIONS.ONBOARDING_COMPLETE_TASKS : PERMISSIONS.OFFBOARDING_COMPLETE_TASKS;
+      if (!(hasPermission(auth, manage) || (task.assigneeUserId === auth.userId && hasPermission(auth, complete)))) throw new AppError(403, 'FORBIDDEN', 'Only the task assignee or a lifecycle manager may attach a document to this task');
+      return task.titleSnapshot;
+    }
     case 'RECRUITMENT_APPLICATION': {
       need(PERMISSIONS.RECRUITMENT_MANAGE);
       const r = await tx.recruitmentApplication.findUnique({ where: { id: entityId }, select: { applicationNumber: true } });
@@ -211,6 +220,21 @@ export const documentCategoryService = {
     return categoryDto(row);
   },
 };
+
+/**
+ * Attach a document to a record inside the caller's transaction. The owning module's authority is checked here
+ * (`assertLinkAuthority`), the link is idempotent for the same record, and the link is audited. Other modules call
+ * this rather than writing `document_links` themselves.
+ */
+export async function linkDocumentWithTx(tx: Tx, documentId: string, input: LinkDocumentInput, actor: Actor): Promise<{ linkId: string; label: string; created: boolean }> {
+  const doc = await load(tx, documentId);
+  const label = await assertLinkAuthority(tx, actor.auth, input.entityType, input.entityId);
+  const existing = await tx.documentLink.findUnique({ where: { documentId_entityType_entityId: { documentId, entityType: input.entityType, entityId: input.entityId } } });
+  if (existing) return { linkId: existing.id, label, created: false };
+  const link = await tx.documentLink.create({ data: { documentId, entityType: input.entityType, entityId: input.entityId, relationType: input.relationType ?? null, createdByUserId: actor.auth.userId } });
+  await auditService.log(audit(actor, AUDIT_ACTIONS.LINK_DOCUMENT, 'Document', documentId, { documentNumber: doc.documentNumber, classification: doc.classification, linkId: link.id, entityType: input.entityType, entityId: input.entityId, label }), tx);
+  return { linkId: link.id, label, created: true };
+}
 
 export const documentService = {
   policy(category?: DocumentCategoryDto | null) {
@@ -313,17 +337,9 @@ export const documentService = {
   },
 
   async link(id: string, input: LinkDocumentInput, actor: Actor): Promise<DocumentDetailDto> {
-    await prisma.$transaction(async (tx) => {
-      const doc = await load(tx, id);
-      const label = await assertLinkAuthority(tx, actor.auth, input.entityType, input.entityId);
-      const existing = await tx.documentLink.findUnique({ where: { documentId_entityType_entityId: { documentId: id, entityType: input.entityType, entityId: input.entityId } } });
-      if (existing) throw new AppError(409, 'DOCUMENT_LINK_EXISTS', 'Already linked');
-      const link = await tx.documentLink.create({ data: { documentId: id, entityType: input.entityType, entityId: input.entityId, relationType: input.relationType ?? null, createdByUserId: actor.auth.userId } });
-      await auditService.log(audit(actor, AUDIT_ACTIONS.LINK_DOCUMENT, 'Document', id, { documentNumber: doc.documentNumber, classification: doc.classification, linkId: link.id, entityType: input.entityType, entityId: input.entityId, targetLabelLength: label.length }), tx);
-    });
+    await prisma.$transaction(async (tx) => { const r = await linkDocumentWithTx(tx, id, input, actor); if (!r.created) throw new AppError(409, 'DOCUMENT_LINK_EXISTS', 'Already linked'); });
     return this.get(actor.auth, id);
   },
-
   async unlink(id: string, linkId: string, actor: Actor): Promise<DocumentDetailDto> {
     await prisma.$transaction(async (tx) => {
       const doc = await load(tx, id);

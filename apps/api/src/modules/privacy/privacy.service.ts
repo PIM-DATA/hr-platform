@@ -230,7 +230,15 @@ export const privacyService = {
         participation: engagementParticipation.map((a) => ({ survey: a.survey, invitedAt: a.invitedAt, completed: !!a.completedAt, completedAt: a.completedAt })),
         identifiedResponses: identifiedResponses.map((r) => ({ survey: r.response.survey, submittedAt: r.submittedAt, answers: r.response.answers.map((x) => ({ question: x.question.questionTextSnapshot, questionType: x.question.questionType, numericValue: x.numericValue, booleanValue: x.booleanValue, textValue: x.textValue, choiceValues: x.choiceValues })) })),
       };
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement };
+      // Lifecycle (Task 34): the subject's own process records — dates, statuses, outcomes and their own task list.
+      // Reviewer comments, HR reason notes, exit-interview notes and other people's task notes are internal HR records and are not exported.
+      const [onboardingPlans, probationCases, offboardingCases] = await Promise.all([
+        tx.onboardingPlan.findMany({ where: { employeeId }, select: { startDate: true, hireDateSnapshot: true, status: true, activatedAt: true, completedAt: true, cancelledAt: true, templateNameSnapshot: true, tasks: { select: { titleSnapshot: true, categorySnapshot: true, assigneeType: true, dueDate: true, status: true, completedAt: true } } }, orderBy: { createdAt: 'desc' } }),
+        tx.probationCase.findMany({ where: { employeeId }, select: { startDate: true, originalEndDate: true, currentEndDate: true, status: true, finalOutcome: true, finalizedAt: true, policyNameSnapshot: true, reviews: { select: { reviewDate: true, outcome: true, extensionEndDate: true, submittedAt: true } } }, orderBy: { createdAt: 'desc' } }),
+        tx.offboardingCase.findMany({ where: { employeeId }, select: { reasonCode: true, plannedLastWorkingDate: true, actualLastWorkingDate: true, status: true, activatedAt: true, completedAt: true, cancelledAt: true, tasks: { where: { assigneeEmployeeId: employeeId }, select: { titleSnapshot: true, categorySnapshot: true, dueDate: true, status: true, completedAt: true } } }, orderBy: { createdAt: 'desc' } }),
+      ]);
+      const lifecycle = { onboardingPlans, probationCases, offboardingCases };
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -255,6 +263,7 @@ export const privacyService = {
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
         { category: 'potential assessments, 9-box placement, reviewer comments and succession notes', reason: 'These are internal organizational judgments about the subject made by named reviewers and nominators. The export carries the factual records (review participation, pool membership, nominations and recorded readiness); disclosing the judgments themselves is a policy decision made outside this export.' },
+        { category: 'probation review comments, offboarding reason notes and exit-interview notes', reason: 'These are internal HR and reviewer records about the subject; the export carries the dates, statuses and outcomes of each process and the subject\'s own task list.' },
         { category: 'anonymous survey answers', reason: 'Answers to anonymous surveys are stored with survey-local cohort tokens only — no employee, user, assignment, organization, department, job or position identifier — so they cannot be attributed to the subject and are not reconstructed. The participation record (invited, completed) is exported.' },
         { category: 'employee relations case narratives and internal notes', reason: 'The case description and HR investigation notes are HR working records that may concern other people; the export carries the documents issued to the subject and their acknowledgements.' },
       ],
@@ -272,6 +281,7 @@ export const privacyService = {
           employeeRelations: data.employeeRelations.length,
           talentReviews: data.talentReviews.length, talentPools: data.talentPools.length, successionNominations: data.successionNominations.length,
           engagementParticipation: data.engagement.participation.length, identifiedSurveyResponses: data.engagement.identifiedResponses.length,
+          onboardingPlans: data.lifecycle.onboardingPlans.length, probationCases: data.lifecycle.probationCases.length, offboardingCases: data.lifecycle.offboardingCases.length,
         },
       },
     });

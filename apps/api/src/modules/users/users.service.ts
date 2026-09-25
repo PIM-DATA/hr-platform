@@ -100,6 +100,23 @@ async function countActiveSystemAdmins(tx: Tx | typeof prisma, excludeUserId?: s
   });
 }
 
+/**
+ * Transaction-composable deactivation for the lifecycle module's separation completion: same rules as the admin
+ * action (never yourself, never the last System Admin), same effect (is_active=false, all sessions revoked, audited),
+ * inside the caller's transaction. Idempotent for an already-inactive account.
+ */
+export async function deactivateUserWithTx(tx: Tx, id: string, actor: Actor, reason: string): Promise<{ disabled: boolean; sessionsRevoked: number }> {
+  if (id === actor.auth.userId) throw new AppError(409, 'SELF_DEACTIVATION_NOT_ALLOWED', 'You cannot deactivate your own account');
+  const before = await findOrThrow(tx, id);
+  if (!before.isActive) return { disabled: false, sessionsRevoked: 0 };
+  const isSystemAdmin = before.userRoles.some((ur) => ur.role.code === ROLES.SYSTEM_ADMIN);
+  if (isSystemAdmin && (await countActiveSystemAdmins(tx, id)) === 0) throw new AppError(409, 'LAST_SYSTEM_ADMIN', 'This is the last active System Admin and cannot be deactivated');
+  await tx.user.update({ where: { id }, data: { isActive: false } });
+  const revoked = await tx.session.deleteMany({ where: { userId: id } });
+  await auditService.log({ ...actorMeta(actor), action: AUDIT_ACTIONS.DEACTIVATE_USER, module: 'users', recordType: 'User', recordId: id, oldValue: { isActive: true }, newValue: { isActive: false, sessionsRevoked: revoked.count, reason } }, tx);
+  return { disabled: true, sessionsRevoked: revoked.count };
+}
+
 export const usersService = {
   async list(query: UserListQuery): Promise<{ data: UserDto[]; meta: { page: number; pageSize: number; total: number } }> {
     const where: Prisma.UserWhereInput = {};

@@ -101,14 +101,14 @@ describe('no SQL, strict definitions', () => {
 describe('datasets and scope', () => {
   it('lists only datasets the caller may use; the executive sees aggregate-only datasets', async () => {
     const ids = (s: Session) => as(s, 'get', `${R}/datasets`).then((r) => (r.body.data ?? []).map((d: { id: string }) => d.id) as string[]);
-    expect((await ids(hrAdmin)).sort()).toEqual(['attendance_summary', 'competency_gaps', 'employee_directory', 'employee_relations_aggregate', 'engagement_department_summary', 'engagement_question_summary', 'engagement_survey_summary', 'headcount_summary', 'leave_requests', 'organization_design_summary', 'overtime_approved', 'payroll_period_summary', 'performance_results', 'recruitment_applications', 'talent_review_summary', 'training_history', 'workforce_plan_summary']);
+    expect((await ids(hrAdmin)).sort()).toEqual(['attendance_summary', 'competency_gaps', 'employee_directory', 'employee_relations_aggregate', 'engagement_department_summary', 'engagement_question_summary', 'engagement_survey_summary', 'headcount_summary', 'leave_requests', 'offboarding_summary', 'onboarding_summary', 'organization_design_summary', 'overtime_approved', 'payroll_period_summary', 'performance_results', 'probation_summary', 'recruitment_applications', 'talent_review_summary', 'training_history', 'workforce_plan_summary']);
     const m = await ids(mgr);
     expect(m).toContain('employee_directory');
     expect(m).not.toContain('employee_relations_aggregate');
     expect(m).not.toContain('payroll_period_summary');
     expect(m).not.toContain('recruitment_applications');
     expect(m).not.toContain('competency_gaps');
-    expect((await ids(exec)).sort()).toEqual(['engagement_department_summary', 'engagement_question_summary', 'engagement_survey_summary', 'headcount_summary', 'organization_design_summary', 'workforce_plan_summary']); // Task 32/33 datasets are aggregate-only
+    expect((await ids(exec)).sort()).toEqual(['engagement_department_summary', 'engagement_question_summary', 'engagement_survey_summary', 'headcount_summary', 'offboarding_summary', 'onboarding_summary', 'organization_design_summary', 'probation_summary', 'workforce_plan_summary']); // Task 32/33/34 datasets are aggregate-only
     expect((await as(emp, 'get', `${R}/datasets`)).status).toBe(403);
     const fields = (await as(hrAdmin, 'get', `${R}/datasets`)).body.data.find((d: { id: string }) => d.id === 'employee_directory').fields.map((f: { id: string }) => f.id);
     expect(fields).not.toEqual(expect.arrayContaining(['email', 'phone', 'salary', 'baseSalary', 'potentialComment', 'storageKey']));
