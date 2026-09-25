@@ -110,6 +110,13 @@ import { HeadcountPlanPage } from '@/features/workforce/HeadcountPlanPage';
 import { OrgDesignPage } from '@/features/workforce/OrgDesignPage';
 import { VacanciesPage } from '@/features/workforce/VacanciesPage';
 import { WorkforceReportsPage } from '@/features/workforce/ReportsPage';
+import { EngagementLayout } from '@/features/engagement/engagement-ui';
+import { MySurveysPage } from '@/features/engagement/MySurveysPage';
+import { TeamEngagementPage } from '@/features/engagement/TeamPage';
+import { EngagementDashboardPage } from '@/features/engagement/DashboardPage';
+import { SurveysPage as EngagementSurveysPage } from '@/features/engagement/SurveysPage';
+import { QuestionBankPage } from '@/features/engagement/QuestionBankPage';
+import { EngagementCommentsPage, EngagementParticipationPage, EngagementReportsPage, EngagementResultsPage } from '@/features/engagement/ResultsPage';
 import { DocumentsLayout } from '@/features/documents/documents-ui';
 import { MyDocumentsPage } from '@/features/documents/MyDocumentsPage';
 import { DocumentCenterPage, DocumentCategoriesPage } from '@/features/documents/DocumentCenterPage';
@@ -390,6 +397,19 @@ export const router = createBrowserRouter([
                 ] },
                 { element: <RequirePermission permission={[PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE]} />, children: [{ path: 'design', element: <OrgDesignPage /> }] },
                 { path: 'reports', element: <WorkforceReportsPage /> },
+              ],
+            }],
+          },
+          {
+            element: <RequirePermission permission={[PERMISSIONS.ENGAGEMENT_RESPOND, PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE]} />,
+            children: [{
+              path: 'hrod/engagement', element: <EngagementLayout />,
+              children: [
+                { index: true, element: <MySurveysPage /> },
+                { element: <RequirePermission permission={[PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE]} />, children: [
+                  { path: 'team', element: <TeamEngagementPage /> }, { path: 'dashboard', element: <EngagementDashboardPage /> }, { path: 'surveys', element: <EngagementSurveysPage /> }, { path: 'results', element: <EngagementResultsPage /> }, { path: 'reports', element: <EngagementReportsPage /> },
+                ] },
+                { element: <RequirePermission permission={PERMISSIONS.ENGAGEMENT_MANAGE} />, children: [{ path: 'questions', element: <QuestionBankPage /> }, { path: 'comments', element: <EngagementCommentsPage /> }, { path: 'participation', element: <EngagementParticipationPage /> }] },
               ],
             }],
           },

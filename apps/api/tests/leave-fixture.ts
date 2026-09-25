@@ -93,7 +93,7 @@ export async function setupLeaveFixture(app: Server) {
     annualA: await policy({ name: 'Annual A', leaveTypeId: types.ANNUAL, organizationId: orgA.id, annualUnits: 10 }),
     annualB: await policy({ name: 'Annual B (negative ok)', leaveTypeId: types.ANNUAL, organizationId: orgB.id, annualUnits: 10, allowNegativeBalance: true }),
     sick: await policy({ name: 'Sick', leaveTypeId: types.SICK, annualUnits: 5, requiresAttachment: true }),
-    strict: await policy({ name: 'Strict', leaveTypeId: types.STRICT, annualUnits: 10, allowHalfDay: false, allowBackdate: false, minNoticeDays: 3, maxConsecutiveDays: 2, requiresReason: true }),
+    strict: await policy({ name: 'Strict', leaveTypeId: types.STRICT, annualUnits: 10, allowHalfDay: false, allowBackdate: false, minNoticeDays: 4, maxConsecutiveDays: 2, requiresReason: true }), // 4 calendar days: the next working day violates it on every weekday, including Fridays
     long: await policy({ name: 'Long (two-step)', leaveTypeId: types.LONG, annualUnits: 10, workflowDefinitionCode: 'LEAVE_TWO' }),
     adv: await policy({ name: 'Advance (negative ok)', leaveTypeId: types.ADV, annualUnits: 1, allowNegativeBalance: true }),
     auto: await policy({ name: 'Auto', leaveTypeId: types.AUTO, annualUnits: 5, workflowDefinitionCode: 'LEAVE_AUTO' }),

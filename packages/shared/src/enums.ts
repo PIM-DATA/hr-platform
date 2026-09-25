@@ -356,6 +356,7 @@ export const NOTIFICATION_TYPES = {
   HIRING_COMPLETED: 'HIRING_COMPLETED',
   TALENT_REVIEW_REQUIRED: 'TALENT_REVIEW_REQUIRED',
   TALENT_REVIEW_COMPLETED: 'TALENT_REVIEW_COMPLETED',
+  ENGAGEMENT_SURVEY_OPENED: 'ENGAGEMENT_SURVEY_OPENED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -373,7 +374,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -607,6 +608,18 @@ export const AUDIT_ACTIONS = {
   DUPLICATE_ORG_DESIGN_SCENARIO: 'DUPLICATE_ORG_DESIGN_SCENARIO',
   FINALIZE_ORG_DESIGN_SCENARIO: 'FINALIZE_ORG_DESIGN_SCENARIO',
   CREATE_REQUISITION_FROM_WORKFORCE_PLAN: 'CREATE_REQUISITION_FROM_WORKFORCE_PLAN',
+  CREATE_ENGAGEMENT_SURVEY: 'CREATE_ENGAGEMENT_SURVEY',
+  UPDATE_ENGAGEMENT_SURVEY: 'UPDATE_ENGAGEMENT_SURVEY',
+  ASSIGN_ENGAGEMENT_AUDIENCE: 'ASSIGN_ENGAGEMENT_AUDIENCE',
+  OPEN_ENGAGEMENT_SURVEY: 'OPEN_ENGAGEMENT_SURVEY',
+  CLOSE_ENGAGEMENT_SURVEY: 'CLOSE_ENGAGEMENT_SURVEY',
+  ARCHIVE_ENGAGEMENT_SURVEY: 'ARCHIVE_ENGAGEMENT_SURVEY',
+  DUPLICATE_ENGAGEMENT_SURVEY: 'DUPLICATE_ENGAGEMENT_SURVEY',
+  CREATE_ENGAGEMENT_QUESTION: 'CREATE_ENGAGEMENT_QUESTION',
+  UPDATE_ENGAGEMENT_QUESTION: 'UPDATE_ENGAGEMENT_QUESTION',
+  SUBMIT_ENGAGEMENT_RESPONSE: 'SUBMIT_ENGAGEMENT_RESPONSE',
+  VIEW_ENGAGEMENT_COMMENTS: 'VIEW_ENGAGEMENT_COMMENTS',
+  VIEW_ENGAGEMENT_RESPONDENT_DETAIL: 'VIEW_ENGAGEMENT_RESPONDENT_DETAIL',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -676,6 +689,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   reports: 'Reports',
   copilot: 'HR Copilot',
   workforce: 'Workforce planning',
+  engagement: 'Engagement surveys',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

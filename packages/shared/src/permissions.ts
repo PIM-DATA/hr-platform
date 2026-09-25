@@ -109,6 +109,9 @@ export const PERMISSIONS = {
   WORKFORCE_MANAGE: 'workforce.manage',
   ORG_DESIGN_VIEW: 'organization_design.view',
   ORG_DESIGN_MANAGE: 'organization_design.manage',
+  ENGAGEMENT_RESPOND: 'engagement.respond',
+  ENGAGEMENT_VIEW_RESULTS: 'engagement.view_results',
+  ENGAGEMENT_MANAGE: 'engagement.manage',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -225,6 +228,9 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.WORKFORCE_MANAGE, module: 'workforce', description: 'Finalize and archive planning cycles and hand a planned demand to recruitment (with recruitment.manage)' },
   { code: PERMISSIONS.ORG_DESIGN_VIEW, module: 'workforce', description: 'See organization-design scenarios and their comparison with the current structure' },
   { code: PERMISSIONS.ORG_DESIGN_MANAGE, module: 'workforce', description: 'Create, edit, duplicate and finalize organization-design scenarios (never the live organization)' },
+  { code: PERMISSIONS.ENGAGEMENT_RESPOND, module: 'engagement', description: 'Answer surveys assigned to me' },
+  { code: PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, module: 'engagement', description: 'See aggregate survey results within the data scope — never an individual answer' },
+  { code: PERMISSIONS.ENGAGEMENT_MANAGE, module: 'engagement', description: 'Run surveys: question bank, audiences, open/close, participation, identified-survey respondent detail and closed anonymous comments' },
 ];
 
 /**

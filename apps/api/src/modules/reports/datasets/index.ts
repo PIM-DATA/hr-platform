@@ -8,6 +8,9 @@ import { applicationScopeWhere } from '../../recruitment/recruitment.types';
 import { skillGapService } from '../../competency/skill-gap.service';
 import { headcountDelta } from '@hr/shared';
 import { visibleDepartmentIds } from '../../workforce/workforce.types';
+import { responseRate } from '@hr/shared';
+import { aggregateEngagement, loadSurveyQuestions } from '../../engagement/results.service';
+import { visibleDepartmentIds as engagementVisibleDepartments } from '../../engagement/engagement.types';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
 
@@ -278,4 +281,67 @@ registerDataset(memoryDataset({
     const nodes = await prisma.organizationDesignNode.findMany({ select: { name: true, nodeType: true, plannedOnly: true, scenario: { select: { name: true, status: true } }, positions: { select: { plannedHeadcount: true } } }, orderBy: [{ scenario: { createdAt: 'desc' } }, { sortOrder: 'asc' }], take: 50000 });
     return nodes.map((n): Row => ({ scenario: n.scenario.name, scenarioStatus: n.scenario.status, unit: n.name, unitType: n.nodeType, plannedOnly: n.plannedOnly, plannedHeadcount: n.positions.reduce((s, p) => s + p.plannedHeadcount, 0) }));
   },
+}));
+
+// ---------- engagement (aggregate-safe, Task 33): the same threshold suppression as the results screens ----------
+const ENGAGEMENT_PERMS = [PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE];
+async function engagementRows(auth: AuthContext, grain: 'survey' | 'question' | 'department'): Promise<Row[]> {
+  need(auth, ...ENGAGEMENT_PERMS);
+  const visible = await engagementVisibleDepartments(prisma, auth);
+  const scope = visible ? { departmentIdSnapshot: { in: visible } } : {};
+  const surveys = await prisma.engagementSurvey.findMany({ where: { status: { in: ['OPEN', 'CLOSED', 'ARCHIVED'] } }, include: { _count: { select: { questions: true, assignments: true } } }, orderBy: { createdAt: 'desc' }, take: 200 });
+  const out: Row[] = [];
+  for (const s of surveys) {
+    const questions = await loadSurveyQuestions(prisma, s.id);
+    if (grain === 'department') {
+      const groups = await prisma.engagementSurveyAssignment.groupBy({ by: ['departmentIdSnapshot'], where: { surveyId: s.id, ...scope }, _count: { _all: true } });
+      const names = new Map((await prisma.department.findMany({ where: { id: { in: groups.map((g) => g.departmentIdSnapshot) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      for (const g of groups) {
+        const r = await aggregateEngagement(prisma, s, questions, { departmentIdSnapshot: g.departmentIdSnapshot }, false);
+        const completed = r.suppressed ? null : await prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, departmentIdSnapshot: g.departmentIdSnapshot, completedAt: { not: null } } });
+        out.push({ survey: s.name, surveyStatus: s.status, responseMode: s.responseMode, department: names.get(g.departmentIdSnapshot) ?? '?', suppressed: r.suppressed, assigned: r.suppressed ? null : g._count._all, completed, responseRate: r.suppressed || completed === null ? null : responseRate(completed, g._count._all), enps: r.suppressed ? null : (r.enps?.score ?? null) });
+      }
+      continue;
+    }
+    const r = await aggregateEngagement(prisma, s, questions, scope, false);
+    const [assigned, completed] = await Promise.all([prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, ...scope } }), prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, ...scope, completedAt: { not: null } } })]);
+    if (grain === 'survey') { out.push({ survey: s.name, code: s.code, surveyType: s.surveyType, surveyStatus: s.status, responseMode: s.responseMode, questions: s._count.questions, assigned: r.suppressed ? null : assigned, completed: r.suppressed ? null : completed, responseRate: r.suppressed ? null : responseRate(completed, assigned), suppressed: r.suppressed, enps: r.suppressed ? null : (r.enps?.score ?? null), closedAt: s.closedAt ? s.closedAt.toISOString() : null }); continue; }
+    for (const q of questions) { const qr = r.suppressed ? null : r.questions.find((x) => x.questionId === q.id) ?? null; out.push({ survey: s.name, surveyStatus: s.status, question: q.text, theme: q.theme, questionType: q.questionType, suppressed: r.suppressed, responses: qr ? qr.responseCount : null, average: qr ? qr.average : null }); }
+  }
+  return out;
+}
+registerDataset(memoryDataset({
+  id: 'engagement_survey_summary', name: 'Engagement survey summary', description: 'One row per survey: participation, response rate and eNPS. Groups below the survey\'s anonymity threshold are suppressed, exactly as on the results screens. No answer, no comment.',
+  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'survey', label: 'Survey', type: 'STRING', column: 'survey', groupable: true }), f({ id: 'code', label: 'Code', type: 'STRING', column: 'code' }),
+    f({ id: 'surveyType', label: 'Type', type: 'ENUM', column: 'surveyType', groupable: true, options: opts(['ENGAGEMENT', 'ENPS', 'PULSE', 'CUSTOM']) }),
+    f({ id: 'surveyStatus', label: 'Status', type: 'ENUM', column: 'surveyStatus', groupable: true, options: opts(['OPEN', 'CLOSED', 'ARCHIVED']) }),
+    f({ id: 'responseMode', label: 'Mode', type: 'ENUM', column: 'responseMode', groupable: true, options: opts(['ANONYMOUS', 'IDENTIFIED']) }),
+    f({ id: 'questions', label: 'Questions', type: 'NUMBER', column: 'questions' }), f({ id: 'assigned', label: 'Assigned', type: 'NUMBER', column: 'assigned', aggregatable: true }), f({ id: 'completed', label: 'Completed', type: 'NUMBER', column: 'completed', aggregatable: true }),
+    f({ id: 'responseRate', label: 'Response rate %', type: 'NUMBER', column: 'responseRate' }), f({ id: 'suppressed', label: 'Suppressed', type: 'BOOLEAN', column: 'suppressed', groupable: true }), f({ id: 'enps', label: 'eNPS', type: 'NUMBER', column: 'enps' }), f({ id: 'closedAt', label: 'Closed', type: 'DATETIME', column: 'closedAt' }),
+  ],
+  load: (auth) => engagementRows(auth, 'survey'),
+}));
+registerDataset(memoryDataset({
+  id: 'engagement_question_summary', name: 'Engagement question summary', description: 'One row per survey and question: response count and average for scaled questions. Suppressed surveys carry no figures. No answer text.',
+  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'survey', label: 'Survey', type: 'STRING', column: 'survey', groupable: true }), f({ id: 'surveyStatus', label: 'Status', type: 'ENUM', column: 'surveyStatus', groupable: true, options: opts(['OPEN', 'CLOSED', 'ARCHIVED']) }),
+    f({ id: 'question', label: 'Question', type: 'STRING', column: 'question' }), f({ id: 'theme', label: 'Theme', type: 'STRING', column: 'theme', groupable: true }),
+    f({ id: 'questionType', label: 'Question type', type: 'ENUM', column: 'questionType', groupable: true, options: opts(['LIKERT', 'SCALE', 'SINGLE_CHOICE', 'MULTI_CHOICE', 'YES_NO', 'TEXT', 'ENPS']) }),
+    f({ id: 'suppressed', label: 'Suppressed', type: 'BOOLEAN', column: 'suppressed', groupable: true }), f({ id: 'responses', label: 'Responses', type: 'NUMBER', column: 'responses', aggregatable: true }), f({ id: 'average', label: 'Average', type: 'NUMBER', column: 'average' }),
+  ],
+  load: (auth) => engagementRows(auth, 'question'),
+}));
+registerDataset(memoryDataset({
+  id: 'engagement_department_summary', name: 'Engagement department summary', description: 'One row per survey and department (snapshot at opening): participation, response rate and eNPS, suppressed below the anonymity threshold.',
+  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'survey', label: 'Survey', type: 'STRING', column: 'survey', groupable: true }), f({ id: 'surveyStatus', label: 'Status', type: 'ENUM', column: 'surveyStatus', groupable: true, options: opts(['OPEN', 'CLOSED', 'ARCHIVED']) }),
+    f({ id: 'responseMode', label: 'Mode', type: 'ENUM', column: 'responseMode', groupable: true, options: opts(['ANONYMOUS', 'IDENTIFIED']) }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
+    f({ id: 'suppressed', label: 'Suppressed', type: 'BOOLEAN', column: 'suppressed', groupable: true }), f({ id: 'assigned', label: 'Assigned', type: 'NUMBER', column: 'assigned', aggregatable: true }), f({ id: 'completed', label: 'Completed', type: 'NUMBER', column: 'completed', aggregatable: true }),
+    f({ id: 'responseRate', label: 'Response rate %', type: 'NUMBER', column: 'responseRate' }), f({ id: 'enps', label: 'eNPS', type: 'NUMBER', column: 'enps' }),
+  ],
+  load: (auth) => engagementRows(auth, 'department'),
 }));

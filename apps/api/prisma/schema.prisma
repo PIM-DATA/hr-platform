@@ -2891,3 +2891,140 @@ model OrganizationDesignPosition {
   @@index([scenarioId, nodeId])
   @@map("organization_design_positions")
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Task 33 — Engagement surveys and eNPS. Participation (who was invited, who completed) is kept apart from answers;
+// an anonymous response row carries no employee, user or assignment reference.
+// ---------------------------------------------------------------------------------------------------------------
+
+/// Customer-owned question wording. Deactivated, never deleted, once a survey has used it.
+model EngagementQuestion {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  theme           String?
+  text            String
+  questionType    String   @map("question_type") // LIKERT | SCALE | SINGLE_CHOICE | MULTI_CHOICE | YES_NO | TEXT | ENPS
+  defaultRequired Boolean  @default(true) @map("default_required")
+  /// Validated shape: scaleMin/scaleMax/scaleLabels, options[{code,label}], maxLength.
+  config          Json     @default("{}")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  surveyQuestions EngagementSurveyQuestion[]
+
+  @@map("engagement_questions")
+}
+
+model EngagementSurvey {
+  id                        String    @id @default(cuid())
+  code                      String    @unique
+  name                      String
+  description               String?
+  organizationId            String?   @map("organization_id")
+  surveyType                String    @map("survey_type") // ENGAGEMENT | ENPS | PULSE | CUSTOM
+  /// Chosen in DRAFT, immutable from OPEN on.
+  responseMode              String    @map("response_mode") // ANONYMOUS | IDENTIFIED
+  minimumAnonymousGroupSize Int       @default(5) @map("minimum_anonymous_group_size")
+  periodStart               String?   @map("period_start")
+  periodEnd                 String?   @map("period_end")
+  status                    String    @default("DRAFT") // DRAFT | OPEN | CLOSED | ARCHIVED
+  openedAt                  DateTime? @map("opened_at")
+  closedAt                  DateTime? @map("closed_at")
+  archivedAt                DateTime? @map("archived_at")
+  duplicatedFromId          String?   @map("duplicated_from_id")
+  createdByUserId           String    @map("created_by_user_id")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  questions   EngagementSurveyQuestion[]
+  assignments EngagementSurveyAssignment[]
+  responses   EngagementResponse[]
+
+  @@index([status])
+  @@map("engagement_surveys")
+}
+
+/// A frozen copy of the question as it was asked. Bank edits never change it.
+model EngagementSurveyQuestion {
+  id                   String              @id @default(cuid())
+  surveyId             String              @map("survey_id")
+  survey               EngagementSurvey    @relation(fields: [surveyId], references: [id])
+  sourceQuestionId     String?             @map("source_question_id")
+  sourceQuestion       EngagementQuestion? @relation(fields: [sourceQuestionId], references: [id])
+  questionTextSnapshot String              @map("question_text_snapshot")
+  themeSnapshot        String?             @map("theme_snapshot")
+  questionType         String              @map("question_type")
+  required             Boolean             @default(true)
+  scaleMin             Int?                @map("scale_min")
+  scaleMax             Int?                @map("scale_max")
+  isEnpsPrimary        Boolean             @default(false) @map("is_enps_primary")
+  displayOrder         Int                 @default(0) @map("display_order")
+  /// Validated: scaleLabels, options[{code,label}], maxLength.
+  configuration        Json                @default("{}")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  answers EngagementResponseAnswer[]
+
+  @@index([surveyId, displayOrder])
+  @@map("engagement_survey_questions")
+}
+
+/// Participation: who was invited and whether they completed. Dimensions are snapshots taken when the survey opened.
+/// For an anonymous survey there is deliberately no path from this row to a response.
+model EngagementSurveyAssignment {
+  id                     String           @id @default(cuid())
+  surveyId               String           @map("survey_id")
+  survey                 EngagementSurvey @relation(fields: [surveyId], references: [id])
+  employeeId             String           @map("employee_id")
+  organizationIdSnapshot String           @map("organization_id_snapshot")
+  departmentIdSnapshot   String           @map("department_id_snapshot")
+  jobIdSnapshot          String?          @map("job_id_snapshot")
+  positionIdSnapshot     String           @map("position_id_snapshot")
+  invitedAt              DateTime         @default(now()) @map("invited_at")
+  completedAt            DateTime?        @map("completed_at")
+
+  @@unique([surveyId, employeeId])
+  @@index([surveyId, departmentIdSnapshot])
+  @@map("engagement_survey_assignments")
+}
+
+/// One submission. ANONYMOUS: employeeId, assignmentId and submittedAt are null; only the date and the group
+/// dimensions needed for threshold-protected breakdowns (organization, department, job — never position) are kept.
+model EngagementResponse {
+  id                     String           @id @default(cuid())
+  surveyId               String           @map("survey_id")
+  survey                 EngagementSurvey @relation(fields: [surveyId], references: [id])
+  responseMode           String           @map("response_mode")
+  employeeId             String?          @map("employee_id")
+  assignmentId           String?          @unique @map("assignment_id")
+  organizationIdSnapshot String           @map("organization_id_snapshot")
+  departmentIdSnapshot   String           @map("department_id_snapshot")
+  jobIdSnapshot          String?          @map("job_id_snapshot")
+  positionIdSnapshot     String?          @map("position_id_snapshot")
+  submittedDate          String           @map("submitted_date")
+  submittedAt            DateTime?        @map("submitted_at")
+
+  answers EngagementResponseAnswer[]
+
+  @@index([surveyId, departmentIdSnapshot])
+  @@index([surveyId, jobIdSnapshot])
+  @@map("engagement_responses")
+}
+
+model EngagementResponseAnswer {
+  id           String                   @id @default(cuid())
+  responseId   String                   @map("response_id")
+  response     EngagementResponse       @relation(fields: [responseId], references: [id])
+  questionId   String                   @map("question_id")
+  question     EngagementSurveyQuestion @relation(fields: [questionId], references: [id])
+  numericValue Int?                     @map("numeric_value")
+  booleanValue Boolean?                 @map("boolean_value")
+  textValue    String?                  @map("text_value")
+  choiceValues Json?                    @map("choice_values")
+
+  @@unique([responseId, questionId])
+  @@index([questionId, numericValue])
+  @@map("engagement_response_answers")
+}

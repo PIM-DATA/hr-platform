@@ -18,4 +18,5 @@ export * from './documents';
 export * from './reports';
 export * from './copilot';
 export * from './workforce';
+export * from './engagement';
 export * from './schemas';

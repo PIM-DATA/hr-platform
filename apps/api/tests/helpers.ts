@@ -80,6 +80,12 @@ export async function cleanUsers() {
  */
 export async function resetDatabase() {
   assertTestDatabase();
+  await prisma.engagementResponseAnswer.deleteMany();
+  await prisma.engagementResponse.deleteMany();
+  await prisma.engagementSurveyAssignment.deleteMany();
+  await prisma.engagementSurveyQuestion.deleteMany();
+  await prisma.engagementSurvey.deleteMany();
+  await prisma.engagementQuestion.deleteMany();
   await prisma.organizationDesignPosition.deleteMany();
   await prisma.organizationDesignNode.deleteMany();
   await prisma.organizationDesignScenario.deleteMany();

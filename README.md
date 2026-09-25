@@ -301,6 +301,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Documents: local filesystem storage adapter only, no malware scanning, no OCR, no e-signature, no approval workflow, no retention automation, no content search, no external DMS, no PDF generation, no expiry reminders.
 - Reports: no arbitrary SQL, custom joins, calculated fields, pivots, charts, dashboard designer, scheduled/emailed reports, warehouse, BI connector, PDF designer or background export job.
 - Workforce planning: no headcount approval workflow, financial budgeting, salary-cost simulation, predictive demand, attrition forecasting, automatic position creation, automatic restructuring, automatic employee movement, termination planning, optimization algorithm, skills-based hiring recommendation, advanced org-chart graphics or external planning integration.
+- Engagement: no external survey link, email/SMS delivery, scheduled reminders, recurring pulse scheduler, AI sentiment or topic modelling, benchmark provider, action-plan workflow, statistics engine, branching, matrix questions, attachments, multilingual questionnaire engine, or cryptographic anonymity guarantee.
 - HR Copilot: one provider adapter (Anthropic), no streaming, no conversation persistence, no embeddings/semantic search, pattern-based decision-boundary classifier, in-memory rate limiter, no proactive insights or actions; real-provider answers are non-deterministic (tests use the fake provider).
 - Department head is set from the Departments page only; no termination flow (`terminationDate` read-only).
 - No automated frontend tests (API integration tests cover security and business rules; UI verified manually per task).
@@ -954,6 +955,27 @@ cycles, Headcount plan, Organization design, Vacancies, Reports).
 - **Reads only.** The module never creates, transfers, promotes or terminates an employee, never changes the
   organization master or payroll, and never approves headcount. It forecasts nothing, recommends nothing, ranks no
   scenario and lists no one for a reduction.
+
+## Engagement, eNPS and surveys (Task 33)
+
+Guide: [docs/engagement.md](docs/engagement.md). HROD → Engagement (My surveys, Team engagement, Dashboard,
+Surveys, Question bank, Results, Comments, Participation, Reports).
+
+- **Surveys** — engagement, eNPS, pulse or custom; a customer-owned question bank (Likert, scale, single/multi
+  choice, yes/no, text, eNPS) copied into each survey as frozen snapshots; audience by organization, department,
+  job, position or people, snapshotted at opening; DRAFT → OPEN → CLOSED → ARCHIVED by hand; duplicate copies the
+  questionnaire only.
+- **Anonymous or identified** — chosen in draft, immutable once open. Anonymous responses are not stored with
+  employee, user or assignment identifiers or a timestamp; participation (invited / completed) is a separate
+  record with no path to an answer. Opening an anonymous survey needs an audience at least the survey's minimum
+  group size (3–20, default 5).
+- **Suppression everywhere** — any group below the minimum is hidden after all filters combine, for HR,
+  executives and system administrators alike, on screens, CSV and the Report Center datasets. Managers see their
+  department aggregate only; executives aggregates only; free text is read by engagement managers after close.
+- **eNPS** — promoters 9–10, passives 7–8, detractors 0–6, one shared deterministic helper. Response rate uses the
+  frozen audience. Themes average identical scales only; there is no invented engagement index.
+- **No employment decisions** — nothing feeds performance, talent, relations, payroll or the Employee 360. **Not**
+  AI sentiment, mood detection, attrition prediction, automatic action planning, or perfect anonymity.
 
 ## Pilot release
 

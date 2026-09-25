@@ -23,6 +23,9 @@ export interface TemplateVars {
   courseTitle?: string;
   /** An opening's title, for recruitment notifications. Never a candidate's name, feedback or an offer figure. */
   openingTitle?: string;
+  /** A survey's name and closing date. Never an answer, a result or a manager's request to respond. */
+  surveyName?: string;
+  closingDate?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -145,6 +148,11 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.TALENT_REVIEW_REQUIRED]: (v) => ({
     title: 'Talent review assigned',
     body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your potential assessment.`,
+  }),
+  // Engagement: the survey name and, when set, its closing date. Nothing about answers or results.
+  [NOTIFICATION_TYPES.ENGAGEMENT_SURVEY_OPENED]: (v) => ({
+    title: 'A survey is open for you',
+    body: `${v.surveyName ?? 'A survey'} is open${v.closingDate ? ` until ${v.closingDate}` : ''}. Your participation is voluntary.`,
   }),
   [NOTIFICATION_TYPES.TALENT_REVIEW_COMPLETED]: (v) => ({
     title: 'Talent review submitted',

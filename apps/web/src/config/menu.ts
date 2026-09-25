@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, Star, GitBranch, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles,
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart,
 } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
@@ -59,6 +59,7 @@ export const MENU: MenuGroup[] = [
     label: 'HROD',
     items: [
       { label: 'Workforce planning', path: '/hrod/workforce', icon: BriefcaseBusiness, permission: [P.WORKFORCE_VIEW, P.WORKFORCE_PLAN, P.WORKFORCE_MANAGE, P.ORG_DESIGN_VIEW, P.ORG_DESIGN_MANAGE] },
+      { label: 'Engagement', path: '/hrod/engagement', icon: MessageSquareHeart, permission: [P.ENGAGEMENT_RESPOND, P.ENGAGEMENT_VIEW_RESULTS, P.ENGAGEMENT_MANAGE] },
       { label: 'Talent', path: '/hrod/talent', icon: Star, comingSoon: true },
       { label: 'Succession', path: '/hrod/succession', icon: GitBranch, comingSoon: true },
     ],

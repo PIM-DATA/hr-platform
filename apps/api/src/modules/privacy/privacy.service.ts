@@ -219,7 +219,18 @@ export const privacyService = {
         tx.successionCandidate.findMany({ where: { employeeId }, select: { readiness: true, targetReadinessDate: true, nominatedAt: true, status: true, removedAt: true, jobTitleSnapshot: true, plan: { select: { positionTitleSnapshot: true, departmentNameSnapshot: true, status: true } } }, orderBy: { nominatedAt: 'asc' }, take: MAX_ROWS }),
       ]);
 
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations };
+      // Engagement (Task 33): identified-survey answers are the subject's own words and numbers, so they are exported with
+      // the question text as asked. Anonymous responses are stored without any link to a person and are not reconstructed;
+      // only the participation record (invited, completed) is exported for them.
+      const [engagementParticipation, identifiedResponses] = await Promise.all([
+        tx.engagementSurveyAssignment.findMany({ where: { employeeId }, select: { invitedAt: true, completedAt: true, survey: { select: { code: true, name: true, responseMode: true, status: true } } }, orderBy: { invitedAt: 'desc' } }),
+        tx.engagementResponse.findMany({ where: { employeeId, responseMode: 'IDENTIFIED' }, select: { submittedAt: true, survey: { select: { code: true, name: true } }, answers: { select: { numericValue: true, booleanValue: true, textValue: true, choiceValues: true, question: { select: { questionTextSnapshot: true, questionType: true } } } } }, orderBy: { submittedAt: 'desc' } }),
+      ]);
+      const engagement = {
+        participation: engagementParticipation.map((a) => ({ survey: a.survey, invitedAt: a.invitedAt, completed: !!a.completedAt, completedAt: a.completedAt })),
+        identifiedResponses: identifiedResponses.map((r) => ({ survey: r.survey, submittedAt: r.submittedAt, answers: r.answers.map((x) => ({ question: x.question.questionTextSnapshot, questionType: x.question.questionType, numericValue: x.numericValue, booleanValue: x.booleanValue, textValue: x.textValue, choiceValues: x.choiceValues })) })),
+      };
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -244,6 +255,7 @@ export const privacyService = {
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
         { category: 'potential assessments, 9-box placement, reviewer comments and succession notes', reason: 'These are internal organizational judgments about the subject made by named reviewers and nominators. The export carries the factual records (review participation, pool membership, nominations and recorded readiness); disclosing the judgments themselves is a policy decision made outside this export.' },
+        { category: 'anonymous survey answers', reason: 'Answers to anonymous surveys are stored without an employee, user or assignment identifier, so they cannot be attributed to the subject and are not reconstructed. The participation record (invited, completed) is exported.' },
         { category: 'employee relations case narratives and internal notes', reason: 'The case description and HR investigation notes are HR working records that may concern other people; the export carries the documents issued to the subject and their acknowledgements.' },
       ],
     };
@@ -259,6 +271,7 @@ export const privacyService = {
           workflows: data.workflows.length, notifications: data.notifications.length, auditEvents: data.auditEvents.length, privacyRequests: data.privacyRequests.length,
           employeeRelations: data.employeeRelations.length,
           talentReviews: data.talentReviews.length, talentPools: data.talentPools.length, successionNominations: data.successionNominations.length,
+          engagementParticipation: data.engagement.participation.length, identifiedSurveyResponses: data.engagement.identifiedResponses.length,
         },
       },
     });
