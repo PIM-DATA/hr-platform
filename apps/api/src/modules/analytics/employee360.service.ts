@@ -1,5 +1,6 @@
 import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem, checklistProgress, certificationStatus, CERTIFICATION_EXPIRY_WINDOW_DAYS } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
+import { balanceDto, sumsOf } from '../benefits/benefit-ledger';
 import { logger } from '../../lib/logger';
 import { hasPermission } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
@@ -84,10 +85,12 @@ export const employee360Service = {
       career: self ? has(auth, PERMISSIONS.CAREER_VIEW) : has(auth, PERMISSIONS.CAREER_MANAGE) || has(auth, PERMISSIONS.TALENT_MANAGE) || (has(auth, PERMISSIONS.TALENT_VIEW) && isManagerOf),
       talent: !self && (has(auth, PERMISSIONS.TALENT_MANAGE) || has(auth, PERMISSIONS.SUCCESSION_MANAGE) || (has(auth, PERMISSIONS.TALENT_VIEW) && isManagerOf)),
       // Lifecycle (Task 34): statuses and dates only, under each process's own view permission. Never a note, a comment or a reason note.
+      // Benefits (Task 36): the subject's own view, or an organization-wide benefits administrator. A manager's TEAM scope never opens it.
+      benefits: self ? has(auth, PERMISSIONS.BENEFITS_VIEW_OWN) : auth.dataScope === 'ALL' && (has(auth, PERMISSIONS.BENEFITS_VIEW) || has(auth, PERMISSIONS.BENEFITS_MANAGE)),
       lifecycle: has(auth, PERMISSIONS.ONBOARDING_VIEW) || has(auth, PERMISSIONS.PROBATION_VIEW) || has(auth, PERMISSIONS.OFFBOARDING_VIEW) || has(auth, PERMISSIONS.ONBOARDING_MANAGE) || has(auth, PERMISSIONS.PROBATION_MANAGE) || has(auth, PERMISSIONS.OFFBOARDING_MANAGE),
     };
 
-    const [employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle] = await Promise.all([
+    const [employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle, benefits] = await Promise.all([
       section('employment', async () => {
         const [positions, managers] = await Promise.all([employeesService.positionHistory(auth, employeeId), employeesService.managerHistory(auth, employeeId)]);
         const timeline = timelineFrom(positions, managers, profile.hireDate, profile.terminationDate, profile.employmentStatus);
@@ -197,9 +200,22 @@ export const employee360Service = {
           offboarding: offboarding ? { id: offboarding.id, status: offboarding.status, plannedLastWorkingDate: offboarding.plannedLastWorkingDate, actualLastWorkingDate: offboarding.actualLastWorkingDate } : null,
         };
       }) : null,
+      may.benefits ? section('benefits', async () => {
+        const [enrollments, entitlements, claims] = await Promise.all([
+          prisma.benefitEnrollment.findMany({ where: { employeeId, status: { in: ['ENROLLED', 'WAIVED'] } }, select: { planId: true, status: true, coverageStart: true, coverageEnd: true, plan: { select: { name: true, planType: true } } } }),
+          prisma.benefitEntitlement.findMany({ where: { employeeId, period: { status: 'OPEN' } }, select: { planId: true, currency: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true, plan: { select: { name: true } }, period: { select: { name: true } } } }),
+          prisma.benefitClaim.groupBy({ by: ['status'], where: { employeeId }, _count: { _all: true } }),
+        ]);
+        // statuses, plan names and balances — never a description, a document or a payment reference
+        return {
+          enrollments: enrollments.map((e) => ({ plan: e.plan.name, planType: e.plan.planType, status: e.status, coverageStart: e.coverageStart, coverageEnd: e.coverageEnd })),
+          balances: entitlements.map((e) => ({ plan: e.plan.name, period: e.period.name, ...balanceDto(e.currency, sumsOf(e)) })),
+          claims: claims.map((c) => ({ status: c.status, count: c._count._all })),
+        };
+      }) : null,
     ]);
 
-    const sections: Sections = { employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle };
+    const sections: Sections = { employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle, benefits };
     const visibleSections = (Object.keys(sections) as (keyof Sections)[]).filter((k) => sections[k] !== null || (k === 'recruitment' && may.recruitment));
     return {
       profile, visibleSections, sections,

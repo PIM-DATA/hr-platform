@@ -122,6 +122,10 @@ import { SurveysPage as EngagementSurveysPage } from '@/features/engagement/Surv
 import { QuestionBankPage } from '@/features/engagement/QuestionBankPage';
 import { EngagementCommentsPage, EngagementParticipationPage, EngagementReportsPage, EngagementResultsPage } from '@/features/engagement/ResultsPage';
 import { LifecycleLayout } from '@/features/lifecycle/lifecycle-ui';
+import { BenefitsIndex, BenefitsLayout } from '@/features/benefits/benefits-ui';
+import { MyBenefitsPage } from '@/features/benefits/MyBenefitsPage';
+import { PlansPage as BenefitPlansPage } from '@/features/benefits/PlansPage';
+import { BenefitsDashboardPage, BenefitsReportsPage, ClaimsPage as BenefitClaimsPage, EnrollmentsPage as BenefitEnrollmentsPage, EntitlementsPage as BenefitEntitlementsPage, PeriodsPage as BenefitPeriodsPage } from '@/features/benefits/AdminPages';
 import { MyLifecyclePage } from '@/features/lifecycle/MyLifecyclePage';
 import { LifecycleDashboardPage } from '@/features/lifecycle/DashboardPage';
 import { OnboardingPage as LifecycleOnboardingPage } from '@/features/lifecycle/OnboardingPage';
@@ -441,6 +445,20 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={[PERMISSIONS.OFFBOARDING_VIEW, PERMISSIONS.OFFBOARDING_MANAGE]} />, children: [{ path: 'offboarding', element: <OffboardingPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE]} />, children: [{ path: 'templates', element: <LifecycleTemplatesPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.LIFECYCLE_VIEW_REPORTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PROBATION_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE]} />, children: [{ path: 'reports', element: <LifecycleReportsPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Benefits (Task 36). Own records need benefits.view_own; administration needs the benefits permissions and an
+            // organization-wide data scope (enforced by the API; a manager's TEAM scope never widens this module).
+            element: <RequirePermission permission={[PERMISSIONS.BENEFITS_VIEW_OWN, PERMISSIONS.BENEFITS_VIEW, PERMISSIONS.BENEFITS_MANAGE, PERMISSIONS.BENEFITS_CLAIM, PERMISSIONS.BENEFITS_REVIEW_CLAIMS, PERMISSIONS.BENEFITS_RECORD_PAYMENT, PERMISSIONS.BENEFITS_VIEW_REPORTS]} />,
+            children: [{
+              path: 'hrm/benefits', element: <BenefitsLayout />,
+              children: [
+                { index: true, element: <BenefitsIndex my={<MyBenefitsPage />} /> },
+                { element: <RequirePermission permission={[PERMISSIONS.BENEFITS_VIEW_REPORTS, PERMISSIONS.BENEFITS_MANAGE]} />, children: [{ path: 'dashboard', element: <BenefitsDashboardPage /> }, { path: 'reports', element: <BenefitsReportsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.BENEFITS_VIEW, PERMISSIONS.BENEFITS_MANAGE]} />, children: [{ path: 'plans', element: <BenefitPlansPage /> }, { path: 'periods', element: <BenefitPeriodsPage /> }, { path: 'enrollments', element: <BenefitEnrollmentsPage /> }, { path: 'entitlements', element: <BenefitEntitlementsPage /> }, { path: 'claims', element: <BenefitClaimsPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.BENEFITS_RECORD_PAYMENT} />, children: [{ path: 'payments', element: <BenefitClaimsPage payments /> }] },
               ],
             }],
           },

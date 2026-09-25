@@ -28,6 +28,9 @@ export interface TemplateVars {
   closingDate?: string;
   /** Lifecycle: a task count (names and dates reuse the fields above). Never a reason note, a review comment or a security detail. */
   taskCount?: string;
+  /** A benefit claim number and plan name. Never an amount, a description or a receipt name. */
+  claimNumber?: string;
+  planName?: string;
 }
 
 const templates: Record<NotificationType, (v: TemplateVars) => { title: string; body: string }> = {
@@ -151,6 +154,14 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Talent review assigned',
     body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your potential assessment.`,
   }),
+  // Benefits (Task 36): claim number, plan name, status. Never an amount, a description, a receipt or a reviewer's words.
+  [NOTIFICATION_TYPES.BENEFIT_ENROLLMENT_CONFIRMED]: (v) => ({ title: 'Benefit enrolment confirmed', body: `You are enrolled in ${v.planName ?? 'a benefit plan'}.` }),
+  [NOTIFICATION_TYPES.BENEFIT_CLAIM_SUBMITTED]: (v) => ({ title: 'Claim submitted', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} was submitted and is waiting for approval.` }),
+  [NOTIFICATION_TYPES.BENEFIT_CLAIM_APPROVAL_REQUIRED]: (v) => ({ title: 'Benefit claim to review', body: `${v.employeeName ?? 'An employee'} submitted claim ${v.claimNumber ?? ''} (${v.planName ?? 'benefit'}). Please review it.` }),
+  [NOTIFICATION_TYPES.BENEFIT_CLAIM_APPROVED]: (v) => ({ title: 'Claim approved', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} was approved and is ready for payment.` }),
+  [NOTIFICATION_TYPES.BENEFIT_CLAIM_REJECTED]: (v) => ({ title: 'Claim not approved', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} was not approved. The reserved amount is available again.` }),
+  [NOTIFICATION_TYPES.BENEFIT_CLAIM_READY_FOR_PAYMENT]: (v) => ({ title: 'Claim ready for payment', body: `Claim ${v.claimNumber ?? ''} is ready for payment.` }),
+  [NOTIFICATION_TYPES.BENEFIT_CLAIM_PAID]: (v) => ({ title: 'Claim paid', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} is recorded as paid.` }),
   // Learning (Task 35): program, path and certification names, dates. Never an observation, a comment or a reflection.
   [NOTIFICATION_TYPES.OJT_PLAN_ASSIGNED]: (v) => ({ title: 'You are the trainer on an OJT plan', body: `${v.employeeName ?? 'An employee'} is assigned to you for ${v.courseTitle ?? 'an OJT program'}. Record observations as activities are performed.` }),
   [NOTIFICATION_TYPES.OJT_ACTIVITY_READY]: (v) => ({ title: 'Your OJT plan is active', body: `${v.courseTitle ?? 'Your OJT program'} has started. Open My learning to see the activities.` }),

@@ -15,6 +15,8 @@ import { checklistProgress } from '@hr/shared';
 import { lifecycleEmployeeWhere } from '../../lifecycle/lifecycle.types';
 import { CERTIFICATION_EXPIRY_WINDOW_DAYS, certificationStatus } from '@hr/shared';
 import { scopedEmployeeIds } from '../../learning/learning.types';
+import { availableOf, sumsOf } from '../../benefits/benefit-ledger';
+import { toMoneyString } from '../../payroll/money';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
 
@@ -443,5 +445,50 @@ registerDataset(memoryDataset({
     const rows = await prisma.employeeCertification.findMany({ where: await learningScope(auth), select: { employeeId: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, renewedFromId: true, definition: { select: { issuerType: true, expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 50000 });
     const depts = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, department: { select: { name: true } } } })).map((e) => [e.id, e.department.name]));
     return rows.map((r): Row => ({ certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, department: depts.get(r.employeeId) ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
+  },
+}));
+
+// ---------- benefits (Task 36): plan, category, period, status, currency and money — organization-wide, never an employee, a department, a description, a document or a payment reference ----------
+const BENEFITS_REPORTS = [PERMISSIONS.BENEFITS_VIEW_REPORTS, PERMISSIONS.BENEFITS_MANAGE];
+registerDataset(memoryDataset({
+  id: 'benefit_enrollment_summary', name: 'Benefit enrolment summary', description: 'One row per enrolment: plan, category, plan type, organization at enrolment and status. No names.',
+  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'planType', label: 'Plan type', type: 'ENUM', column: 'planType', groupable: true, options: opts(['REIMBURSEMENT', 'ALLOWANCE', 'COVERAGE_ONLY']) }),
+    f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ELIGIBLE', 'ENROLLED', 'WAIVED', 'ENDED']) }), f({ id: 'enrolledMonth', label: 'Enrolled month', type: 'STRING', column: 'enrolledMonth', groupable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...BENEFITS_REPORTS);
+    const rows = await prisma.benefitEnrollment.findMany({ select: { status: true, organizationSnapshot: true, enrolledAt: true, plan: { select: { name: true, planType: true, category: { select: { name: true } } } } }, take: 50000 });
+    return rows.map((r): Row => ({ plan: r.plan.name, category: r.plan.category.name, planType: r.plan.planType, organization: r.organizationSnapshot, status: r.status, enrolledMonth: r.enrolledAt ? r.enrolledAt.toISOString().slice(0, 7) : null }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'benefit_entitlement_summary', name: 'Benefit entitlement summary', description: 'One row per entitlement account: plan, category, period, currency, organization, granted / adjustment / reserved / consumed / available as exact decimals. No names.',
+  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'period', label: 'Period', type: 'STRING', column: 'period', groupable: true }), f({ id: 'periodStatus', label: 'Period status', type: 'ENUM', column: 'periodStatus', groupable: true, options: opts(['DRAFT', 'OPEN', 'CLOSED']) }),
+    f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
+    f({ id: 'granted', label: 'Granted', type: 'DECIMAL', column: 'granted', aggregatable: true }), f({ id: 'adjustment', label: 'Adjustment', type: 'DECIMAL', column: 'adjustment', aggregatable: true }), f({ id: 'reserved', label: 'Reserved', type: 'DECIMAL', column: 'reserved', aggregatable: true }), f({ id: 'consumed', label: 'Consumed', type: 'DECIMAL', column: 'consumed', aggregatable: true }), f({ id: 'available', label: 'Available', type: 'DECIMAL', column: 'available', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...BENEFITS_REPORTS);
+    const rows = await prisma.benefitEntitlement.findMany({ select: { currency: true, organizationSnapshot: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true, plan: { select: { name: true, category: { select: { name: true } } } }, period: { select: { name: true, status: true } } }, take: 50000 });
+    return rows.map((r): Row => ({ plan: r.plan.name, category: r.plan.category.name, period: r.period.name, periodStatus: r.period.status, organization: r.organizationSnapshot, currency: r.currency, granted: toMoneyString(r.grantedAmount), adjustment: toMoneyString(r.adjustmentAmount), reserved: toMoneyString(r.reservedAmount), consumed: toMoneyString(r.consumedAmount), available: toMoneyString(availableOf(sumsOf(r))) }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'benefit_claim_summary', name: 'Benefit claim summary', description: 'One row per claim: plan, category, period, organization, status, currency, submitted / paid month, claimed and approved amounts. No names, claim numbers, descriptions, documents or payment references.',
+  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'period', label: 'Period', type: 'STRING', column: 'period', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
+    f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'paidMonth', label: 'Paid month', type: 'STRING', column: 'paidMonth', groupable: true }), f({ id: 'paymentMethod', label: 'Payment method', type: 'STRING', column: 'paymentMethod', groupable: true }),
+    f({ id: 'claimedAmount', label: 'Claimed', type: 'DECIMAL', column: 'claimedAmount', aggregatable: true }), f({ id: 'approvedAmount', label: 'Approved', type: 'DECIMAL', column: 'approvedAmount', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...BENEFITS_REPORTS);
+    const rows = await prisma.benefitClaim.findMany({ select: { status: true, currency: true, organizationSnapshot: true, submittedDate: true, paidDate: true, paymentMethod: true, claimedAmount: true, approvedAmount: true, planNameSnapshot: true, categorySnapshot: true, period: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ plan: r.planNameSnapshot, category: r.categorySnapshot, period: r.period.name, organization: r.organizationSnapshot, status: r.status, currency: r.currency, submittedMonth: r.submittedDate ? r.submittedDate.slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, paymentMethod: r.paymentMethod, claimedAmount: toMoneyString(r.claimedAmount), approvedAmount: r.approvedAmount ? toMoneyString(r.approvedAmount) : null }));
   },
 }));

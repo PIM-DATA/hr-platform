@@ -181,7 +181,10 @@ export const privacyService = {
         },
         orderBy: { submittedAt: 'asc' },
         take: MAX_ROWS,
-      });
+      }).then((rows) => rows.map((w) => (w.module !== 'benefits' ? w : {
+        // Benefits (Task 36): a claim reviewer's comment is the reviewer's confidential word about the claim; the decision and its timing are exported, the words are not.
+        ...w, steps: w.steps.map((s) => ({ ...s, comment: s.comment === null ? null : '[reviewer comment not exported]' })), actions: w.actions.map((a) => ({ ...a, comment: a.comment === null ? null : '[reviewer comment not exported]' })),
+      })));
 
       // Only the subject's OWN inbox. An approver's notification about this employee's leave is that approver's data.
       const notifications = userId
@@ -247,7 +250,19 @@ export const privacyService = {
         tx.competencyEvidence.findMany({ where: { employeeId }, select: { competencyId: true, sourceType: true, sourceLabel: true, objectiveLevelSnapshot: true, observedLevel: true, createdAt: true } }),
       ]);
       const learning = { ojtPlans, pathAssignments, certifications, competencyEvidence };
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning };
+      // Benefits (Task 36): the subject's own enrolments, balances, ledger movements, claims and payment records.
+      // Approver comments stay on the workflow timeline (not exported); adjustment notes are HR's words.
+      const [benefitEnrollments, benefitEntitlements, benefitClaims] = await Promise.all([
+        tx.benefitEnrollment.findMany({ where: { employeeId }, select: { status: true, source: true, enrolledAt: true, waivedAt: true, endedAt: true, coverageStart: true, coverageEnd: true, plan: { select: { code: true, name: true, planType: true } } } }),
+        tx.benefitEntitlement.findMany({ where: { employeeId }, select: { currency: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true, plan: { select: { code: true, name: true } }, period: { select: { name: true, periodStart: true, periodEnd: true } }, ledger: { select: { entryType: true, amount: true, claimId: true, reasonCode: true, createdAt: true }, orderBy: { createdAt: 'asc' } } } }),
+        tx.benefitClaim.findMany({ where: { employeeId }, select: { claimNumber: true, planNameSnapshot: true, currency: true, claimedAmount: true, approvedAmount: true, serviceDate: true, submittedDate: true, description: true, status: true, approvedAt: true, rejectedAt: true, cancelledAt: true, paymentMethod: true, paymentReference: true, paidDate: true }, orderBy: { createdAt: 'asc' } }),
+      ]);
+      const benefits = {
+        enrollments: benefitEnrollments,
+        entitlements: benefitEntitlements.map((e) => ({ plan: e.plan, period: e.period, currency: e.currency, granted: e.grantedAmount.toFixed(2), adjustment: e.adjustmentAmount.toFixed(2), reserved: e.reservedAmount.toFixed(2), consumed: e.consumedAmount.toFixed(2), ledger: e.ledger.map((l) => ({ ...l, amount: l.amount.toFixed(2) })) })),
+        claims: benefitClaims.map((c) => ({ ...c, claimedAmount: c.claimedAmount.toFixed(2), approvedAmount: c.approvedAmount?.toFixed(2) ?? null })),
+      };
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning, benefits };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -272,6 +287,7 @@ export const privacyService = {
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
         { category: 'potential assessments, 9-box placement, reviewer comments and succession notes', reason: 'These are internal organizational judgments about the subject made by named reviewers and nominators. The export carries the factual records (review participation, pool membership, nominations and recorded readiness); disclosing the judgments themselves is a policy decision made outside this export.' },
+        { category: 'benefit claim reviewer comments and entitlement adjustment notes', reason: 'Reviewer comments live on the approval workflow timeline and adjustment notes are HR\'s working notes; the export carries the claims, amounts, statuses, ledger movements and payment records themselves.' },
         { category: 'OJT trainer comments and observation comments', reason: 'These are the trainer\'s and HR\'s words about the subject\'s work; the export carries the observation results, the subject\'s own reflections, activity completion and the assessment outcomes.' },
         { category: 'probation review comments, offboarding reason notes and exit-interview notes', reason: 'These are internal HR and reviewer records about the subject; the export carries the dates, statuses and outcomes of each process and the subject\'s own task list.' },
         { category: 'anonymous survey answers', reason: 'Answers to anonymous surveys are stored with survey-local cohort tokens only — no employee, user, assignment, organization, department, job or position identifier — so they cannot be attributed to the subject and are not reconstructed. The participation record (invited, completed) is exported.' },
@@ -293,6 +309,7 @@ export const privacyService = {
           engagementParticipation: data.engagement.participation.length, identifiedSurveyResponses: data.engagement.identifiedResponses.length,
           onboardingPlans: data.lifecycle.onboardingPlans.length, probationCases: data.lifecycle.probationCases.length, offboardingCases: data.lifecycle.offboardingCases.length,
           ojtPlans: data.learning.ojtPlans.length, learningPathAssignments: data.learning.pathAssignments.length, certifications: data.learning.certifications.length,
+          benefitEnrollments: data.benefits.enrollments.length, benefitEntitlements: data.benefits.entitlements.length, benefitClaims: data.benefits.claims.length,
         },
       },
     });

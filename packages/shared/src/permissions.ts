@@ -131,6 +131,15 @@ export const PERMISSIONS = {
   CERTIFICATION_VIEW: 'certification.view',
   CERTIFICATION_MANAGE: 'certification.manage',
   LEARNING_VIEW_REPORTS: 'learning.view_reports',
+
+  // Benefits / welfare and claims (Task 36). Confidential by design: the manager TEAM scope never widens these.
+  BENEFITS_VIEW_OWN: 'benefits.view_own',
+  BENEFITS_VIEW: 'benefits.view',
+  BENEFITS_MANAGE: 'benefits.manage',
+  BENEFITS_CLAIM: 'benefits.claim',
+  BENEFITS_REVIEW_CLAIMS: 'benefits.review_claims',
+  BENEFITS_RECORD_PAYMENT: 'benefits.record_payment',
+  BENEFITS_VIEW_REPORTS: 'benefits.view_reports',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -269,6 +278,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.CERTIFICATION_VIEW, module: 'learning', description: 'See certification definitions and certifications within the data scope' },
   { code: PERMISSIONS.CERTIFICATION_MANAGE, module: 'learning', description: 'Define certifications; issue, renew and revoke employee certifications' },
   { code: PERMISSIONS.LEARNING_VIEW_REPORTS, module: 'learning', description: 'Aggregate learning reporting: training, OJT, learning path and certification counts' },
+  { code: PERMISSIONS.BENEFITS_VIEW_OWN, module: 'benefits', description: 'See your own benefit enrolments, balances and claims' },
+  { code: PERMISSIONS.BENEFITS_VIEW, module: 'benefits', description: 'Benefits administration view: plans, enrolments, entitlements and claims (organization-wide scope only; never widened by a team scope)' },
+  { code: PERMISSIONS.BENEFITS_MANAGE, module: 'benefits', description: 'Configure categories, plans, eligibility, periods; enrol employees; generate and adjust entitlements' },
+  { code: PERMISSIONS.BENEFITS_CLAIM, module: 'benefits', description: 'Create and submit your own benefit claims' },
+  { code: PERMISSIONS.BENEFITS_REVIEW_CLAIMS, module: 'benefits', description: 'Open the review view of any claim, including confidential descriptions' },
+  { code: PERMISSIONS.BENEFITS_RECORD_PAYMENT, module: 'benefits', description: 'Record that an approved claim was paid, or hand it to payroll (with the payroll permission)' },
+  { code: PERMISSIONS.BENEFITS_VIEW_REPORTS, module: 'benefits', description: 'Aggregate benefits reporting: plan, enrolment, entitlement and claim totals; no person' },
 ];
 
 /**

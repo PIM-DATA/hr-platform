@@ -394,34 +394,7 @@ export const payrollRunService = {
   /** A manual earning or deduction, added during review. Generated lines are read-only; these are not. */
   async addAdjustment(resultId: string, input: AddPayrollAdjustmentInput, actor: Actor): Promise<PayrollResultDto> {
     const row = await prisma.$transaction(async (tx) => {
-      const result = await tx.payrollResult.findUnique({ where: { id: resultId }, include: { run: { select: { id: true, status: true, periodId: true, workflowInstanceId: true } } } });
-      if (!result) throw new AppError(404, 'PAYROLL_RESULT_NOT_FOUND', 'Payroll result not found');
-      await lockPeriod(tx, result.run.periodId);
-      assertRunMutable(result.run);
-
-      const component = await tx.payComponent.findUnique({ where: { id: input.componentId }, select: { id: true, code: true, name: true, type: true, isActive: true } });
-      if (!component) throw new AppError(404, 'PAY_COMPONENT_NOT_FOUND', 'Pay component not found');
-      if (!component.isActive) throw new AppError(409, 'PAY_COMPONENT_INACTIVE', 'That pay component is inactive');
-
-      await tx.payrollResultItem.create({
-        data: {
-          payrollResultId: resultId,
-          componentId: component.id,
-          componentCodeSnapshot: component.code,
-          componentNameSnapshot: component.name,
-          type: component.type,
-          source: 'MANUAL',
-          amount: money(input.amount),
-          description: input.note,
-          isManual: true,
-          createdByUserId: actor.auth.userId,
-        },
-      });
-      await recomputeResultTotals(tx, resultId);
-      await recomputeRunTotals(tx, result.run.id);
-      await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.ADD_PAYROLL_ADJUSTMENT, 'PayrollResult', resultId, {
-        component: component.code, type: component.type, amount: toMoneyString(input.amount), note: input.note,
-      }), tx);
+      await addManualAdjustmentWithTx(tx, resultId, { componentId: input.componentId, amount: input.amount, note: input.note }, actor);
       return tx.payrollResult.findUniqueOrThrow({ where: { id: resultId }, include: resultInclude });
     });
     return toResultDto(row);
@@ -602,6 +575,46 @@ export const payrollRunService = {
 };
 
 /** Recomputes one employee's totals from their lines. Called after any adjustment. */
+/**
+ * A manual line on a payroll result, composable inside another module's transaction (benefits reimbursement handoff).
+ * Rules are payroll's own: the period is locked, the run must be in review and not awaiting approval, the component
+ * active. `reference` identifies the source record and makes the call idempotent: a second call with the same
+ * reference returns the existing line and writes nothing.
+ */
+export async function addManualAdjustmentWithTx(tx: Tx, resultId: string, input: { componentId: string; amount: string; note: string; reference?: { type: string; id: string } }, actor: Actor): Promise<{ itemId: string; created: boolean }> {
+  const result = await tx.payrollResult.findUnique({ where: { id: resultId }, include: { run: { select: { id: true, status: true, periodId: true, workflowInstanceId: true } } } });
+  if (!result) throw new AppError(404, 'PAYROLL_RESULT_NOT_FOUND', 'Payroll result not found');
+  await lockPeriod(tx, result.run.periodId);
+  assertRunMutable(result.run);
+  if (input.reference) {
+    const existing = await tx.payrollResultItem.findFirst({ where: { referenceType: input.reference.type, referenceId: input.reference.id, isManual: true }, select: { id: true } });
+    if (existing) return { itemId: existing.id, created: false };
+  }
+  const component = await tx.payComponent.findUnique({ where: { id: input.componentId }, select: { id: true, code: true, name: true, type: true, isActive: true } });
+  if (!component) throw new AppError(404, 'PAY_COMPONENT_NOT_FOUND', 'Pay component not found');
+  if (!component.isActive) throw new AppError(409, 'PAY_COMPONENT_INACTIVE', 'That pay component is inactive');
+  const item = await tx.payrollResultItem.create({
+    data: {
+      payrollResultId: resultId, componentId: component.id, componentCodeSnapshot: component.code, componentNameSnapshot: component.name, type: component.type, source: 'MANUAL',
+      amount: money(input.amount), description: input.note, isManual: true, referenceType: input.reference?.type ?? null, referenceId: input.reference?.id ?? null, createdByUserId: actor.auth.userId,
+    },
+  });
+  await recomputeResultTotals(tx, resultId);
+  await recomputeRunTotals(tx, result.run.id);
+  await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.ADD_PAYROLL_ADJUSTMENT, 'PayrollResult', resultId, {
+    component: component.code, type: component.type, amount: toMoneyString(input.amount), note: input.note, referenceType: input.reference?.type ?? null, referenceId: input.reference?.id ?? null,
+  }), tx);
+  return { itemId: item.id, created: true };
+}
+
+/** The payroll result of one employee in a period's current run, for a module that must hand money to payroll. */
+export async function findPayrollResultForEmployee(db: Db, periodId: string, employeeId: string) {
+  const run = await db.payrollRun.findFirst({ where: { periodId }, orderBy: { version: 'desc' }, select: { id: true, status: true, workflowInstanceId: true } });
+  if (!run) return null;
+  const result = await db.payrollResult.findFirst({ where: { runId: run.id, employeeId }, select: { id: true } });
+  return result ? { runId: run.id, runStatus: run.status, resultId: result.id, pendingApproval: !!run.workflowInstanceId } : null;
+}
+
 async function recomputeResultTotals(tx: Tx, resultId: string) {
   const items = await tx.payrollResultItem.findMany({ where: { payrollResultId: resultId }, select: { type: true, amount: true } });
   const gross = sumMoney(items.filter((i) => i.type === 'EARNING').map((i) => i.amount));

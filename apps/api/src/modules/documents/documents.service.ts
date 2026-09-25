@@ -137,6 +137,15 @@ async function assertLinkAuthority(tx: Db, auth: AuthContext, entityType: Docume
       if (!c) throw new AppError(404, 'CERTIFICATION_NOT_FOUND', 'Certification not found');
       return c.definitionNameSnapshot;
     }
+    case 'BENEFIT_CLAIM': {
+      // The claimant attaches a receipt to their own draft or pending claim; a benefits manager may attach on their behalf.
+      const c = await tx.benefitClaim.findUnique({ where: { id: entityId }, select: { claimNumber: true, employeeId: true, status: true } });
+      if (!c) throw new AppError(404, 'BENEFIT_CLAIM_NOT_FOUND', 'Benefit claim not found');
+      const own = !!auth.employeeId && c.employeeId === auth.employeeId && hasPermission(auth, PERMISSIONS.BENEFITS_CLAIM);
+      if (!(own || hasPermission(auth, PERMISSIONS.BENEFITS_MANAGE))) throw new AppError(403, 'FORBIDDEN', 'Only the claimant or a benefits manager may attach documents to a claim');
+      if (c.status !== 'DRAFT' && c.status !== 'PENDING_APPROVAL') throw new AppError(409, 'BENEFIT_CLAIM_CLOSED', 'Documents are attached while a claim is open');
+      return c.claimNumber;
+    }
     case 'RECRUITMENT_APPLICATION': {
       need(PERMISSIONS.RECRUITMENT_MANAGE);
       const r = await tx.recruitmentApplication.findUnique({ where: { id: entityId }, select: { applicationNumber: true } });

@@ -28,6 +28,8 @@ import { workforceRouter } from './modules/workforce/workforce.routes';
 import { engagementRouter } from './modules/engagement/engagement.routes';
 import { lifecycleRouter } from './modules/lifecycle/lifecycle.routes';
 import { learningRouter } from './modules/learning/learning.routes';
+import { benefitsRouter } from './modules/benefits/benefits.routes';
+import { registerBenefitsWorkflowHandlers } from './modules/benefits/claim.service';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
@@ -74,4 +76,6 @@ apiRouter.use('/workforce', workforceRouter);
 apiRouter.use('/engagement', engagementRouter);
 apiRouter.use('/lifecycle', lifecycleRouter);
 apiRouter.use('/learning', learningRouter);
+apiRouter.use('/benefits', benefitsRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)
+registerBenefitsWorkflowHandlers(); // benefit claims ↔ workflow (reserve → consume / release)

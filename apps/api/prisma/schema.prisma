@@ -3671,3 +3671,266 @@ model EmployeeCertification {
   @@index([definitionId, expiryDate])
   @@map("employee_certifications")
 }
+
+// ---------------------------------------------------------------------------
+// Benefits / welfare and claims (Task 36)
+// Money is NUMERIC(18,2) everywhere. The entitlement ledger is the financial source of truth; the entitlement row
+// caches the sums. Employee ids are plain references (no back-relation on the employee master), with snapshots.
+// ---------------------------------------------------------------------------
+model BenefitSequence {
+  kind String
+  year Int
+  next Int    @default(1)
+
+  @@id([kind, year])
+  @@map("benefit_sequences")
+}
+
+model BenefitCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  plans BenefitPlan[]
+
+  @@map("benefit_categories")
+}
+
+model BenefitPlan {
+  id                        String          @id @default(cuid())
+  code                      String          @unique
+  name                      String
+  description               String?
+  categoryId                String          @map("category_id")
+  category                  BenefitCategory @relation(fields: [categoryId], references: [id])
+  organizationId            String?         @map("organization_id")
+  planType                  String          @map("plan_type") // REIMBURSEMENT | ALLOWANCE | COVERAGE_ONLY
+  currency                  String? // ISO code; null for COVERAGE_ONLY
+  defaultEntitlementAmount  Decimal?        @map("default_entitlement_amount") @db.Decimal(18, 2)
+  perClaimMaximum           Decimal?        @map("per_claim_maximum") @db.Decimal(18, 2)
+  requiresDocument          Boolean         @default(false) @map("requires_document")
+  employeeSelectable        Boolean         @default(false) @map("employee_selectable")
+  allowPostEmploymentClaims Boolean         @default(false) @map("allow_post_employment_claims")
+  sensitivity               String          @default("NORMAL") // NORMAL | CONFIDENTIAL
+  workflowDefinitionCode    String?         @map("workflow_definition_code")
+  status                    String          @default("DRAFT") // DRAFT | ACTIVE | INACTIVE | ARCHIVED
+  effectiveFrom             String          @map("effective_from")
+  effectiveTo               String?         @map("effective_to")
+  createdByUserId           String          @map("created_by_user_id")
+  createdAt                 DateTime        @default(now()) @map("created_at")
+  updatedAt                 DateTime        @updatedAt @map("updated_at")
+
+  rules        BenefitEligibilityRule[]
+  overrides    BenefitEligibilityOverride[]
+  periods      BenefitPeriod[]
+  enrollments  BenefitEnrollment[]
+  entitlements BenefitEntitlement[]
+  claims       BenefitClaim[]
+
+  @@index([status, effectiveFrom, effectiveTo])
+  @@index([categoryId])
+  @@map("benefit_plans")
+}
+
+/// Allow-listed employee-master criteria only. Rules of one type are OR-ed; types are AND-ed.
+model BenefitEligibilityRule {
+  id       String      @id @default(cuid())
+  planId   String      @map("plan_id")
+  plan     BenefitPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  ruleType String      @map("rule_type") // ORGANIZATION | DEPARTMENT | JOB | POSITION | EMPLOYMENT_TYPE | EMPLOYMENT_STATUS | MIN_TENURE_MONTHS
+  value    String
+
+  @@index([planId])
+  @@map("benefit_eligibility_rules")
+}
+
+/// An explicit HR decision. Never edited: a new row supersedes the old one, which keeps its history.
+model BenefitEligibilityOverride {
+  id              String      @id @default(cuid())
+  planId          String      @map("plan_id")
+  plan            BenefitPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  employeeId      String      @map("employee_id")
+  mode            String // INCLUDE | EXCLUDE
+  reasonCode      String      @map("reason_code")
+  note            String?
+  supersededAt    DateTime?   @map("superseded_at")
+  createdByUserId String      @map("created_by_user_id")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([planId, employeeId, supersededAt])
+  @@map("benefit_eligibility_overrides")
+}
+
+model BenefitPeriod {
+  id                        String      @id @default(cuid())
+  planId                    String      @map("plan_id")
+  plan                      BenefitPlan @relation(fields: [planId], references: [id])
+  name                      String
+  periodStart               String      @map("period_start")
+  periodEnd                 String      @map("period_end")
+  status                    String      @default("DRAFT") // DRAFT | OPEN | CLOSED
+  /// Frozen at OPEN: the money rules a claim in this period is judged by, whatever the plan says later.
+  entitlementAmountSnapshot Decimal?    @map("entitlement_amount_snapshot") @db.Decimal(18, 2)
+  perClaimMaximumSnapshot   Decimal?    @map("per_claim_maximum_snapshot") @db.Decimal(18, 2)
+  currencySnapshot          String?     @map("currency_snapshot")
+  requiresDocumentSnapshot  Boolean     @default(false) @map("requires_document_snapshot")
+  openedAt                  DateTime?   @map("opened_at")
+  closedAt                  DateTime?   @map("closed_at")
+  createdByUserId           String      @map("created_by_user_id")
+  createdAt                 DateTime    @default(now()) @map("created_at")
+  updatedAt                 DateTime    @updatedAt @map("updated_at")
+
+  entitlements BenefitEntitlement[]
+  claims       BenefitClaim[]
+
+  @@index([planId, status])
+  @@map("benefit_periods")
+}
+
+model BenefitEnrollment {
+  id                   String      @id @default(cuid())
+  employeeId           String      @map("employee_id")
+  planId               String      @map("plan_id")
+  plan                 BenefitPlan @relation(fields: [planId], references: [id])
+  employeeCodeSnapshot String      @map("employee_code_snapshot")
+  employeeNameSnapshot String      @map("employee_name_snapshot")
+  organizationSnapshot String?     @map("organization_snapshot")
+  departmentSnapshot   String?     @map("department_snapshot")
+  jobSnapshot          String?     @map("job_snapshot")
+  positionSnapshot     String?     @map("position_snapshot")
+  status               String      @default("ELIGIBLE") // ELIGIBLE | ENROLLED | WAIVED | ENDED
+  source               String? // SELF | HR
+  enrolledAt           DateTime?   @map("enrolled_at")
+  waivedAt             DateTime?   @map("waived_at")
+  endedAt              DateTime?   @map("ended_at")
+  coverageStart        String?     @map("coverage_start")
+  coverageEnd          String?     @map("coverage_end")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  @@unique([employeeId, planId])
+  @@index([planId, status])
+  @@map("benefit_enrollments")
+}
+
+/// CACHE of the ledger sums per employee + plan + period. Rebuilt from the ledger on every mutation.
+model BenefitEntitlement {
+  id                   String        @id @default(cuid())
+  employeeId           String        @map("employee_id")
+  planId               String        @map("plan_id")
+  plan                 BenefitPlan   @relation(fields: [planId], references: [id])
+  periodId             String        @map("period_id")
+  period               BenefitPeriod @relation(fields: [periodId], references: [id])
+  currency             String
+  grantedAmount        Decimal       @default(0) @map("granted_amount") @db.Decimal(18, 2)
+  adjustmentAmount     Decimal       @default(0) @map("adjustment_amount") @db.Decimal(18, 2)
+  reservedAmount       Decimal       @default(0) @map("reserved_amount") @db.Decimal(18, 2)
+  consumedAmount       Decimal       @default(0) @map("consumed_amount") @db.Decimal(18, 2)
+  employeeCodeSnapshot String        @map("employee_code_snapshot")
+  employeeNameSnapshot String        @map("employee_name_snapshot")
+  organizationSnapshot String?       @map("organization_snapshot")
+  departmentSnapshot   String?       @map("department_snapshot")
+  jobSnapshot          String?       @map("job_snapshot")
+  positionSnapshot     String?       @map("position_snapshot")
+  createdByUserId      String        @map("created_by_user_id")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  ledger BenefitEntitlementLedger[]
+  claims BenefitClaim[]
+
+  @@unique([employeeId, planId, periodId])
+  @@index([planId, periodId])
+  @@map("benefit_entitlements")
+}
+
+/// APPEND-ONLY. Never updated, never deleted. `operationKey` makes every business movement idempotent.
+model BenefitEntitlementLedger {
+  id              String             @id @default(cuid())
+  entitlementId   String             @map("entitlement_id")
+  entitlement     BenefitEntitlement @relation(fields: [entitlementId], references: [id])
+  entryType       String             @map("entry_type") // GRANT | ADJUSTMENT | RESERVE | RELEASE | CONSUME
+  amount          Decimal            @db.Decimal(18, 2) // signed as stored (see BENEFIT_LEDGER_SIGN)
+  claimId         String?            @map("claim_id")
+  operationKey    String?            @unique @map("operation_key")
+  reasonCode      String?            @map("reason_code")
+  note            String?
+  createdByUserId String?            @map("created_by_user_id")
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  @@index([entitlementId, createdAt])
+  @@index([claimId])
+  @@map("benefit_entitlement_ledger")
+}
+
+model BenefitClaim {
+  id                   String              @id @default(cuid())
+  claimNumber          String              @unique @map("claim_number")
+  employeeId           String              @map("employee_id")
+  planId               String              @map("plan_id")
+  plan                 BenefitPlan         @relation(fields: [planId], references: [id])
+  periodId             String              @map("period_id")
+  period               BenefitPeriod       @relation(fields: [periodId], references: [id])
+  entitlementId        String?             @map("entitlement_id")
+  entitlement          BenefitEntitlement? @relation(fields: [entitlementId], references: [id])
+  planCodeSnapshot     String              @map("plan_code_snapshot")
+  planNameSnapshot     String              @map("plan_name_snapshot")
+  categorySnapshot     String              @map("category_snapshot")
+  employeeCodeSnapshot String              @map("employee_code_snapshot")
+  employeeNameSnapshot String              @map("employee_name_snapshot")
+  organizationSnapshot String?             @map("organization_snapshot")
+  departmentSnapshot   String?             @map("department_snapshot")
+  jobSnapshot          String?             @map("job_snapshot")
+  positionSnapshot     String?             @map("position_snapshot")
+  currency             String
+  claimedAmount        Decimal             @map("claimed_amount") @db.Decimal(18, 2)
+  approvedAmount       Decimal?            @map("approved_amount") @db.Decimal(18, 2)
+  perClaimMaximumSnapshot Decimal?         @map("per_claim_maximum_snapshot") @db.Decimal(18, 2)
+  requiresDocumentSnapshot Boolean         @default(false) @map("requires_document_snapshot")
+  sensitivitySnapshot  String              @default("NORMAL") @map("sensitivity_snapshot")
+  serviceDate          String              @map("service_date")
+  submittedDate        String?             @map("submitted_date")
+  /// The claimant's words. Length-limited; never copied to audit, notification or report.
+  description          String?
+  status               String              @default("DRAFT") // DRAFT | PENDING_APPROVAL | READY_FOR_PAYMENT | SENT_TO_PAYROLL | PAID | REJECTED | CANCELLED
+  workflowInstanceId   String?             @unique @map("workflow_instance_id")
+  approvedAt           DateTime?           @map("approved_at")
+  rejectedAt           DateTime?           @map("rejected_at")
+  cancelledAt          DateTime?           @map("cancelled_at")
+  paymentMethod        String?             @map("payment_method") // EXTERNAL | PAYROLL | OTHER
+  paymentReference     String?             @map("payment_reference")
+  paidDate             String?             @map("paid_date")
+  paidAt               DateTime?           @map("paid_at")
+  paidByUserId         String?             @map("paid_by_user_id")
+  payrollResultItemId  String?             @unique @map("payroll_result_item_id")
+  createdByUserId      String              @map("created_by_user_id")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  history BenefitClaimStatusHistory[]
+
+  @@index([employeeId, status])
+  @@index([planId, status])
+  @@index([periodId, status])
+  @@index([status, submittedDate])
+  @@map("benefit_claims")
+}
+
+/// Append-only status trail. Reason codes only; the free text stays on the workflow timeline.
+model BenefitClaimStatusHistory {
+  id          String       @id @default(cuid())
+  claimId     String       @map("claim_id")
+  claim       BenefitClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  fromStatus  String?      @map("from_status")
+  toStatus    String       @map("to_status")
+  actorUserId String?      @map("actor_user_id")
+  reasonCode  String?      @map("reason_code")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@index([claimId, createdAt])
+  @@map("benefit_claim_status_history")
+}

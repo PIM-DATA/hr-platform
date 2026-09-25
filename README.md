@@ -294,6 +294,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Performance: no 360 feedback, calibration, 9-box, forced ranking, competency scoring, bonus/payroll linkage, OKR tree, automatic achievement formulas, AI-written reviews, reopen after close or cycle scheduler.
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
+- Benefits: no insurer API, hospital/provider integration, medical diagnosis management, dependent insurance workflow, flexible-benefit marketplace, OCR receipt extraction, fraud detection, bank payment, taxability engine, statutory benefits engine, automatic payroll treatment, FX conversion, external reimbursement provider, automated adjudication, recurring payment scheduler, provident-fund/pension engine, stock/equity benefits, AI recommendation, partial approval, or department-level utilization for executives.
 - Learning (OJT, paths, certifications): no LMS/SCORM, exam engine, external certification registry or accreditation integration, automatic competency level change, AI observation or assessment, certificate PDF, expiry scheduler or reminder delivery, trainer workload balancing, path recommendation, promotion on path completion, or bulk certification import.
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
 - Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
@@ -1015,6 +1016,25 @@ trainees" for plans HR assigned to them.
 - **Certifications** — definitions with validity and an expiring-soon window; issue, renew (new row, history kept)
   and revoke (manual, with reason); status derived on read. **Not** an LMS, SCORM, an exam engine, an accreditation
   registry, automatic competency change, AI assessment, certificate PDFs or an expiry scheduler.
+
+## Benefits, welfare and claims (Task 36)
+
+Guide: [docs/benefits-welfare.md](docs/benefits-welfare.md). HRM → Benefits (Dashboard, Plans, Periods,
+Enrolments, Entitlements, Claims, Payments, Reports); employees get My benefits with the claim form; approvers see
+claims waiting for them there.
+
+- **Plans and eligibility** — categories, plans of type REIMBURSEMENT / ALLOWANCE / COVERAGE_ONLY, one currency
+  each, eligibility from allow-listed employee-master facts only (no field exists for a protected attribute),
+  explicit historical overrides, a preview that creates nothing.
+- **Periods and entitlements** — opening a period freezes the money rules; entitlement generation is idempotent;
+  the entitlement ledger is append-only, exact Decimal, row-locked; adjustments are new rows with a reason.
+- **Claims** — a submitted claim reserves its amount in the same transaction that starts the generic workflow, so
+  pending claims can never overspend, alone or concurrently; approval consumes exactly once and makes the claim
+  ready for payment; rejection and cancellation release exactly once; payment is a human record; the payroll
+  handoff is explicit, idempotent and ends in "sent to payroll", not "paid". Claims are confidential: a manager's
+  team scope opens nothing, and executives see organization-wide totals by plan and category only.
+- **Not** insurance adjudication, a medical system, bank payment, tax calculation, statutory benefit compliance,
+  fraud detection or automatic payroll payment.
 
 ## Pilot release
 

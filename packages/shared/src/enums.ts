@@ -308,7 +308,7 @@ export const DOCUMENT_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
 export const DOCUMENT_EXPIRY_STATES = ['VALID', 'EXPIRING_SOON', 'EXPIRED', 'NONE'] as const;
 export type DocumentExpiryState = (typeof DOCUMENT_EXPIRY_STATES)[number];
 /** The only things a document may be attached to. A table name never comes from a request. */
-export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION'] as const;
+export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION', 'BENEFIT_CLAIM'] as const;
 export type DocumentLinkEntityType = (typeof DOCUMENT_LINK_ENTITY_TYPES)[number];
 export const REPORT_VISIBILITIES = ['PRIVATE', 'SHARED'] as const;
 export const REPORT_FIELD_TYPES = ['STRING', 'NUMBER', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN', 'ENUM'] as const;
@@ -370,6 +370,14 @@ export const NOTIFICATION_TYPES = {
   OJT_COMPLETED: 'OJT_COMPLETED',
   LEARNING_PATH_ASSIGNED: 'LEARNING_PATH_ASSIGNED',
   CERTIFICATION_EXPIRING: 'CERTIFICATION_EXPIRING',
+  // Benefits (Task 36): claim number, plan name and status only. Never a description, an amount, a receipt name.
+  BENEFIT_ENROLLMENT_CONFIRMED: 'BENEFIT_ENROLLMENT_CONFIRMED',
+  BENEFIT_CLAIM_SUBMITTED: 'BENEFIT_CLAIM_SUBMITTED',
+  BENEFIT_CLAIM_APPROVAL_REQUIRED: 'BENEFIT_CLAIM_APPROVAL_REQUIRED',
+  BENEFIT_CLAIM_APPROVED: 'BENEFIT_CLAIM_APPROVED',
+  BENEFIT_CLAIM_REJECTED: 'BENEFIT_CLAIM_REJECTED',
+  BENEFIT_CLAIM_READY_FOR_PAYMENT: 'BENEFIT_CLAIM_READY_FOR_PAYMENT',
+  BENEFIT_CLAIM_PAID: 'BENEFIT_CLAIM_PAID',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -387,7 +395,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -680,6 +688,27 @@ export const AUDIT_ACTIONS = {
   ISSUE_EMPLOYEE_CERTIFICATION: 'ISSUE_EMPLOYEE_CERTIFICATION',
   RENEW_EMPLOYEE_CERTIFICATION: 'RENEW_EMPLOYEE_CERTIFICATION',
   REVOKE_EMPLOYEE_CERTIFICATION: 'REVOKE_EMPLOYEE_CERTIFICATION',
+  CREATE_BENEFIT_CATEGORY: 'CREATE_BENEFIT_CATEGORY',
+  UPDATE_BENEFIT_CATEGORY: 'UPDATE_BENEFIT_CATEGORY',
+  CREATE_BENEFIT_PLAN: 'CREATE_BENEFIT_PLAN',
+  UPDATE_BENEFIT_PLAN: 'UPDATE_BENEFIT_PLAN',
+  ACTIVATE_BENEFIT_PLAN: 'ACTIVATE_BENEFIT_PLAN',
+  SET_BENEFIT_ELIGIBILITY_OVERRIDE: 'SET_BENEFIT_ELIGIBILITY_OVERRIDE',
+  CREATE_BENEFIT_PERIOD: 'CREATE_BENEFIT_PERIOD',
+  OPEN_BENEFIT_PERIOD: 'OPEN_BENEFIT_PERIOD',
+  CLOSE_BENEFIT_PERIOD: 'CLOSE_BENEFIT_PERIOD',
+  ENROLL_BENEFIT: 'ENROLL_BENEFIT',
+  WAIVE_BENEFIT: 'WAIVE_BENEFIT',
+  GENERATE_BENEFIT_ENTITLEMENTS: 'GENERATE_BENEFIT_ENTITLEMENTS',
+  ADJUST_BENEFIT_ENTITLEMENT: 'ADJUST_BENEFIT_ENTITLEMENT',
+  CREATE_BENEFIT_CLAIM: 'CREATE_BENEFIT_CLAIM',
+  UPDATE_BENEFIT_CLAIM: 'UPDATE_BENEFIT_CLAIM',
+  SUBMIT_BENEFIT_CLAIM: 'SUBMIT_BENEFIT_CLAIM',
+  APPROVE_BENEFIT_CLAIM: 'APPROVE_BENEFIT_CLAIM',
+  REJECT_BENEFIT_CLAIM: 'REJECT_BENEFIT_CLAIM',
+  CANCEL_BENEFIT_CLAIM: 'CANCEL_BENEFIT_CLAIM',
+  RECORD_BENEFIT_PAYMENT: 'RECORD_BENEFIT_PAYMENT',
+  SEND_BENEFIT_TO_PAYROLL: 'SEND_BENEFIT_TO_PAYROLL',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -752,6 +781,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   engagement: 'Engagement surveys',
   lifecycle: 'Employee lifecycle',
   learning: 'OJT, learning paths and certifications',
+  benefits: 'Benefits, welfare and claims',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

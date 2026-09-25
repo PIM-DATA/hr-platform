@@ -278,9 +278,16 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังสร้างรายงาน…', inputSchema: z.object({ datasetId: z.string().min(1).max(60).optional(), definition: reportDefinitionSchema.optional() }).strict(), requiredPermissions: [PERMISSIONS.REPORTS_VIEW], sensitivity: 'SENSITIVE', audience: 'ORG', maxRows: COPILOT_LIMITS.maxToolRows, sourceLabel: 'Report Center',
     async handler(args, ctx) {
       const a = args as { datasetId?: string; definition?: z.infer<typeof reportDefinitionSchema> };
-      if (!a.datasetId || !a.definition) {
-        const datasets = reportsService.datasets(ctx.auth).map((d) => ({ id: d.id, name: d.name, aggregateOnly: d.aggregateOnly, requiredDateRange: d.requiredDateRange, fields: d.fields.map((f) => ({ id: f.id, type: f.type, groupable: f.groupable, aggregatable: f.aggregatable, options: f.options?.map((o) => o.value) })) }));
-        return { data: { datasets }, sources: [], consulted: 'รายการ dataset' };
+      // The catalogue must stay under the tool-result cap however many datasets exist (26 and counting), so the empty
+      // call lists compactly (field ids with type and g/a marks) and a call with only a datasetId describes that one in full.
+      if (!a.datasetId) {
+        const datasets = reportsService.datasets(ctx.auth).map((d) => ({ id: d.id, name: d.name, aggregateOnly: d.aggregateOnly, requiredDateRange: d.requiredDateRange, fields: d.fields.map((f) => `${f.id}:${f.type}${f.groupable ? ':g' : ''}${f.aggregatable ? ':a' : ''}`) }));
+        return { data: { datasets, note: 'Call again with a datasetId and no definition for field details and enum options.' }, sources: [], consulted: 'รายการ dataset' };
+      }
+      if (!a.definition) {
+        const d = reportsService.datasets(ctx.auth).find((x) => x.id === a.datasetId);
+        if (!d) throw new AppError(404, 'REPORT_DATASET_NOT_FOUND', 'Dataset not found');
+        return { data: { dataset: { id: d.id, name: d.name, description: d.description, aggregateOnly: d.aggregateOnly, requiredDateRange: d.requiredDateRange, fields: d.fields.map((f) => ({ id: f.id, label: f.label, type: f.type, groupable: f.groupable, aggregatable: f.aggregatable, options: f.options?.map((o) => o.value) })) } }, sources: [], consulted: `dataset ${d.id}` };
       }
       const definition = { ...a.definition, pageSize: Math.min(a.definition.pageSize ?? COPILOT_LIMITS.maxToolRows, COPILOT_LIMITS.maxToolRows) };
       const result = await reportsService.run(ctx.auth, a.datasetId, definition, 1);
