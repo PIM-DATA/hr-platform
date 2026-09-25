@@ -122,6 +122,9 @@ import { EngagementCommentsPage, EngagementParticipationPage, EngagementReportsP
 import { LifecycleLayout } from '@/features/lifecycle/lifecycle-ui';
 import { BenefitsIndex, BenefitsLayout } from '@/features/benefits/benefits-ui';
 import { ExpenseIndex, ExpenseLayout } from '@/features/expense/expense-ui';
+import { ServicesIndex, ServicesLayout } from '@/features/employee-services/services-ui';
+import { MyLettersPage, MyServicesPage } from '@/features/employee-services/MyServicesPage';
+import { CatalogPage, LettersPage, RequestQueuePage, ServicesDashboardPage, ServicesReportsPage, TemplatesPage } from '@/features/employee-services/AdminPages';
 import { MyExpensesPage } from '@/features/expense/MyExpensesPage';
 import { CategoriesPage as ExpenseCategoriesPage, ExpenseAnalyticsPage, ExpenseDashboardPage, ExpenseReportsPage, PoliciesPage as ExpensePoliciesPage, TravelRequestsPage } from '@/features/expense/AdminPages';
 import { MyBenefitsPage } from '@/features/benefits/MyBenefitsPage';
@@ -475,6 +478,23 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={[PERMISSIONS.EXPENSE_VIEW_REPORTS, PERMISSIONS.EXPENSE_MANAGE]} />, children: [{ path: 'dashboard', element: <ExpenseDashboardPage /> }, { path: 'analytics', element: <ExpenseAnalyticsPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.EXPENSE_VIEW, PERMISSIONS.EXPENSE_MANAGE]} />, children: [{ path: 'travel', element: <TravelRequestsPage /> }, { path: 'reports', element: <ExpenseReportsPage /> }, { path: 'policies', element: <ExpensePoliciesPage /> }, { path: 'categories', element: <ExpenseCategoriesPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.EXPENSE_RECORD_PAYMENT} />, children: [{ path: 'payments', element: <ExpenseReportsPage payments /> }] },
+              ],
+            }],
+          },
+          {
+            // Employee services (Task 40). Own tickets and letters need the own permissions; the queue, the catalogue
+            // and the templates need an organization-wide data scope, which the API enforces independently.
+            element: <RequirePermission permission={[PERMISSIONS.SERVICE_REQUEST_VIEW_OWN, PERMISSIONS.SERVICE_REQUEST_CREATE, PERMISSIONS.SERVICE_REQUEST_VIEW, PERMISSIONS.SERVICE_REQUEST_FULFILL, PERMISSIONS.SERVICE_REQUEST_MANAGE, PERMISSIONS.HR_LETTER_VIEW_OWN, PERMISSIONS.HR_LETTER_ISSUE, PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES, PERMISSIONS.HR_LETTER_VIEW_REPORTS]} />,
+            children: [{
+              path: 'hrm/services', element: <ServicesLayout />,
+              children: [
+                { index: true, element: <ServicesIndex my={<MyServicesPage />} /> },
+                { element: <RequirePermission permission={PERMISSIONS.HR_LETTER_VIEW_OWN} />, children: [{ path: 'my-letters', element: <MyLettersPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.HR_LETTER_VIEW_REPORTS, PERMISSIONS.SERVICE_REQUEST_MANAGE]} />, children: [{ path: 'dashboard', element: <ServicesDashboardPage /> }, { path: 'reports', element: <ServicesReportsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.SERVICE_REQUEST_VIEW, PERMISSIONS.SERVICE_REQUEST_FULFILL]} />, children: [{ path: 'requests', element: <RequestQueuePage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.SERVICE_REQUEST_MANAGE} />, children: [{ path: 'catalog', element: <CatalogPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.HR_LETTER_ISSUE, PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES]} />, children: [{ path: 'letters', element: <LettersPage /> }] },
+                { element: <RequirePermission permission={PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES} />, children: [{ path: 'templates', element: <TemplatesPage /> }] },
               ],
             }],
           },

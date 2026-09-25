@@ -155,6 +155,22 @@ async function assertLinkAuthority(tx: Db, auth: AuthContext, entityType: Docume
       if (i.report.status !== 'DRAFT' && i.report.status !== 'PENDING_APPROVAL') throw new AppError(409, 'EXPENSE_REPORT_CLOSED', 'Receipts are attached while a report is open');
       return `${i.report.reportNumber} · ${i.categoryNameSnapshot} ${i.expenseDate}`;
     }
+    case 'SERVICE_REQUEST': {
+      // The requester attaches supporting evidence to their own open request; the fulfilment team may attach on their behalf.
+      const r = await tx.serviceRequest.findUnique({ where: { id: entityId }, select: { requestNumber: true, employeeId: true, status: true, subject: true } });
+      if (!r) throw new AppError(404, 'SERVICE_REQUEST_NOT_FOUND', 'Service request not found');
+      const ownRequest = !!auth.employeeId && r.employeeId === auth.employeeId && hasPermission(auth, PERMISSIONS.SERVICE_REQUEST_CREATE);
+      if (!(ownRequest || hasPermission(auth, PERMISSIONS.SERVICE_REQUEST_FULFILL) || hasPermission(auth, PERMISSIONS.SERVICE_REQUEST_MANAGE))) throw new AppError(403, 'FORBIDDEN', 'Only the requester or the fulfilment team may attach to a service request');
+      if (['FULFILLED', 'REJECTED', 'CANCELLED'].includes(r.status)) throw new AppError(409, 'SERVICE_REQUEST_CLOSED', 'Attachments are added while a request is open');
+      return r.requestNumber;
+    }
+    case 'HR_LETTER': {
+      // Only the letter team attaches the signed or scanned copy back to an issued letter. Nothing here signs anything.
+      need(PERMISSIONS.HR_LETTER_ISSUE, PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES);
+      const r = await tx.hrLetter.findUnique({ where: { id: entityId }, select: { letterNumber: true, status: true } });
+      if (!r) throw new AppError(404, 'HR_LETTER_NOT_FOUND', 'HR letter not found');
+      return r.letterNumber;
+    }
     case 'RECRUITMENT_APPLICATION': {
       need(PERMISSIONS.RECRUITMENT_MANAGE);
       const r = await tx.recruitmentApplication.findUnique({ where: { id: entityId }, select: { applicationNumber: true } });

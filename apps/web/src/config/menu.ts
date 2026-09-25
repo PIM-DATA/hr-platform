@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Network, CalendarCheck, CalendarOff, Target, Award, GraduationCap,
   BriefcaseBusiness, BarChart3, UserCog, ShieldCheck, KeyRound,
-  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart, Milestone, HeartHandshake, Receipt } from 'lucide-react';
+  ScrollText, Settings, Workflow, CalendarDays, FileSpreadsheet, FileLock2, Banknote, ShieldAlert, UserPlus, Route, FolderOpen, Table2, Sparkles, MessageSquareHeart, Milestone, HeartHandshake, Receipt, LifeBuoy } from 'lucide-react';
 import { PERMISSIONS, type PermissionCode } from '@hr/shared';
 
 export interface MenuItem {
@@ -45,6 +45,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Employee lifecycle', path: '/hrm/lifecycle', icon: Milestone, permission: [P.ONBOARDING_VIEW, P.PROBATION_VIEW, P.OFFBOARDING_VIEW, P.ONBOARDING_MANAGE, P.PROBATION_MANAGE, P.OFFBOARDING_MANAGE, P.LIFECYCLE_VIEW_REPORTS] },
       { label: 'Benefits', path: '/hrm/benefits', icon: HeartHandshake, permission: [P.BENEFITS_VIEW_OWN, P.BENEFITS_VIEW, P.BENEFITS_MANAGE, P.BENEFITS_VIEW_REPORTS] },
       { label: 'Expenses & travel', path: '/hrm/expenses', icon: Receipt, permission: [P.EXPENSE_VIEW_OWN, P.EXPENSE_VIEW, P.EXPENSE_MANAGE, P.EXPENSE_VIEW_REPORTS] },
+      { label: 'Employee services', path: '/hrm/services', icon: LifeBuoy, permission: [P.SERVICE_REQUEST_VIEW_OWN, P.SERVICE_REQUEST_VIEW, P.SERVICE_REQUEST_FULFILL, P.SERVICE_REQUEST_MANAGE, P.HR_LETTER_VIEW_OWN, P.HR_LETTER_MANAGE_TEMPLATES, P.HR_LETTER_VIEW_REPORTS] },
     ],
   },
   {

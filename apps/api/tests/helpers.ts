@@ -80,6 +80,15 @@ export async function cleanUsers() {
  */
 export async function resetDatabase() {
   assertTestDatabase();
+  await prisma.hrLetter.deleteMany();
+  await prisma.serviceRequestStatusHistory.deleteMany();
+  await prisma.serviceRequestMessage.deleteMany();
+  await prisma.serviceRequestValue.deleteMany();
+  await prisma.serviceRequest.deleteMany();
+  await prisma.serviceRequestTypeField.deleteMany();
+  await prisma.serviceRequestType.deleteMany();
+  await prisma.hrLetterTemplate.deleteMany();
+  await prisma.serviceSequence.deleteMany();
   await prisma.expenseStatusHistory.deleteMany();
   await prisma.expenseItem.deleteMany();
   await prisma.expenseReport.deleteMany();

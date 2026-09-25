@@ -24,3 +24,4 @@ export * from './learning';
 export * from './schemas';
 export * from './benefits';
 export * from './expense';
+export * from './employee-services';

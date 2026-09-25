@@ -308,7 +308,7 @@ export const DOCUMENT_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
 export const DOCUMENT_EXPIRY_STATES = ['VALID', 'EXPIRING_SOON', 'EXPIRED', 'NONE'] as const;
 export type DocumentExpiryState = (typeof DOCUMENT_EXPIRY_STATES)[number];
 /** The only things a document may be attached to. A table name never comes from a request. */
-export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION', 'BENEFIT_CLAIM', 'EXPENSE_ITEM'] as const;
+export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION', 'BENEFIT_CLAIM', 'EXPENSE_ITEM', 'SERVICE_REQUEST', 'HR_LETTER'] as const;
 export type DocumentLinkEntityType = (typeof DOCUMENT_LINK_ENTITY_TYPES)[number];
 export const REPORT_VISIBILITIES = ['PRIVATE', 'SHARED'] as const;
 export const REPORT_FIELD_TYPES = ['STRING', 'NUMBER', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN', 'ENUM'] as const;
@@ -389,6 +389,13 @@ export const NOTIFICATION_TYPES = {
   EXPENSE_REPORT_REJECTED: 'EXPENSE_REPORT_REJECTED',
   EXPENSE_READY_FOR_PAYMENT: 'EXPENSE_READY_FOR_PAYMENT',
   EXPENSE_PAID: 'EXPENSE_PAID',
+  SERVICE_REQUEST_SUBMITTED: 'SERVICE_REQUEST_SUBMITTED',
+  SERVICE_REQUEST_ASSIGNED: 'SERVICE_REQUEST_ASSIGNED',
+  SERVICE_REQUEST_WAITING_EMPLOYEE: 'SERVICE_REQUEST_WAITING_EMPLOYEE',
+  SERVICE_REQUEST_FULFILLED: 'SERVICE_REQUEST_FULFILLED',
+  SERVICE_REQUEST_REJECTED: 'SERVICE_REQUEST_REJECTED',
+  HR_LETTER_ISSUED: 'HR_LETTER_ISSUED',
+  HR_LETTER_VOIDED: 'HR_LETTER_VOIDED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -406,7 +413,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'expense', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'expense', 'employee_services', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -763,6 +770,22 @@ export const AUDIT_ACTIONS = {
   CREATE_PRIVACY_REQUEST: 'CREATE_PRIVACY_REQUEST',
   UPDATE_PRIVACY_REQUEST: 'UPDATE_PRIVACY_REQUEST',
   EXPORT_EMPLOYEE_PERSONAL_DATA: 'EXPORT_EMPLOYEE_PERSONAL_DATA',
+  CREATE_SERVICE_REQUEST_TYPE: 'CREATE_SERVICE_REQUEST_TYPE',
+  UPDATE_SERVICE_REQUEST_TYPE: 'UPDATE_SERVICE_REQUEST_TYPE',
+  CREATE_SERVICE_REQUEST: 'CREATE_SERVICE_REQUEST',
+  UPDATE_SERVICE_REQUEST: 'UPDATE_SERVICE_REQUEST',
+  SUBMIT_SERVICE_REQUEST: 'SUBMIT_SERVICE_REQUEST',
+  ASSIGN_SERVICE_REQUEST: 'ASSIGN_SERVICE_REQUEST',
+  UPDATE_SERVICE_REQUEST_STATUS: 'UPDATE_SERVICE_REQUEST_STATUS',
+  ADD_SERVICE_REQUEST_MESSAGE: 'ADD_SERVICE_REQUEST_MESSAGE',
+  LINK_SERVICE_REQUEST_DOCUMENT: 'LINK_SERVICE_REQUEST_DOCUMENT',
+  FULFILL_SERVICE_REQUEST: 'FULFILL_SERVICE_REQUEST',
+  REJECT_SERVICE_REQUEST: 'REJECT_SERVICE_REQUEST',
+  CANCEL_SERVICE_REQUEST: 'CANCEL_SERVICE_REQUEST',
+  CREATE_HR_LETTER_TEMPLATE: 'CREATE_HR_LETTER_TEMPLATE',
+  UPDATE_HR_LETTER_TEMPLATE: 'UPDATE_HR_LETTER_TEMPLATE',
+  ISSUE_HR_LETTER: 'ISSUE_HR_LETTER',
+  VOID_HR_LETTER: 'VOID_HR_LETTER',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -818,6 +841,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   learning: 'OJT, learning paths and certifications',
   benefits: 'Benefits, welfare and claims',
   expense: 'Expenses and travel',
+  employee_services: 'Employee services',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

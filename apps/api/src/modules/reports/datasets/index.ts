@@ -1,4 +1,4 @@
-import { PERMISSIONS, calculateGap } from '@hr/shared';
+import { PERMISSIONS, calculateGap, SERVICE_CATEGORIES, HR_LETTER_TYPES, HR_LETTER_STATUSES } from '@hr/shared';
 import { prisma } from '../../../lib/prisma';
 import { AppError } from '../../../lib/errors';
 import { hasPermission } from '../../../services/authorization/authorization.service';
@@ -533,5 +533,60 @@ registerDataset(memoryDataset({
     need(auth, ...EXPENSE_REPORTS);
     const rows = await prisma.expenseItem.findMany({ where: { report: { status: { not: 'DRAFT' } } }, select: { categoryNameSnapshot: true, expenseDate: true, amount: true, receiptRequiredSnapshot: true, report: { select: { policyNameSnapshot: true, organizationSnapshot: true, status: true, currency: true } } }, orderBy: { expenseDate: 'desc' }, take: 50000 });
     return rows.map((r): Row => ({ category: r.categoryNameSnapshot, policy: r.report.policyNameSnapshot, organization: r.report.organizationSnapshot, expenseMonth: r.expenseDate.slice(0, 7), reportStatus: r.report.status, currency: r.report.currency, receiptRequired: r.receiptRequiredSnapshot, amount: toMoneyString(r.amount) }));
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// Employee services (Task 40). Aggregate-safe: request type, category, status, month, duration and letter type.
+// No employee, request number, subject, field answer, message, letter number, letter body or salary.
+// ---------------------------------------------------------------------------
+const SERVICE_REPORTS = [PERMISSIONS.HR_LETTER_VIEW_REPORTS, PERMISSIONS.SERVICE_REQUEST_MANAGE];
+registerDataset(memoryDataset({
+  id: 'service_request_summary', name: 'Service request summary',
+  description: 'One row per submitted service request: type, category, organization, submitted and fulfilled months, status, whether it went past its target, and days to fulfil. No employee, request number, subject, answers or messages.',
+  requiredPermissions: SERVICE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'requestType', label: 'Request type', type: 'STRING', column: 'requestType', groupable: true }),
+    f({ id: 'category', label: 'Category', type: 'ENUM', column: 'category', groupable: true, options: opts([...SERVICE_CATEGORIES]) }),
+    f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
+    f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }),
+    f({ id: 'fulfilledMonth', label: 'Fulfilled month', type: 'STRING', column: 'fulfilledMonth', groupable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE', 'FULFILLED', 'REJECTED', 'CANCELLED']) }),
+    f({ id: 'fulfillmentType', label: 'Fulfilment type', type: 'ENUM', column: 'fulfillmentType', groupable: true, options: opts(['GENERAL', 'HR_LETTER']) }),
+    f({ id: 'overdue', label: 'Past target', type: 'BOOLEAN', column: 'overdue', groupable: true }),
+    f({ id: 'daysToFulfil', label: 'Days to fulfil', type: 'NUMBER', column: 'daysToFulfil', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...SERVICE_REPORTS);
+    const rows = await prisma.serviceRequest.findMany({
+      where: { status: { not: 'DRAFT' } },
+      select: { requestTypeNameSnapshot: true, categorySnapshot: true, organizationSnapshot: true, submittedAt: true, fulfilledAt: true, dueDate: true, status: true, fulfillmentTypeSnapshot: true },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    return rows.map((r): Row => ({
+      requestType: r.requestTypeNameSnapshot, category: r.categorySnapshot, organization: r.organizationSnapshot,
+      submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, fulfilledMonth: r.fulfilledAt ? r.fulfilledAt.toISOString().slice(0, 7) : null,
+      status: r.status, fulfillmentType: r.fulfillmentTypeSnapshot,
+      overdue: !!r.dueDate && (r.fulfilledAt ? r.dueDate < r.fulfilledAt.toISOString().slice(0, 10) : r.dueDate < today && ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(r.status)),
+      daysToFulfil: r.submittedAt && r.fulfilledAt ? Math.max(0, Math.round((r.fulfilledAt.getTime() - r.submittedAt.getTime()) / 86_400_000)) : null,
+    }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'hr_letter_summary', name: 'HR letter summary',
+  description: 'One row per issued HR letter: letter type, template, organization, issue month and status. No employee, letter number, subject, body or salary.',
+  requiredPermissions: SERVICE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'letterType', label: 'Letter type', type: 'ENUM', column: 'letterType', groupable: true, options: opts([...HR_LETTER_TYPES]) }),
+    f({ id: 'template', label: 'Template', type: 'STRING', column: 'template', groupable: true }),
+    f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
+    f({ id: 'issuedMonth', label: 'Issued month', type: 'STRING', column: 'issuedMonth', groupable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts([...HR_LETTER_STATUSES]) }),
+    f({ id: 'fromRequest', label: 'From a request', type: 'BOOLEAN', column: 'fromRequest', groupable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...SERVICE_REPORTS);
+    const rows = await prisma.hrLetter.findMany({ select: { letterTypeSnapshot: true, templateNameSnapshot: true, organizationSnapshot: true, issuedDate: true, status: true, serviceRequestId: true } });
+    return rows.map((r): Row => ({ letterType: r.letterTypeSnapshot, template: r.templateNameSnapshot, organization: r.organizationSnapshot, issuedMonth: r.issuedDate.slice(0, 7), status: r.status, fromRequest: !!r.serviceRequestId }));
   },
 }));

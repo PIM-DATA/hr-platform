@@ -4170,3 +4170,222 @@ model ExpenseStatusHistory {
   @@index([entityType, entityId, createdAt])
   @@map("expense_status_history")
 }
+
+// ---------------------------------------------------------------------------
+// Employee services (Task 40): service requests and HR letters.
+// A service request records what was asked and what HR did; it never writes to a source domain. An issued letter is
+// an immutable snapshot of text rendered on the server from an allow-listed token registry.
+// ---------------------------------------------------------------------------
+
+model ServiceSequence {
+  kind String
+  year Int
+  next Int    @default(1)
+
+  @@id([kind, year])
+  @@map("service_sequences")
+}
+
+model ServiceRequestType {
+  id                String  @id @default(cuid())
+  code              String  @unique
+  name              String
+  description       String?
+  category          String
+  organizationId    String? @map("organization_id")
+  /// Optional generic-workflow definition; absent means the request goes straight to the HR queue.
+  workflowCode      String? @map("workflow_code")
+  /// Calendar days from submission to the derived due date. No escalation scheduler exists.
+  targetDays        Int?    @map("target_days")
+  requiresAttachment Boolean @default(false) @map("requires_attachment")
+  employeeSelectable Boolean @default(true) @map("employee_selectable")
+  /// GENERAL records a result; HR_LETTER must issue a letter before the request can be fulfilled.
+  fulfillmentType   String  @default("GENERAL") @map("fulfillment_type")
+  letterTemplateId  String? @map("letter_template_id")
+  letterTemplate    HrLetterTemplate? @relation(fields: [letterTemplateId], references: [id])
+  isActive          Boolean @default(true) @map("is_active")
+  createdByUserId   String  @map("created_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  fields   ServiceRequestTypeField[]
+  requests ServiceRequest[]
+
+  @@index([isActive, category])
+  @@map("service_request_types")
+}
+
+model ServiceRequestTypeField {
+  id              String  @id @default(cuid())
+  requestTypeId   String  @map("request_type_id")
+  requestType     ServiceRequestType @relation(fields: [requestTypeId], references: [id], onDelete: Cascade)
+  key             String
+  label           String
+  /// TEXT | TEXTAREA | DATE | SELECT | MULTI_SELECT | BOOLEAN | NUMBER. No code, HTML, SQL or expression.
+  fieldType       String  @map("field_type")
+  required        Boolean @default(false)
+  displayOrder    Int     @default(0) @map("display_order")
+  /// Allow-listed choices for SELECT and MULTI_SELECT, stored as a JSON string array.
+  optionsJson     String? @map("options_json")
+  maxLength       Int?    @map("max_length")
+  employeeVisible Boolean @default(true) @map("employee_visible")
+  helpText        String? @map("help_text")
+
+  @@unique([requestTypeId, key])
+  @@map("service_request_type_fields")
+}
+
+model ServiceRequest {
+  id                     String  @id @default(cuid())
+  requestNumber          String  @unique @map("request_number")
+  requestTypeId          String  @map("request_type_id")
+  requestType            ServiceRequestType @relation(fields: [requestTypeId], references: [id])
+  employeeId             String  @map("employee_id")
+  requestTypeCodeSnapshot String @map("request_type_code_snapshot")
+  requestTypeNameSnapshot String @map("request_type_name_snapshot")
+  categorySnapshot       String  @map("category_snapshot")
+  fulfillmentTypeSnapshot String @map("fulfillment_type_snapshot")
+  targetDaysSnapshot     Int?    @map("target_days_snapshot")
+  employeeCodeSnapshot   String  @map("employee_code_snapshot")
+  employeeNameSnapshot   String  @map("employee_name_snapshot")
+  organizationSnapshot   String? @map("organization_snapshot")
+  departmentSnapshot     String? @map("department_snapshot")
+  jobSnapshot            String? @map("job_snapshot")
+  positionSnapshot       String? @map("position_snapshot")
+  subject                String
+  /// Business-sensitive free text: never copied into an audit payload, a notification or a report.
+  description            String?
+  status                 String  @default("DRAFT")
+  assignedToUserId       String? @map("assigned_to_user_id")
+  assignedAt             DateTime? @map("assigned_at")
+  workflowInstanceId     String? @unique @map("workflow_instance_id")
+  /// Recorded when the optional workflow decides; the request's own status stays a fulfilment status.
+  workflowStatus         String? @map("workflow_status")
+  submittedDate          String? @map("submitted_date")
+  dueDate                String? @map("due_date")
+  submittedAt            DateTime? @map("submitted_at")
+  fulfilledAt            DateTime? @map("fulfilled_at")
+  rejectedAt             DateTime? @map("rejected_at")
+  cancelledAt            DateTime? @map("cancelled_at")
+  resultNote             String? @map("result_note")
+  rejectReasonCode       String? @map("reject_reason_code")
+  rejectExplanation      String? @map("reject_explanation")
+  createdByUserId        String  @map("created_by_user_id")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  values   ServiceRequestValue[]
+  messages ServiceRequestMessage[]
+  letters  HrLetter[]
+
+  @@index([employeeId, status])
+  @@index([status, submittedAt])
+  @@index([assignedToUserId, status])
+  @@index([requestTypeId, status])
+  @@index([dueDate])
+  @@map("service_requests")
+}
+
+model ServiceRequestValue {
+  id             String @id @default(cuid())
+  requestId      String @map("request_id")
+  request        ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  fieldKey       String @map("field_key")
+  /// Label and type frozen at submission, so a later catalogue edit cannot change what the answer meant.
+  labelSnapshot  String @map("label_snapshot")
+  fieldTypeSnapshot String @map("field_type_snapshot")
+  employeeVisibleSnapshot Boolean @default(true) @map("employee_visible_snapshot")
+  displayOrderSnapshot Int   @default(0) @map("display_order_snapshot")
+  /// The submitted answer as plain text (a multi-select is joined). Never logged, never reported.
+  value          String
+
+  @@unique([requestId, fieldKey])
+  @@map("service_request_values")
+}
+
+model ServiceRequestMessage {
+  id           String @id @default(cuid())
+  requestId    String @map("request_id")
+  request      ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorUserId String @map("author_user_id")
+  /// REQUESTER_VISIBLE reaches the employee; INTERNAL never leaves the fulfilment team.
+  visibility   String
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([requestId, createdAt])
+  @@map("service_request_messages")
+}
+
+model ServiceRequestStatusHistory {
+  id          String   @id @default(cuid())
+  requestId   String   @map("request_id")
+  fromStatus  String?  @map("from_status")
+  toStatus    String   @map("to_status")
+  actorUserId String?  @map("actor_user_id")
+  reasonCode  String?  @map("reason_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([requestId, createdAt])
+  @@map("service_request_status_history")
+}
+
+model HrLetterTemplate {
+  id              String  @id @default(cuid())
+  code            String  @unique
+  name            String
+  organizationId  String? @map("organization_id")
+  letterType      String  @map("letter_type")
+  subjectTemplate String? @map("subject_template")
+  /// Plain text with allow-listed {{tokens}} only. Validated on save; nothing here is ever executed.
+  bodyTemplate    String  @map("body_template")
+  /// Derived from the tokens the body and subject use: a salary token makes the payroll authority mandatory to issue.
+  requiresSalaryAccess Boolean @default(false) @map("requires_salary_access")
+  isActive        Boolean @default(true) @map("is_active")
+  createdByUserId String  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  letters      HrLetter[]
+  requestTypes ServiceRequestType[]
+
+  @@index([isActive, letterType])
+  @@map("hr_letter_templates")
+}
+
+model HrLetter {
+  id                     String  @id @default(cuid())
+  letterNumber           String  @unique @map("letter_number")
+  employeeId             String  @map("employee_id")
+  serviceRequestId       String? @map("service_request_id")
+  serviceRequest         ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+  templateId             String  @map("template_id")
+  template               HrLetterTemplate @relation(fields: [templateId], references: [id])
+  templateCodeSnapshot   String  @map("template_code_snapshot")
+  templateNameSnapshot   String  @map("template_name_snapshot")
+  letterTypeSnapshot     String  @map("letter_type_snapshot")
+  employeeCodeSnapshot   String  @map("employee_code_snapshot")
+  employeeNameSnapshot   String  @map("employee_name_snapshot")
+  organizationSnapshot   String? @map("organization_snapshot")
+  departmentSnapshot     String? @map("department_snapshot")
+  jobSnapshot            String? @map("job_snapshot")
+  positionSnapshot       String? @map("position_snapshot")
+  /// Rendered on the server at issue and never changed afterwards. A later template edit does not touch it.
+  renderedSubjectSnapshot String? @map("rendered_subject_snapshot")
+  renderedBodySnapshot   String  @map("rendered_body_snapshot")
+  /// The authoritative compensation in effect on the issue date, exact. Null for a letter without salary tokens.
+  salaryAmountSnapshot   Decimal? @map("salary_amount_snapshot") @db.Decimal(18, 2)
+  salaryCurrencySnapshot String? @map("salary_currency_snapshot")
+  issuedDate             String  @map("issued_date")
+  issuedByUserId         String  @map("issued_by_user_id")
+  status                 String  @default("ISSUED")
+  voidedAt               DateTime? @map("voided_at")
+  voidedByUserId         String? @map("voided_by_user_id")
+  voidReasonCode         String? @map("void_reason_code")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  @@index([employeeId, status])
+  @@index([letterTypeSnapshot, issuedDate])
+  @@index([serviceRequestId])
+  @@map("hr_letters")
+}

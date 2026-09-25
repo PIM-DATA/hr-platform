@@ -150,6 +150,18 @@ export const PERMISSIONS = {
   EXPENSE_REVIEW: 'expense.review',
   EXPENSE_RECORD_PAYMENT: 'expense.record_payment',
   EXPENSE_VIEW_REPORTS: 'expense.view_reports',
+
+  // Employee services (Task 40): service requests and HR letters. Fulfilling a ticket never grants source-domain
+  // access: a salary-bearing letter needs the payroll authority as well.
+  SERVICE_REQUEST_VIEW_OWN: 'service_request.view_own',
+  SERVICE_REQUEST_CREATE: 'service_request.create',
+  SERVICE_REQUEST_VIEW: 'service_request.view',
+  SERVICE_REQUEST_FULFILL: 'service_request.fulfill',
+  SERVICE_REQUEST_MANAGE: 'service_request.manage',
+  HR_LETTER_VIEW_OWN: 'hr_letter.view_own',
+  HR_LETTER_ISSUE: 'hr_letter.issue',
+  HR_LETTER_MANAGE_TEMPLATES: 'hr_letter.manage_templates',
+  HR_LETTER_VIEW_REPORTS: 'hr_letter.view_reports',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -302,6 +314,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.EXPENSE_REVIEW, module: 'expense', description: 'Open the review view of any travel request or expense report' },
   { code: PERMISSIONS.EXPENSE_RECORD_PAYMENT, module: 'expense', description: 'Record that an approved reimbursement was paid, or hand it to payroll (with the payroll permission)' },
   { code: PERMISSIONS.EXPENSE_VIEW_REPORTS, module: 'expense', description: 'Aggregate expense and travel reporting by policy, category and month; no person' },
+
+  { code: PERMISSIONS.SERVICE_REQUEST_VIEW_OWN, module: 'employee_services', description: 'View your own service requests' },
+  { code: PERMISSIONS.SERVICE_REQUEST_CREATE, module: 'employee_services', description: 'Create and submit your own service requests' },
+  { code: PERMISSIONS.SERVICE_REQUEST_VIEW, module: 'employee_services', description: 'View the service request queue, submitted values and internal notes' },
+  { code: PERMISSIONS.SERVICE_REQUEST_FULFILL, module: 'employee_services', description: 'Assign, answer, fulfil and reject service requests' },
+  { code: PERMISSIONS.SERVICE_REQUEST_MANAGE, module: 'employee_services', description: 'Manage the service catalogue and request form fields' },
+  { code: PERMISSIONS.HR_LETTER_VIEW_OWN, module: 'employee_services', description: 'View your own issued HR letters' },
+  { code: PERMISSIONS.HR_LETTER_ISSUE, module: 'employee_services', description: 'Issue and void HR letters (a salary letter also needs the payroll authority)' },
+  { code: PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES, module: 'employee_services', description: 'Manage HR letter templates' },
+  { code: PERMISSIONS.HR_LETTER_VIEW_REPORTS, module: 'employee_services', description: 'Aggregate service request and HR letter reporting; no person' },
 ];
 
 /**

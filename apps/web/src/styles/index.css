@@ -41,3 +41,28 @@ body { @apply bg-slate-50 text-slate-800 antialiased; }
   }
   body:has(#payslip-print) { background: #fff; }
 }
+
+/*
+ * Print (Task 40): an HR letter prints as a letter. The application chrome, the modal frame and the controls are
+ * hidden and only the letter sheet is painted, on A4 with normal margins. This is a browser print of a plain-text
+ * snapshot: no PDF is generated on the server and nothing here is electronically signed.
+ */
+@media print {
+  @page { size: A4; margin: 18mm; }
+  body:has(.letter-sheet) { background: #fff; }
+  body:has(.letter-sheet) * { visibility: hidden; }
+  body:has(.letter-sheet) .letter-sheet,
+  body:has(.letter-sheet) .letter-sheet * { visibility: visible; }
+  body:has(.letter-sheet) .letter-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    color: #000;
+  }
+}

@@ -7,7 +7,7 @@ One employee data · One organization structure · One permission system · One 
 | Group | Modules | Status |
 |---|---|---|
 | Foundation | Authentication and sessions, RBAC with data scopes, users / roles / permission matrix, organization structure, employee master with history, audit log, dashboard, notifications, account security, workflow engine, work calendars | ✅ |
-| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39) | ✅ MVPs with documented limitations |
+| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39), Employee services and HR letters (40) | ✅ MVPs with documented limitations |
 | HRD | Competency and skill gaps (24), Training / TNA / IDP (25), OJT / learning paths / certifications (35), Career / talent / 9-box / succession (28) | ✅ |
 | HROD | Workforce planning and organization design (32), Engagement / eNPS surveys (33) | ✅ |
 | Analytics and AI | Employee 360 and executive analytics (29), grounded HR Copilot (31) | ✅ |
@@ -296,6 +296,7 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
 - Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
 - Benefits: no insurer API, hospital/provider integration, medical diagnosis management, dependent insurance workflow, flexible-benefit marketplace, OCR receipt extraction, fraud detection, bank payment, taxability engine, statutory benefits engine, automatic payroll treatment, FX conversion, external reimbursement provider, automated adjudication, recurring payment scheduler, provident-fund/pension engine, stock/equity benefits, AI recommendation, partial approval, or department-level utilization for executives.
+- Employee services and HR letters: no public request portal, email or SMS ticketing, chatbot intake, automated SLA escalation, AI classification or reply drafting, external ITSM, asset or procurement fulfilment, arbitrary workflow scripting or template expressions, automatic source-domain updates, electronic signature, public certificate verification or QR check, document OCR, server-generated PDF (letters are browser-printed from a plain-text snapshot), advanced document designer, or external delivery.
 - Expenses and travel: no OCR or receipt extraction, FX conversion, per-diem or mileage engine, corporate-card or bank feed, advances, booking or itinerary integration, budget or cost-centre accounting, tax or VAT decision, partial or line-item approval, approval delegation, reminder scheduler, department-level spend views, or Employee 360 section.
 - Learning (OJT, paths, certifications): no LMS/SCORM, exam engine, external certification registry or accreditation integration, automatic competency level change, AI observation or assessment, certificate PDF, expiry scheduler or reminder delivery, trainer workload balancing, path recommendation, promotion on path completion, or bulk certification import.
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
@@ -1058,6 +1059,28 @@ reports, receipts and payments; approvers see the requests waiting for them ther
   explicit, idempotent and ends in "sent to payroll", not "paid". Managers see nothing outside their queue;
   executives see aggregates by policy, category and month only.
 - **Not** benefit claims, OCR, FX, per diem, corporate cards, booking, budgets, tax, or bank payment.
+
+## Employee services and HR letters (Task 40)
+
+Guide: [docs/employee-services.md](docs/employee-services.md). HRM → Employee services (My requests, My letters,
+Dashboard, Requests, Service catalog, HR letters, Letter templates, Reports). Employees ask HR for something and
+follow it; HR works a queue; document requests end in an issued letter.
+
+- **A request is a record, not an instruction.** Completing one records what HR did. It never writes to the
+  employee master, payroll, leave, benefits or any other domain; HR changes data in the module that owns it.
+- **Service catalog** — request types with a category, an optional approval workflow, a target in calendar days,
+  an attachment rule and allow-listed form fields (text, date, choice, boolean, number). No code, expressions or
+  formulas. What an answer meant is frozen on the request when it is submitted.
+- **Queue and conversation** — row-locked assignment, employee-visible messages and internal notes that never
+  reach the employee, the approver, a manager or the privacy export. Approval authorises; HR still fulfils.
+- **HR letters** — employment and salary certificates rendered on the server from an allow-listed token registry;
+  an unknown token is refused when the template is saved. An issued letter is immutable: a later template edit,
+  transfer or pay rise changes only later letters. Mistakes are voided with a reason and reissued.
+- **Salary confidentiality** — a salary-bearing letter needs the payroll authority as well as the letter
+  permission, and the figure is the authoritative compensation in effect on the issue date, exact to two decimals.
+  Nothing is inferred from a payslip.
+- **Print-ready, not PDF** — letters print from the browser. There is no server-generated PDF, no electronic
+  signature and no statutory certification claim.
 
 ## Pilot release
 

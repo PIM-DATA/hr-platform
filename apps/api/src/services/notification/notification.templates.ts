@@ -9,6 +9,8 @@ import { NOTIFICATION_TYPES, type NotificationType } from '@hr/shared';
  */
 export interface TemplateVars {
   employeeName?: string;
+  /** The service request type's name, for employee-services notifications. Never the subject, an answer or a message. */
+  requestType?: string;
   leaveType?: string;
   dateRange?: string;
   /** What kind of request needs approving, for the generic approval notification ("leave", "attendance correction"). */
@@ -167,6 +169,13 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.EXPENSE_REPORT_REJECTED]: (v) => ({ title: 'Expense report not approved', body: `Expense report ${v.referenceNumber ?? ''} was not approved.` }),
   [NOTIFICATION_TYPES.EXPENSE_READY_FOR_PAYMENT]: (v) => ({ title: 'Expense report ready for payment', body: `Expense report ${v.referenceNumber ?? ''} is ready for payment.` }),
   [NOTIFICATION_TYPES.EXPENSE_PAID]: (v) => ({ title: 'Expense report paid', body: `Expense report ${v.referenceNumber ?? ''} is recorded as paid.` }),
+  [NOTIFICATION_TYPES.SERVICE_REQUEST_SUBMITTED]: (v) => ({ title: 'Request submitted', body: `Your ${v.requestType ?? 'service'} request ${v.referenceNumber ?? ''} was submitted to HR.` }),
+  [NOTIFICATION_TYPES.SERVICE_REQUEST_ASSIGNED]: (v) => ({ title: 'Request assigned to you', body: `Service request ${v.referenceNumber ?? ''}${v.requestType ? ` (${v.requestType})` : ''} is assigned to you.` }),
+  [NOTIFICATION_TYPES.SERVICE_REQUEST_WAITING_EMPLOYEE]: (v) => ({ title: 'Your request needs an answer', body: `HR is waiting for you on request ${v.referenceNumber ?? ''}. Open it to reply.` }),
+  [NOTIFICATION_TYPES.SERVICE_REQUEST_FULFILLED]: (v) => ({ title: 'Request completed', body: `Service request ${v.referenceNumber ?? ''} has been completed.` }),
+  [NOTIFICATION_TYPES.SERVICE_REQUEST_REJECTED]: (v) => ({ title: 'Request declined', body: `Service request ${v.referenceNumber ?? ''} was declined. Open it for the explanation.` }),
+  [NOTIFICATION_TYPES.HR_LETTER_ISSUED]: (v) => ({ title: 'A letter was issued for you', body: `Letter ${v.referenceNumber ?? ''} is available in your employee services page.` }),
+  [NOTIFICATION_TYPES.HR_LETTER_VOIDED]: (v) => ({ title: 'A letter was voided', body: `Letter ${v.referenceNumber ?? ''} has been voided. HR will issue a replacement if one is needed.` }),
   // Benefits (Task 36): claim number, plan name, status. Never an amount, a description, a receipt or a reviewer's words.
   [NOTIFICATION_TYPES.BENEFIT_ENROLLMENT_CONFIRMED]: (v) => ({ title: 'Benefit enrolment confirmed', body: `You are enrolled in ${v.planName ?? 'a benefit plan'}.` }),
   [NOTIFICATION_TYPES.BENEFIT_CLAIM_SUBMITTED]: (v) => ({ title: 'Claim submitted', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} was submitted and is waiting for approval.` }),
