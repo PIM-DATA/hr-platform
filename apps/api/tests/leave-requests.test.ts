@@ -13,6 +13,14 @@ import { leaveWorkflowHandlers } from '../src/modules/leave/leave-request.handle
 import { createTestServer, createUser, loginAs } from './helpers';
 import { PW, setupLeaveFixture, type LeaveFixture, type Session } from './leave-fixture';
 
+/**
+ * Deterministic clock. The leave rules (notice, backdating, "today") read business today from the wall clock, so this
+ * file pins the clock to a fixed Wednesday morning in Bangkok before the fixture is built: every relative date
+ * (`wd(n)`, `pastWorkingDay()`) and every server-side check then sees the same day, whether the suite runs on a
+ * Monday, a Friday or a weekend. Only `Date` is faked; timers and I/O run for real. Policy values stay as configured.
+ */
+vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-23T03:00:00.000Z') });
+
 const app = createTestServer();
 let f: LeaveFixture;
 type Body = { leaveTypeId: string; startDate: string; endDate?: string; startPart?: 'FULL' | 'PM'; endPart?: 'FULL' | 'AM'; reason?: string | null; attachmentRef?: string | null };
@@ -40,7 +48,8 @@ const pastWorkingDay = () => { let d = f.today; do d = addDays(d, -1); while (['
 let E: LeaveFixture['ent'];
 
 beforeAll(async () => { f = await setupLeaveFixture(app); E = f.ent; }, 60000);
-afterAll(async () => { await prisma.$disconnect(); });
+afterAll(async () => {
+  vi.useRealTimers(); await prisma.$disconnect(); });
 
 describe('A. security / ownership', () => {
   it('1. unauthenticated → 401', async () => { expect((await request(app).get('/api/v1/leave/requests')).status).toBe(401); });

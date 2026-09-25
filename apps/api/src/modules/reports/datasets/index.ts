@@ -294,16 +294,17 @@ async function engagementRows(auth: AuthContext, grain: 'survey' | 'question' | 
   for (const s of surveys) {
     const questions = await loadSurveyQuestions(prisma, s.id);
     if (grain === 'department') {
-      const groups = await prisma.engagementSurveyAssignment.groupBy({ by: ['departmentIdSnapshot'], where: { surveyId: s.id, ...scope }, _count: { _all: true } });
-      const names = new Map((await prisma.department.findMany({ where: { id: { in: groups.map((g) => g.departmentIdSnapshot) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      const groups = await prisma.engagementSurveyAssignment.groupBy({ by: ['deptCohortId'], where: { surveyId: s.id, ...scope }, _count: { _all: true } });
+      const names = new Map((await prisma.engagementSurveyCohort.findMany({ where: { surveyId: s.id, dimensionType: 'DEPARTMENT' }, select: { id: true, label: true } })).map((c) => [c.id, c.label]));
       for (const g of groups) {
-        const r = await aggregateEngagement(prisma, s, questions, { departmentIdSnapshot: g.departmentIdSnapshot }, false);
-        const completed = r.suppressed ? null : await prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, departmentIdSnapshot: g.departmentIdSnapshot, completedAt: { not: null } } });
-        out.push({ survey: s.name, surveyStatus: s.status, responseMode: s.responseMode, department: names.get(g.departmentIdSnapshot) ?? '?', suppressed: r.suppressed, assigned: r.suppressed ? null : g._count._all, completed, responseRate: r.suppressed || completed === null ? null : responseRate(completed, g._count._all), enps: r.suppressed ? null : (r.enps?.score ?? null) });
+        const r = await aggregateEngagement(prisma, s, questions, { deptCohortId: g.deptCohortId }, false);
+        const completed = r.suppressed ? null : await prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, deptCohortId: g.deptCohortId, completedAt: { not: null } } });
+        out.push({ survey: s.name, surveyStatus: s.status, responseMode: s.responseMode, department: g.deptCohortId ? (names.get(g.deptCohortId) ?? '?') : 'Not set', suppressed: r.suppressed, assigned: r.suppressed ? null : g._count._all, completed, responseRate: r.suppressed || completed === null ? null : responseRate(completed, g._count._all), enps: r.suppressed ? null : (r.enps?.score ?? null) });
       }
       continue;
     }
-    const r = await aggregateEngagement(prisma, s, questions, scope, false);
+    const responseScope = visible ? { deptCohortId: { in: (await prisma.engagementSurveyCohort.findMany({ where: { surveyId: s.id, dimensionType: 'DEPARTMENT', sourceId: { in: visible } }, select: { id: true } })).map((c) => c.id) } } : {};
+    const r = await aggregateEngagement(prisma, s, questions, responseScope, false);
     const [assigned, completed] = await Promise.all([prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, ...scope } }), prisma.engagementSurveyAssignment.count({ where: { surveyId: s.id, ...scope, completedAt: { not: null } } })]);
     if (grain === 'survey') { out.push({ survey: s.name, code: s.code, surveyType: s.surveyType, surveyStatus: s.status, responseMode: s.responseMode, questions: s._count.questions, assigned: r.suppressed ? null : assigned, completed: r.suppressed ? null : completed, responseRate: r.suppressed ? null : responseRate(completed, assigned), suppressed: r.suppressed, enps: r.suppressed ? null : (r.enps?.score ?? null), closedAt: s.closedAt ? s.closedAt.toISOString() : null }); continue; }
     for (const q of questions) { const qr = r.suppressed ? null : r.questions.find((x) => x.questionId === q.id) ?? null; out.push({ survey: s.name, surveyStatus: s.status, question: q.text, theme: q.theme, questionType: q.questionType, suppressed: r.suppressed, responses: qr ? qr.responseCount : null, average: qr ? qr.average : null }); }

@@ -10,7 +10,7 @@ import { loadSurvey } from './survey.service';
 import { AUDIT_ACTIONS } from '@hr/shared';
 
 /**
- * Aggregation with one rule applied everywhere: for an anonymous survey, a group of responses smaller than the
+ * Aggregation over survey-local cohort tokens, with one rule applied everywhere: for an anonymous survey, a group of responses smaller than the
  * survey's minimum is suppressed — after every filter, for every actor, with no privileged path. Aggregates are
  * computed in the database (grouped counts per question and value); choice answers are counted in memory over
  * the group's rows. Participation (assigned / completed) comes from assignments; answers never join to them.
@@ -19,13 +19,28 @@ type Survey = Awaited<ReturnType<typeof loadSurvey>>;
 type Q = ReturnType<typeof questionDto>;
 const SUPPRESSED = (min: number): SuppressedResultDto => ({ suppressed: true, minimumGroupSize: min, reason: `Fewer than ${min} responses in this group; results are hidden to protect respondents.` });
 
-async function scopedFilter(db: Db, auth: AuthContext, filter: ResultsFilter): Promise<{ where: Prisma.EngagementResponseWhereInput; assignWhere: Prisma.EngagementSurveyAssignmentWhereInput; teamScoped: boolean; visible: string[] | null; positionUnsupported: boolean }> {
+/** Resolves a master id to this survey's cohort token, or to an impossible token when the audience never had it. */
+async function cohortFor(db: Db, surveyId: string, dimensionType: 'ORGANIZATION' | 'DEPARTMENT' | 'JOB', sourceId: string): Promise<string> {
+  const c = await db.engagementSurveyCohort.findUnique({ where: { surveyId_dimensionType_sourceId: { surveyId, dimensionType, sourceId } }, select: { id: true } });
+  return c?.id ?? '__no_such_cohort__';
+}
+async function scopedFilter(db: Db, auth: AuthContext, surveyId: string, mode: string, filter: ResultsFilter): Promise<{ where: Prisma.EngagementResponseWhereInput; assignWhere: Prisma.EngagementSurveyAssignmentWhereInput; teamScoped: boolean; visible: string[] | null; positionUnsupported: boolean }> {
   const visible = await visibleDepartmentIds(db, auth);
   const teamScoped = visible !== null;
   if (teamScoped && filter.departmentId && !visible.includes(filter.departmentId)) throw AppError.forbidden('That department is outside your scope');
-  const dept = filter.departmentId ? { departmentIdSnapshot: filter.departmentId } : teamScoped ? { departmentIdSnapshot: { in: visible } } : {};
-  const common = { ...dept, ...(filter.organizationId ? { organizationIdSnapshot: filter.organizationId } : {}), ...(filter.jobId ? { jobIdSnapshot: filter.jobId } : {}) };
-  return { where: { ...common, ...(filter.positionId ? { positionIdSnapshot: filter.positionId } : {}) }, assignWhere: { ...common, ...(filter.positionId ? { positionIdSnapshot: filter.positionId } : {}) }, teamScoped, visible, positionUnsupported: !!filter.positionId };
+  const deptCohorts = teamScoped && !filter.departmentId ? (await db.engagementSurveyCohort.findMany({ where: { surveyId, dimensionType: 'DEPARTMENT', sourceId: { in: visible } }, select: { id: true } })).map((c) => c.id) : null;
+  const where: Prisma.EngagementResponseWhereInput = {
+    ...(filter.departmentId ? { deptCohortId: await cohortFor(db, surveyId, 'DEPARTMENT', filter.departmentId) } : deptCohorts ? { deptCohortId: { in: deptCohorts } } : {}),
+    ...(filter.organizationId ? { orgCohortId: await cohortFor(db, surveyId, 'ORGANIZATION', filter.organizationId) } : {}),
+    ...(filter.jobId ? { jobCohortId: await cohortFor(db, surveyId, 'JOB', filter.jobId) } : {}),
+    // Position exists only for identified surveys, through the respondent table; anonymous answers carry no position.
+    ...(filter.positionId && mode === 'IDENTIFIED' ? { respondent: { assignment: { positionIdSnapshot: filter.positionId } } } : {}),
+  };
+  const assignWhere: Prisma.EngagementSurveyAssignmentWhereInput = {
+    ...(filter.departmentId ? { departmentIdSnapshot: filter.departmentId } : teamScoped ? { departmentIdSnapshot: { in: visible } } : {}),
+    ...(filter.organizationId ? { organizationIdSnapshot: filter.organizationId } : {}), ...(filter.jobId ? { jobIdSnapshot: filter.jobId } : {}), ...(filter.positionId ? { positionIdSnapshot: filter.positionId } : {}),
+  };
+  return { where, assignWhere, teamScoped, visible, positionUnsupported: !!filter.positionId };
 }
 
 /** Aggregates one group of responses. Applies the threshold before touching an answer. */
@@ -78,7 +93,7 @@ export const resultsService = {
   async overview(auth: AuthContext, surveyId: string, filter: ResultsFilter): Promise<SurveyResultsDto> {
     const survey = await loadSurvey(prisma, surveyId);
     assertReportable(survey);
-    const scope = await scopedFilter(prisma, auth, filter);
+    const scope = await scopedFilter(prisma, auth, surveyId, survey.responseMode, filter);
     const questions = await loadQuestions(prisma, surveyId);
     const [assigned, completed] = await Promise.all([prisma.engagementSurveyAssignment.count({ where: { surveyId, ...scope.assignWhere } }), prisma.engagementSurveyAssignment.count({ where: { surveyId, ...scope.assignWhere, completedAt: { not: null } } })]);
     const result = await aggregate(prisma, survey, questions, scope.where, scope.positionUnsupported);
@@ -91,19 +106,19 @@ export const resultsService = {
   async breakdown(auth: AuthContext, surveyId: string, by: 'department' | 'job' | 'organization', filter: ResultsFilter): Promise<BreakdownRowDto[]> {
     const survey = await loadSurvey(prisma, surveyId);
     assertReportable(survey);
-    const scope = await scopedFilter(prisma, auth, filter);
+    const scope = await scopedFilter(prisma, auth, surveyId, survey.responseMode, filter);
     const questions = await loadQuestions(prisma, surveyId);
-    const dim = by === 'department' ? 'departmentIdSnapshot' : by === 'job' ? 'jobIdSnapshot' : 'organizationIdSnapshot';
+    const dim = by === 'department' ? 'deptCohortId' : by === 'job' ? 'jobCohortId' : 'orgCohortId';
+    // Groups come from the frozen audience; their names from the survey's own cohort rows. Answers are never joined to people.
     const groups = await prisma.engagementSurveyAssignment.groupBy({ by: [dim], where: { surveyId, ...scope.assignWhere }, _count: { _all: true } });
-    const keys = groups.map((g) => g[dim] as string | null).filter((k): k is string => !!k);
-    const names = new Map<string, string>(by === 'department' ? (await prisma.department.findMany({ where: { id: { in: keys } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]) : by === 'job' ? (await prisma.job.findMany({ where: { id: { in: keys } }, select: { id: true, title: true } })).map((j) => [j.id, j.title]) : (await prisma.organization.findMany({ where: { id: { in: keys } }, select: { id: true, name: true } })).map((o) => [o.id, o.name]));
+    const cohorts = new Map((await prisma.engagementSurveyCohort.findMany({ where: { surveyId }, select: { id: true, label: true } })).map((c) => [c.id, c.label]));
     const rows: BreakdownRowDto[] = [];
     for (const g of groups) {
       const key = g[dim] as string | null;
       const groupWhere = { ...scope.where, [dim]: key };
       const completed = await prisma.engagementSurveyAssignment.count({ where: { surveyId, ...scope.assignWhere, [dim]: key, completedAt: { not: null } } });
       const result = await aggregate(prisma, survey, questions, groupWhere, scope.positionUnsupported);
-      rows.push({ key: key ?? '-', name: key ? (names.get(key) ?? '?') : 'Not set', assigned: result.suppressed ? 0 : g._count._all, completed: result.suppressed ? 0 : completed, responseRate: result.suppressed ? null : responseRate(completed, g._count._all), result });
+      rows.push({ key: key ?? '-', name: key ? (cohorts.get(key) ?? '?') : 'Not set', assigned: result.suppressed ? 0 : g._count._all, completed: result.suppressed ? 0 : completed, responseRate: result.suppressed ? null : responseRate(completed, g._count._all), result });
     }
     return rows.sort((a, b) => a.name.localeCompare(b.name));
   },
@@ -123,9 +138,11 @@ export const resultsService = {
       const total = await prisma.engagementResponse.count({ where: { surveyId } });
       if (total < survey.minimumAnonymousGroupSize) throw new AppError(409, 'ENGAGEMENT_COMMENTS_SUPPRESSED', `Fewer than ${survey.minimumAnonymousGroupSize} responses; comments are hidden`);
     }
-    const rows = await prisma.engagementResponseAnswer.findMany({ where: { response: { surveyId }, textValue: { not: null }, questionId, question: { questionType: 'TEXT' } }, select: { id: true, questionId: true, textValue: true, response: { select: { employeeId: true } } } });
-    const emps = anonymous ? new Map<string, { employeeCode: string; firstName: string; lastName: string }>() : new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.response.employeeId).filter((x): x is string => !!x))] } }, select: { id: true, employeeCode: true, firstName: true, lastName: true } })).map((e) => [e.id, e]));
-    const out = rows.map((r) => ({ questionId: r.questionId, text: r.textValue ?? '', respondent: anonymous ? null : (r.response.employeeId ? (emps.get(r.response.employeeId) ?? null) : null), sort: createHash('sha256').update(r.id).digest('hex') }));
+    // The respondent relation is empty for every anonymous response (that table is never written for them).
+    const rows = await prisma.engagementResponseAnswer.findMany({ where: { response: { surveyId }, textValue: { not: null }, questionId, question: { questionType: 'TEXT' } }, select: { id: true, questionId: true, textValue: true, response: { select: { respondent: { select: { employeeId: true } } } } } });
+    const empIds = anonymous ? [] : [...new Set(rows.map((r) => r.response.respondent?.employeeId).filter((x): x is string => !!x))];
+    const emps = new Map((empIds.length ? await prisma.employee.findMany({ where: { id: { in: empIds } }, select: { id: true, employeeCode: true, firstName: true, lastName: true } }) : []).map((e) => [e.id, e]));
+    const out = rows.map((r) => { const eid = anonymous ? null : (r.response.respondent?.employeeId ?? null); return { questionId: r.questionId, text: r.textValue ?? '', respondent: eid ? (emps.get(eid) ?? null) : null, sort: createHash('sha256').update(r.id).digest('hex') }; });
     out.sort((a, b) => (anonymous ? a.sort.localeCompare(b.sort) : 0));
     await auditService.log(engagementAudit(actor, AUDIT_ACTIONS.VIEW_ENGAGEMENT_COMMENTS, 'EngagementSurvey', surveyId, { mode: survey.responseMode, comments: out.length, questionId: questionId ?? null }));
     return out.map(({ sort: _s, ...c }) => c);
@@ -136,10 +153,10 @@ export const resultsService = {
     if (!canManage(actor.auth)) throw AppError.forbidden();
     const survey = await loadSurvey(prisma, surveyId);
     if (survey.responseMode !== 'IDENTIFIED') throw new AppError(409, 'ENGAGEMENT_SURVEY_ANONYMOUS', 'An anonymous survey has no respondent detail');
-    const rows = await prisma.engagementResponse.findMany({ where: { surveyId }, include: { answers: true }, orderBy: { submittedAt: 'asc' } });
-    const emps = new Map((await prisma.employee.findMany({ where: { id: { in: rows.map((r) => r.employeeId).filter((x): x is string => !!x) } }, select: { id: true, employeeCode: true, firstName: true, lastName: true } })).map((e) => [e.id, e]));
+    const rows = await prisma.engagementIdentifiedRespondent.findMany({ where: { response: { surveyId } }, include: { response: { include: { answers: true } } }, orderBy: { submittedAt: 'asc' } });
+    const emps = new Map((await prisma.employee.findMany({ where: { id: { in: rows.map((r) => r.employeeId) } }, select: { id: true, employeeCode: true, firstName: true, lastName: true } })).map((e) => [e.id, e]));
     await auditService.log(engagementAudit(actor, AUDIT_ACTIONS.VIEW_ENGAGEMENT_RESPONDENT_DETAIL, 'EngagementSurvey', surveyId, { responses: rows.length }));
-    return rows.map((r) => ({ responseId: r.id, employee: emps.get(r.employeeId ?? '') ?? { id: r.employeeId ?? '', employeeCode: '?', firstName: '?', lastName: '' }, submittedAt: r.submittedAt?.toISOString() ?? r.submittedDate, answers: r.answers.map((a) => ({ questionId: a.questionId, numericValue: a.numericValue, booleanValue: a.booleanValue, textValue: a.textValue, choiceValues: (a.choiceValues as string[] | null) ?? null })) }));
+    return rows.map((r) => ({ responseId: r.responseId, employee: emps.get(r.employeeId) ?? { id: r.employeeId, employeeCode: '?', firstName: '?', lastName: '' }, submittedAt: r.submittedAt.toISOString(), answers: r.response.answers.map((a) => ({ questionId: a.questionId, numericValue: a.numericValue, booleanValue: a.booleanValue, textValue: a.textValue, choiceValues: (a.choiceValues as string[] | null) ?? null })) }));
   },
 
   async dashboard(auth: AuthContext): Promise<EngagementDashboardDto> {

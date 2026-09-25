@@ -1,5 +1,6 @@
 import { AUDIT_ACTIONS, NOTIFICATION_TYPES, ANONYMITY_GROUP_SIZE, responseRate, type AddSurveyQuestionInput, type AssignAudienceInput, type CreateQuestionBankInput, type CreateSurveyInput, type QuestionBankDto, type QuestionConfig, type SurveyDetailDto, type SurveyDto, type SurveyListQuery, type UpdateQuestionBankInput, type UpdateSurveyInput, type UpdateSurveyQuestionInput } from '@hr/shared';
 import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
@@ -177,10 +178,22 @@ export const surveyService = {
       const assignments = await tx.engagementSurveyAssignment.findMany({ where: { surveyId }, select: { id: true, employeeId: true } });
       const people = await tx.employee.findMany({ where: { id: { in: assignments.map((a) => a.employeeId) } }, select: { id: true, organizationId: true, departmentId: true, positionId: true, position: { select: { jobId: true } }, user: { select: { id: true } } } });
       const byId = new Map(people.map((p) => [p.id, p]));
-      for (const a of assignments) { const p = byId.get(a.employeeId); if (p) await tx.engagementSurveyAssignment.update({ where: { id: a.id }, data: { organizationIdSnapshot: p.organizationId, departmentIdSnapshot: p.departmentId, jobIdSnapshot: p.position.jobId, positionIdSnapshot: p.positionId, invitedAt: new Date() } }); }
+      // Survey-local cohorts: one opaque token per organization / department / job present in the audience. Answers
+      // will point at these tokens — never at a master record. Labels are frozen here for reporting.
+      const orgIds = [...new Set(people.map((p) => p.organizationId))]; const deptIds = [...new Set(people.map((p) => p.departmentId))]; const jobIds = [...new Set(people.map((p) => p.position.jobId).filter((x): x is string => !!x))];
+      const [orgs, depts, jobs] = await Promise.all([tx.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, code: true, name: true } }), tx.department.findMany({ where: { id: { in: deptIds } }, select: { id: true, code: true, name: true } }), tx.job.findMany({ where: { id: { in: jobIds } }, select: { id: true, code: true, title: true } })]);
+      await tx.engagementSurveyCohort.deleteMany({ where: { surveyId } });
+      const cohortRows = [
+        ...orgs.map((o) => ({ id: randomUUID(), surveyId, dimensionType: 'ORGANIZATION', sourceId: o.id, code: o.code, label: o.name })),
+        ...depts.map((d) => ({ id: randomUUID(), surveyId, dimensionType: 'DEPARTMENT', sourceId: d.id, code: d.code, label: d.name })),
+        ...jobs.map((j) => ({ id: randomUUID(), surveyId, dimensionType: 'JOB', sourceId: j.id, code: j.code, label: j.title })),
+      ];
+      if (cohortRows.length) await tx.engagementSurveyCohort.createMany({ data: cohortRows });
+      const cohortOf = (type: string, sourceId: string | null) => (sourceId ? (cohortRows.find((c) => c.dimensionType === type && c.sourceId === sourceId)?.id ?? null) : null);
+      for (const a of assignments) { const p = byId.get(a.employeeId); if (p) await tx.engagementSurveyAssignment.update({ where: { id: a.id }, data: { organizationIdSnapshot: p.organizationId, departmentIdSnapshot: p.departmentId, jobIdSnapshot: p.position.jobId, positionIdSnapshot: p.positionId, orgCohortId: cohortOf('ORGANIZATION', p.organizationId), deptCohortId: cohortOf('DEPARTMENT', p.departmentId), jobCohortId: cohortOf('JOB', p.position.jobId), invitedAt: new Date() } }); }
       await tx.engagementSurvey.update({ where: { id: surveyId }, data: { status: 'OPEN', openedAt: new Date() } });
       for (const p of people) if (p.user) await notificationService.publish({ userId: p.user.id, type: NOTIFICATION_TYPES.ENGAGEMENT_SURVEY_OPENED, source: { module: 'engagement', entityType: 'ENGAGEMENT_SURVEY', entityId: surveyId }, data: { surveyId }, dedupeKey: `engagement:survey:${surveyId}:opened:${p.user.id}` }, { surveyName: s.name, closingDate: s.periodEnd ?? undefined }, tx);
-      await auditService.log(engagementAudit(actor, AUDIT_ACTIONS.OPEN_ENGAGEMENT_SURVEY, 'EngagementSurvey', surveyId, { responseMode: s.responseMode, minimumAnonymousGroupSize: s.minimumAnonymousGroupSize, questions: s._count.questions, audience: assignments.length, notified: people.filter((p) => p.user).length }), tx);
+      await auditService.log(engagementAudit(actor, AUDIT_ACTIONS.OPEN_ENGAGEMENT_SURVEY, 'EngagementSurvey', surveyId, { responseMode: s.responseMode, minimumAnonymousGroupSize: s.minimumAnonymousGroupSize, questions: s._count.questions, audience: assignments.length, cohorts: cohortRows.length, notified: people.filter((p) => p.user).length }), tx);
     });
     return surveyDto(prisma, await loadSurvey(prisma, surveyId), actor.auth);
   },
@@ -212,6 +225,7 @@ export const surveyService = {
       const s = await loadSurvey(tx, surveyId);
       assertDraft(s);
       await tx.engagementSurveyAssignment.deleteMany({ where: { surveyId } });
+      await tx.engagementSurveyCohort.deleteMany({ where: { surveyId } });
       await tx.engagementSurveyQuestion.deleteMany({ where: { surveyId } });
       await tx.engagementSurvey.delete({ where: { id: surveyId } });
       await auditService.log(engagementAudit(actor, AUDIT_ACTIONS.UPDATE_ENGAGEMENT_SURVEY, 'EngagementSurvey', surveyId, { deletedDraft: true, code: s.code }), tx);

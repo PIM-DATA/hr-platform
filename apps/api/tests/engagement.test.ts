@@ -159,7 +159,7 @@ describe('answering', () => {
     await bad({ answers: [likert(q1, 4), likert(q2, 3), { questionId: q3, numericValue: 9 }, { questionId: q4, numericValue: 3 }] }, /Unexpected numericValue/);
     expect(await prisma.engagementResponse.count()).toBe(0);
   });
-  it('an anonymous response is stored without employee, user, assignment, position or time; the assignment only knows "completed"; the logs never see the text', async () => {
+  it('an anonymous response holds survey-local cohort tokens and a date only — no employee, user, assignment, organization, department, job, position or time; the assignment only knows "completed"; the logs never see the text', async () => {
     const captured: string[] = [];
     const record = ((obj: unknown, msg?: string) => { captured.push(JSON.stringify({ obj, msg })); }) as never;
     const spies = (['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const).map((level) => vi.spyOn(logger, level).mockImplementation(record));
@@ -168,15 +168,24 @@ describe('answering', () => {
     try { r = await as(emp, 'post', `${E}/my/surveys/${s1}/responses`).send(answers(9, 4, 3, SEED_TEXT)); } finally { spies.forEach((s) => s.mockRestore()); }
     expect(err(r!)).toBe('201');
     expect(captured.join('\n')).not.toMatch(/manager X|never around/);
+    // Raw storage: the response and its answers carry no master or identity key at all — structurally, not just as nulls.
+    const FORBIDDEN = /^(employeeId|userId|assignmentId|employeeCode|organizationId|departmentId|jobId|positionId|organizationIdSnapshot|departmentIdSnapshot|jobIdSnapshot|positionIdSnapshot|submittedAt)$/;
+    const keysOf = (v: unknown, path = ''): string[] => (Array.isArray(v) ? v.flatMap((x, i) => keysOf(x, `${path}[${i}]`)) : v && typeof v === 'object' ? Object.entries(v as object).flatMap(([k, x]) => [`${path}.${k}`, ...keysOf(x, `${path}.${k}`)]) : []);
     const rows = await prisma.engagementResponse.findMany({ where: { surveyId: s1 }, include: { answers: true } });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ employeeId: null, assignmentId: null, submittedAt: null, positionIdSnapshot: null, responseMode: 'ANONYMOUS', departmentIdSnapshot: salesId });
-    expect(rows[0].submittedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(Object.keys(rows[0])).not.toEqual(expect.arrayContaining(['userId', 'employeeCode']));
-    expect(await prisma.engagementResponse.count({ where: { employeeId: employees.SAL1 } })).toBe(0);
+    expect(keysOf(rows).filter((k) => FORBIDDEN.test(k.split('.').pop()!))).toEqual([]);
+    expect(rows[0]).toMatchObject({ responseMode: 'ANONYMOUS', submittedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    // The only context is survey-local cohort tokens: opaque ids that map to a frozen group label, shared by everyone in the group.
+    const cohort = await prisma.engagementSurveyCohort.findUniqueOrThrow({ where: { id: rows[0].deptCohortId! } });
+    expect(cohort).toMatchObject({ surveyId: s1, dimensionType: 'DEPARTMENT', label: 'Sales' });
+    expect(rows[0].deptCohortId).not.toMatch(/^c[a-z0-9]{24}$/); // random uuid, not a time-ordered cuid
+    expect(await prisma.engagementSurveyAssignment.count({ where: { surveyId: s1, deptCohortId: rows[0].deptCohortId } })).toBe(16); // a group token, not a person
+    // No path from the response to a person: the identity table is never written for an anonymous survey.
+    expect(await prisma.engagementIdentifiedRespondent.count({ where: { response: { surveyId: s1 } } })).toBe(0);
+    expect(await prisma.engagementIdentifiedRespondent.count({ where: { employeeId: employees.SAL1 } })).toBe(0);
     const a = await prisma.engagementSurveyAssignment.findUniqueOrThrow({ where: { surveyId_employeeId: { surveyId: s1, employeeId: employees.SAL1 } } });
     expect(a.completedAt).not.toBeNull();
-    expect(Object.keys(a)).not.toContain('responseId');
+    expect(Object.keys(a)).not.toEqual(expect.arrayContaining(['responseId']));
     // Audit: survey-level, mode + count, no response id, no answer, no text.
     const audit = await prisma.auditLog.findMany({ where: { module: 'engagement', action: 'SUBMIT_ENGAGEMENT_RESPONSE' } });
     expect(audit).toHaveLength(1);
@@ -323,8 +332,10 @@ describe('identified mode, races and history', () => {
     expect(form.notice).toMatch(/ระบุตัวผู้ตอบได้/);
     expect(err(await as(emp, 'post', `${E}/my/surveys/${s2}/responses`).send({ answers: [{ questionId: s2q, booleanValue: true }] }))).toBe('201');
     const row = await prisma.engagementResponse.findFirstOrThrow({ where: { surveyId: s2 } });
-    expect(row).toMatchObject({ employeeId: employees.SAL1, responseMode: 'IDENTIFIED' });
-    expect(row.assignmentId).not.toBeNull(); expect(row.submittedAt).not.toBeNull();
+    expect(row.responseMode).toBe('IDENTIFIED');
+    const who = await prisma.engagementIdentifiedRespondent.findUniqueOrThrow({ where: { responseId: row.id } });
+    expect(who).toMatchObject({ employeeId: employees.SAL1 });
+    expect(who.assignmentId).not.toBeNull(); expect(who.submittedAt).not.toBeNull();
     const audit = await prisma.auditLog.findFirst({ where: { module: 'engagement', action: 'SUBMIT_ENGAGEMENT_RESPONSE', recordId: s2 } });
     expect(JSON.parse(audit!.newValue as string)).toEqual({ mode: 'IDENTIFIED', answerCount: 1, responseId: row.id });
     const detail = (await as(hrAdmin, 'get', `${E}/surveys/${s2}/responses`)).body.data;

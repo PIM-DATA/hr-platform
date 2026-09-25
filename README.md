@@ -965,9 +965,9 @@ Surveys, Question bank, Results, Comments, Participation, Reports).
   choice, yes/no, text, eNPS) copied into each survey as frozen snapshots; audience by organization, department,
   job, position or people, snapshotted at opening; DRAFT → OPEN → CLOSED → ARCHIVED by hand; duplicate copies the
   questionnaire only.
-- **Anonymous or identified** — chosen in draft, immutable once open. Anonymous responses are not stored with
-  employee, user or assignment identifiers or a timestamp; participation (invited / completed) is a separate
-  record with no path to an answer. Opening an anonymous survey needs an audience at least the survey's minimum
+- **Anonymous or identified** — chosen in draft, immutable once open. Anonymous responses hold survey-local cohort
+  tokens and a date only — no employee, user, assignment, organization, department, job or position id and no
+  timestamp; participation (invited / completed) is a separate record with no path to an answer. Opening an anonymous survey needs an audience at least the survey's minimum
   group size (3–20, default 5).
 - **Suppression everywhere** — any group below the minimum is hidden after all filters combine, for HR,
   executives and system administrators alike, on screens, CSV and the Report Center datasets. Managers see their

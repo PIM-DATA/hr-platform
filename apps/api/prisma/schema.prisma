@@ -2940,6 +2940,7 @@ model EngagementSurvey {
   questions   EngagementSurveyQuestion[]
   assignments EngagementSurveyAssignment[]
   responses   EngagementResponse[]
+  cohorts     EngagementSurveyCohort[]
 
   @@index([status])
   @@map("engagement_surveys")
@@ -2971,6 +2972,23 @@ model EngagementSurveyQuestion {
   @@map("engagement_survey_questions")
 }
 
+/// A survey-local anonymous cohort: one row per distinct organization / department / job present in the frozen
+/// audience, with an opaque random id and the label as it was at opening. Reporting resolves group names through
+/// these rows; anonymous answers never point at a master record or a person.
+model EngagementSurveyCohort {
+  id            String           @id
+  surveyId      String           @map("survey_id")
+  survey        EngagementSurvey @relation(fields: [surveyId], references: [id])
+  dimensionType String           @map("dimension_type") // ORGANIZATION | DEPARTMENT | JOB
+  /// The master record this cohort stood for when the survey opened (survey-level metadata, used to map filters).
+  sourceId      String           @map("source_id")
+  code          String?
+  label         String
+
+  @@unique([surveyId, dimensionType, sourceId])
+  @@map("engagement_survey_cohorts")
+}
+
 /// Participation: who was invited and whether they completed. Dimensions are snapshots taken when the survey opened.
 /// For an anonymous survey there is deliberately no path from this row to a response.
 model EngagementSurveyAssignment {
@@ -2982,35 +3000,52 @@ model EngagementSurveyAssignment {
   departmentIdSnapshot   String           @map("department_id_snapshot")
   jobIdSnapshot          String?          @map("job_id_snapshot")
   positionIdSnapshot     String           @map("position_id_snapshot")
+  orgCohortId            String?          @map("org_cohort_id")
+  deptCohortId           String?          @map("dept_cohort_id")
+  jobCohortId            String?          @map("job_cohort_id")
   invitedAt              DateTime         @default(now()) @map("invited_at")
   completedAt            DateTime?        @map("completed_at")
 
+  respondent EngagementIdentifiedRespondent?
+
   @@unique([surveyId, employeeId])
   @@index([surveyId, departmentIdSnapshot])
+  @@index([surveyId, deptCohortId])
   @@map("engagement_survey_assignments")
 }
 
-/// One submission. ANONYMOUS: employeeId, assignmentId and submittedAt are null; only the date and the group
-/// dimensions needed for threshold-protected breakdowns (organization, department, job — never position) are kept.
+/// One submission. The row holds answers' context only: the survey, the day, and survey-local cohort tokens.
+/// It has no employee, user, assignment, organization, department, job or position column at all.
 model EngagementResponse {
-  id                     String           @id @default(cuid())
-  surveyId               String           @map("survey_id")
-  survey                 EngagementSurvey @relation(fields: [surveyId], references: [id])
-  responseMode           String           @map("response_mode")
-  employeeId             String?          @map("employee_id")
-  assignmentId           String?          @unique @map("assignment_id")
-  organizationIdSnapshot String           @map("organization_id_snapshot")
-  departmentIdSnapshot   String           @map("department_id_snapshot")
-  jobIdSnapshot          String?          @map("job_id_snapshot")
-  positionIdSnapshot     String?          @map("position_id_snapshot")
-  submittedDate          String           @map("submitted_date")
-  submittedAt            DateTime?        @map("submitted_at")
+  id            String           @id @default(cuid())
+  surveyId      String           @map("survey_id")
+  survey        EngagementSurvey @relation(fields: [surveyId], references: [id])
+  responseMode  String           @map("response_mode")
+  orgCohortId   String?          @map("org_cohort_id")
+  deptCohortId  String?          @map("dept_cohort_id")
+  jobCohortId   String?          @map("job_cohort_id")
+  submittedDate String           @map("submitted_date")
 
-  answers EngagementResponseAnswer[]
+  answers    EngagementResponseAnswer[]
+  respondent EngagementIdentifiedRespondent?
 
-  @@index([surveyId, departmentIdSnapshot])
-  @@index([surveyId, jobIdSnapshot])
+  @@index([surveyId, deptCohortId])
+  @@index([surveyId, jobCohortId])
   @@map("engagement_responses")
+}
+
+/// IDENTIFIED surveys only: who submitted which response, with the exact time. An anonymous submission never
+/// writes this table, so for an anonymous survey there is no row — and no path — from a response to a person.
+model EngagementIdentifiedRespondent {
+  responseId   String                     @id @map("response_id")
+  response     EngagementResponse         @relation(fields: [responseId], references: [id])
+  assignmentId String                     @unique @map("assignment_id")
+  assignment   EngagementSurveyAssignment @relation(fields: [assignmentId], references: [id])
+  employeeId   String                     @map("employee_id")
+  submittedAt  DateTime                   @map("submitted_at")
+
+  @@index([employeeId])
+  @@map("engagement_identified_respondents")
 }
 
 model EngagementResponseAnswer {

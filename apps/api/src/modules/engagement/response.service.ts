@@ -10,8 +10,8 @@ import { loadSurvey } from './survey.service';
 /**
  * The employee's side: which surveys are open for them, the form, and the single submission.
  *
- * Anonymous submissions write a response row with no employee, user or assignment reference and no timestamp
- * finer than the date; the assignment is marked completed separately. There is no partial save — the client keeps
+ * Anonymous submissions write a response row that holds only survey-local cohort tokens and the date — no employee,
+ * user, assignment, organization, department, job or position id; the assignment is marked completed separately. There is no partial save — the client keeps
  * the draft and submits once. One assignment yields at most one response, under the assignment's row lock.
  */
 export const ANONYMOUS_NOTICE = 'คำตอบของแบบสำรวจนี้จะไม่ถูกจัดเก็บพร้อม employee/user identifier และผลของกลุ่มขนาดเล็กจะถูกซ่อนตามเกณฑ์ของแบบสำรวจ (Answers to this survey are not stored with employee or user identifiers, and results for small groups are hidden according to the survey\'s threshold.)';
@@ -59,12 +59,10 @@ export const responseService = {
       if (details.length) throw new AppError(422, 'ENGAGEMENT_INVALID_ANSWERS', 'Some answers are missing or invalid', details);
       const anonymous = survey.responseMode === 'ANONYMOUS';
       const now = new Date();
-      const response = await tx.engagementResponse.create({ data: {
-        surveyId, responseMode: survey.responseMode,
-        employeeId: anonymous ? null : employeeId, assignmentId: anonymous ? null : a.id,
-        organizationIdSnapshot: a.organizationIdSnapshot, departmentIdSnapshot: a.departmentIdSnapshot, jobIdSnapshot: a.jobIdSnapshot, positionIdSnapshot: anonymous ? null : a.positionIdSnapshot,
-        submittedDate: now.toISOString().slice(0, 10), submittedAt: anonymous ? null : now,
-      } });
+      // The response row carries the survey, the day and the assignment's survey-local cohort tokens — nothing else.
+      // Identity for an identified survey goes to its own table; an anonymous submission never writes that table.
+      const response = await tx.engagementResponse.create({ data: { surveyId, responseMode: survey.responseMode, orgCohortId: a.orgCohortId, deptCohortId: a.deptCohortId, jobCohortId: a.jobCohortId, submittedDate: now.toISOString().slice(0, 10) } });
+      if (!anonymous) await tx.engagementIdentifiedRespondent.create({ data: { responseId: response.id, assignmentId: a.id, employeeId, submittedAt: now } });
       const rows: Prisma.EngagementResponseAnswerCreateManyInput[] = [];
       for (const ans of input.answers) {
         const q = byId.get(ans.questionId)!;

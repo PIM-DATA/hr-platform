@@ -29,23 +29,31 @@ the survey type are chosen in draft and immutable from OPEN on.
 
 ## 3. Anonymity architecture and its limits
 
-Participation and answers are separate tables with no foreign key between them for anonymous surveys:
+Participation and answers are separate tables. For an anonymous survey nothing joins them:
 
-- `engagement_survey_assignments` — who was invited (employee id, dimension snapshots) and `completedAt`.
-- `engagement_responses` / `engagement_response_answers` — the answers. An anonymous response carries no
-  employee, user or assignment reference and no time finer than the date. There is no query in the application
-  from an assignment to an anonymous response, and no endpoint returns an anonymous respondent.
+- `engagement_survey_assignments` — who was invited (employee id, organization / department / job / position
+  snapshots, the cohort tokens below) and `completedAt`.
+- `engagement_survey_cohorts` — **survey-local anonymous dimensions**, created when the survey opens: one row per
+  organization, department and job present in the frozen audience, with an opaque random id (`randomUUID`, not
+  a time-ordered key), the dimension type, the source id and the label as it was at opening. A cohort is a group
+  token shared by everyone in that group; it is never a person.
+- `engagement_responses` — the answer context. The row has **no** employee, user, assignment, organization,
+  department, job or position column: only the survey, the response mode, the submission date and up to three
+  cohort tokens (`orgCohortId`, `deptCohortId`, `jobCohortId`). `engagement_response_answers` holds values only.
+- `engagement_identified_respondents` — written **only** for IDENTIFIED surveys: response → assignment →
+  employee, with the exact submission time. An anonymous submission never writes this table, so for an anonymous
+  survey there is no row and no path from a response to a person.
 
-What the row *does* carry: organization, department and job snapshots, because department and job breakdowns are
-part of the product. Those breakdowns are protected by the minimum group size; position is not stored on anonymous
-responses at all (a position filter on an anonymous survey is reported as suppressed). This is the honest trade
-between "no identifiers" and "results by department".
+Reporting resolves group names through the survey's own cohort rows and never joins answers to assignments.
+Position is not a cohort (position groups are tiny): a position filter on an anonymous survey is reported as
+suppressed, never estimated.
 
-Limits, stated as they are: the audit log records that an actor submitted to a survey (mode and answer count,
-no response id, no answer), which is the same fact the assignment row holds; database operators can see row
-insertion order and operational metadata; a very small organization with distinctive answers can still be
-guessable by someone who knows it. The UI and this document claim only that "anonymous responses are not stored
-with employee or user identifiers", never mathematical or cryptographic anonymity.
+Limits, stated as they are: a cohort row records which master record it stood for, so a database operator can
+map tokens to departments at survey level — which is what the breakdown reports show anyway, under the threshold;
+the audit log records that an actor submitted to a survey (mode and answer count, no response id), the same fact
+the assignment row holds; and a very small organization with distinctive answers can still be guessable by
+someone who knows it. The UI and this document claim only that "anonymous responses are not stored with employee
+or user identifiers", never mathematical or cryptographic anonymity.
 
 ## 4. Question bank and question types
 
@@ -121,8 +129,8 @@ closed survey.
 ## 12. Privacy export
 
 Identified-survey answers are the subject's own data and are exported with the question text as asked.
-Anonymous answers cannot be attributed and are **not reconstructed**; the export carries only the participation
-record (survey, invited, completed) and says so under `notIncluded`.
+Anonymous answers hold cohort tokens only, cannot be attributed and are **not reconstructed**; the export carries
+only the participation record (survey, invited, completed) and says so under `notIncluded`.
 
 ## 13. Notifications, audit, logs
 
