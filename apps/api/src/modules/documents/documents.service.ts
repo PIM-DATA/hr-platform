@@ -122,6 +122,21 @@ async function assertLinkAuthority(tx: Db, auth: AuthContext, entityType: Docume
       if (!(hasPermission(auth, manage) || (task.assigneeUserId === auth.userId && hasPermission(auth, complete)))) throw new AppError(403, 'FORBIDDEN', 'Only the task assignee or a lifecycle manager may attach a document to this task');
       return task.titleSnapshot;
     }
+    case 'OJT_ACTIVITY': {
+      // The learning module owns the activity: the trainee, the assigned trainer or an OJT manager may attach evidence.
+      const a = await tx.ojtPlanActivity.findUnique({ where: { id: entityId }, select: { titleSnapshot: true, plan: { select: { employeeId: true, trainerUserId: true } } } });
+      if (!a) throw new AppError(404, 'OJT_ACTIVITY_NOT_FOUND', 'OJT activity not found');
+      const trainee = !!auth.employeeId && a.plan.employeeId === auth.employeeId && hasPermission(auth, PERMISSIONS.OJT_VIEW);
+      const trainer = a.plan.trainerUserId === auth.userId && hasPermission(auth, PERMISSIONS.OJT_TRAIN);
+      if (!(trainee || trainer || hasPermission(auth, PERMISSIONS.OJT_MANAGE))) throw new AppError(403, 'FORBIDDEN', 'Only the trainee, the assigned trainer or an OJT manager may attach evidence to this activity');
+      return a.titleSnapshot;
+    }
+    case 'EMPLOYEE_CERTIFICATION': {
+      need(PERMISSIONS.CERTIFICATION_MANAGE);
+      const c = await tx.employeeCertification.findUnique({ where: { id: entityId }, select: { definitionNameSnapshot: true } });
+      if (!c) throw new AppError(404, 'CERTIFICATION_NOT_FOUND', 'Certification not found');
+      return c.definitionNameSnapshot;
+    }
     case 'RECRUITMENT_APPLICATION': {
       need(PERMISSIONS.RECRUITMENT_MANAGE);
       const r = await tx.recruitmentApplication.findUnique({ where: { id: entityId }, select: { applicationNumber: true } });

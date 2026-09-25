@@ -69,7 +69,11 @@ import { JobProfilesPage } from '@/features/competency/JobProfilesPage';
 import { CompetencyCyclesPage } from '@/features/competency/CompetencyCyclesPage';
 import { SkillGapReportPage } from '@/features/competency/SkillGapReportPage';
 import { TrainingLayout } from '@/features/training/training-ui';
-import { MyDevelopmentPage } from '@/features/training/MyDevelopmentPage';
+import { OjtPage } from '@/features/learning/OjtPage';
+import { LearningPathsPage } from '@/features/learning/LearningPathsPage';
+import { CertificationsPage } from '@/features/learning/CertificationsPage';
+import { LearningReportsPage } from '@/features/learning/LearningReportsPage';
+import { TrainingIndex } from '@/features/learning/TrainingIndex';
 import { TeamDevelopmentPage } from '@/features/training/TeamDevelopmentPage';
 import { TrainingNeedsPage } from '@/features/training/TrainingNeedsPage';
 import { CoursesPage } from '@/features/training/CoursesPage';
@@ -315,11 +319,16 @@ export const router = createBrowserRouter([
           {
             // Training and development (Task 25). `training.view` is your own record and the catalogue; managing
             // needs, courses, sessions and plans needs the training permissions, never a data scope.
-            element: <RequirePermission permission={PERMISSIONS.TRAINING_VIEW} />,
+            element: <RequirePermission permission={[PERMISSIONS.TRAINING_VIEW, PERMISSIONS.OJT_VIEW, PERMISSIONS.OJT_MANAGE, PERMISSIONS.LEARNING_PATH_VIEW, PERMISSIONS.LEARNING_PATH_MANAGE, PERMISSIONS.CERTIFICATION_VIEW, PERMISSIONS.CERTIFICATION_MANAGE, PERMISSIONS.LEARNING_VIEW_REPORTS]} />,
             children: [{
               path: 'hrd/training', element: <TrainingLayout />,
               children: [
-                { index: true, element: <MyDevelopmentPage /> },
+                { index: true, element: <TrainingIndex /> },
+                // Learning (Task 35): OJT, learning paths, certifications and their aggregate reports.
+                { element: <RequirePermission permission={[PERMISSIONS.OJT_VIEW, PERMISSIONS.OJT_MANAGE, PERMISSIONS.OJT_TRAIN]} />, children: [{ path: 'ojt', element: <OjtPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.LEARNING_PATH_VIEW, PERMISSIONS.LEARNING_PATH_MANAGE]} />, children: [{ path: 'paths', element: <LearningPathsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.CERTIFICATION_VIEW, PERMISSIONS.CERTIFICATION_MANAGE]} />, children: [{ path: 'certifications', element: <CertificationsPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.LEARNING_VIEW_REPORTS, PERMISSIONS.OJT_MANAGE, PERMISSIONS.LEARNING_PATH_MANAGE, PERMISSIONS.CERTIFICATION_MANAGE]} />, children: [{ path: 'learning-reports', element: <LearningReportsPage /> }] },
                 { path: 'team', element: <TeamDevelopmentPage /> },
                 { element: <RequirePermission permission={PERMISSIONS.TRAINING_MANAGE} />, children: [{ path: 'needs', element: <TrainingNeedsPage /> }, { path: 'reports', element: <TrainingReportsPage /> }] },
                 { path: 'courses', element: <CoursesPage /> },

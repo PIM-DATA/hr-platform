@@ -13,6 +13,8 @@ import { aggregateEngagement, loadSurveyQuestions } from '../../engagement/resul
 import { visibleDepartmentIds as engagementVisibleDepartments } from '../../engagement/engagement.types';
 import { checklistProgress } from '@hr/shared';
 import { lifecycleEmployeeWhere } from '../../lifecycle/lifecycle.types';
+import { CERTIFICATION_EXPIRY_WINDOW_DAYS, certificationStatus } from '@hr/shared';
+import { scopedEmployeeIds } from '../../learning/learning.types';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
 
@@ -394,5 +396,52 @@ registerDataset(memoryDataset({
     need(auth, ...LIFECYCLE_VIEW);
     const rows = await prisma.offboardingCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, reasonCode: true, plannedLastWorkingDate: true, completedAt: true, status: true, tasks: { select: { status: true, required: true } } }, orderBy: { plannedLastWorkingDate: 'desc' }, take: 50000 });
     return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, reason: r.reasonCode, plannedMonth: r.plannedLastWorkingDate.slice(0, 7), completedMonth: monthOf(r.completedAt), status: r.status, tasks: p.total, done: p.done }; });
+  },
+}));
+
+// ---------- learning (Task 35): departments, programs, paths, certifications, statuses and dates — never a comment, reflection, evidence title or certificate number ----------
+const LEARNING_VIEW = [PERMISSIONS.LEARNING_VIEW_REPORTS, PERMISSIONS.OJT_MANAGE, PERMISSIONS.LEARNING_PATH_MANAGE, PERMISSIONS.CERTIFICATION_MANAGE];
+const learningScope = async (auth: AuthContext) => { const ids = await scopedEmployeeIds(auth); return ids === null ? {} : { employeeId: { in: ids } }; };
+registerDataset(memoryDataset({
+  id: 'ojt_summary', name: 'OJT summary', description: 'One row per OJT plan: program, department and job at creation, start month, status, activity counts and completion days. No names, trainer comments or evidence.',
+  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'program', label: 'Program', type: 'STRING', column: 'program', groupable: true }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }),
+    f({ id: 'startMonth', label: 'Start month', type: 'STRING', column: 'startMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED']) }),
+    f({ id: 'activities', label: 'Activities', type: 'NUMBER', column: 'activities', aggregatable: true }), f({ id: 'activitiesCompleted', label: 'Completed activities', type: 'NUMBER', column: 'activitiesCompleted', aggregatable: true }), f({ id: 'completionDays', label: 'Completion days', type: 'NUMBER', column: 'completionDays', aggregatable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...LEARNING_VIEW);
+    const rows = await prisma.ojtPlan.findMany({ where: await learningScope(auth), select: { programNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, startDate: true, status: true, completedAt: true, activities: { select: { status: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ program: r.programNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, activities: r.activities.length, activitiesCompleted: r.activities.filter((a) => a.status === 'COMPLETED').length, completionDays: r.completedAt ? Math.round((r.completedAt.getTime() - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) : null }));
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'learning_path_summary', name: 'Learning path summary', description: 'One row per learning path assignment: path, department and job at assignment, status, steps and fulfilled steps. No names.',
+  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'path', label: 'Learning path', type: 'STRING', column: 'path', groupable: true }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }),
+    f({ id: 'assignedMonth', label: 'Assigned month', type: 'STRING', column: 'assignedMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'COMPLETED', 'CANCELLED']) }),
+    f({ id: 'steps', label: 'Steps', type: 'NUMBER', column: 'steps', aggregatable: true }), f({ id: 'fulfilled', label: 'Fulfilled', type: 'NUMBER', column: 'fulfilled', aggregatable: true }), f({ id: 'progressPct', label: 'Progress %', type: 'NUMBER', column: 'progressPct' }),
+  ],
+  async load(auth) {
+    need(auth, ...LEARNING_VIEW);
+    const rows = await prisma.learningPathAssignment.findMany({ where: await learningScope(auth), select: { pathNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, assignedAt: true, status: true, steps: { select: { fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => { const done = r.steps.filter((x) => x.fulfilledAt).length; return { path: r.pathNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, assignedMonth: r.assignedAt.toISOString().slice(0, 7), status: r.status, steps: r.steps.length, fulfilled: done, progressPct: r.steps.length ? Math.round((done / r.steps.length) * 1000) / 10 : 0 }; });
+  },
+}));
+registerDataset(memoryDataset({
+  id: 'certification_summary', name: 'Certification summary', description: 'One row per certification issuance: certification, issuer type, department, issue and expiry months, derived status. No names, no certificate numbers.',
+  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'certification', label: 'Certification', type: 'STRING', column: 'certification', groupable: true }), f({ id: 'issuerType', label: 'Issuer type', type: 'ENUM', column: 'issuerType', groupable: true, options: opts(['INTERNAL', 'EXTERNAL']) }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
+    f({ id: 'issuedMonth', label: 'Issued month', type: 'STRING', column: 'issuedMonth', groupable: true }), f({ id: 'expiryMonth', label: 'Expiry month', type: 'STRING', column: 'expiryMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'REVOKED']) }), f({ id: 'renewal', label: 'Is renewal', type: 'BOOLEAN', column: 'renewal', groupable: true }),
+  ],
+  async load(auth) {
+    need(auth, ...LEARNING_VIEW);
+    const t = new Date().toISOString().slice(0, 10);
+    const rows = await prisma.employeeCertification.findMany({ where: await learningScope(auth), select: { employeeId: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, renewedFromId: true, definition: { select: { issuerType: true, expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 50000 });
+    const depts = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, department: { select: { name: true } } } })).map((e) => [e.id, e.department.name]));
+    return rows.map((r): Row => ({ certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, department: depts.get(r.employeeId) ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
   },
 }));

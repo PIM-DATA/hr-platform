@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingBlock } from '@/components/ui/Spinner';
 import { errorMessage } from '@/features/organization/shared';
 import { useIdp, useMyDevelopment, useTrainingMutations } from './training.api';
+import { MyLearningSections } from '@/features/learning/MyLearningSections';
 import { EnrollmentStatusBadge, IdpStatusBadge, ItemStatusBadge, NeedStatusBadge, ProgressBar, developmentLabel, formatDuration, formatSessionTime } from './training-ui';
 
 /**
@@ -81,6 +82,8 @@ export function MyDevelopmentPage() {
           </ul>
         )}
       </Card>
+
+      <MyLearningSections />
 
       <Card>
         <CardHeader title="Training history" />

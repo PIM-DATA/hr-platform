@@ -32,3 +32,4 @@ export * from './privacy';
 export * from './workforce';
 export * from './engagement';
 export * from './lifecycle';
+export * from './learning';

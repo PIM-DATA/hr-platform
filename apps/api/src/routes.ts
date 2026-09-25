@@ -27,6 +27,7 @@ import { copilotRouter } from './modules/copilot/copilot.routes';
 import { workforceRouter } from './modules/workforce/workforce.routes';
 import { engagementRouter } from './modules/engagement/engagement.routes';
 import { lifecycleRouter } from './modules/lifecycle/lifecycle.routes';
+import { learningRouter } from './modules/learning/learning.routes';
 import { registerLeaveWorkflowHandlers } from './modules/leave/leave-request.handlers';
 import { departmentsRouter, jobsRouter, organizationTreeRouter, organizationsRouter, positionsRouter } from './modules/organization/organization.routes';
 
@@ -72,4 +73,5 @@ apiRouter.use('/copilot', copilotRouter);
 apiRouter.use('/workforce', workforceRouter);
 apiRouter.use('/engagement', engagementRouter);
 apiRouter.use('/lifecycle', lifecycleRouter);
+apiRouter.use('/learning', learningRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)

@@ -52,7 +52,7 @@ export const MENU: MenuGroup[] = [
     label: 'HRD',
     items: [
       { label: 'Competency', path: '/hrd/competency', icon: Award, permission: P.COMPETENCY_VIEW },
-      { label: 'Training & development', path: '/hrd/training', icon: GraduationCap, permission: [P.TRAINING_VIEW, P.IDP_VIEW] },
+      { label: 'Training & development', path: '/hrd/training', icon: GraduationCap, permission: [P.TRAINING_VIEW, P.IDP_VIEW, P.OJT_VIEW, P.LEARNING_PATH_VIEW, P.CERTIFICATION_VIEW, P.LEARNING_VIEW_REPORTS] },
       { label: 'Career & talent', path: '/hrd/career', icon: Route, permission: [P.CAREER_VIEW, P.TALENT_VIEW, P.TALENT_MANAGE, P.SUCCESSION_VIEW, P.TALENT_VIEW_REPORTS] },
     ],
   },

@@ -151,6 +151,13 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
     title: 'Talent review assigned',
     body: `${v.employeeName ?? 'An employee'}${v.cycleName ? ` in ${v.cycleName}` : ''} is waiting for your potential assessment.`,
   }),
+  // Learning (Task 35): program, path and certification names, dates. Never an observation, a comment or a reflection.
+  [NOTIFICATION_TYPES.OJT_PLAN_ASSIGNED]: (v) => ({ title: 'You are the trainer on an OJT plan', body: `${v.employeeName ?? 'An employee'} is assigned to you for ${v.courseTitle ?? 'an OJT program'}. Record observations as activities are performed.` }),
+  [NOTIFICATION_TYPES.OJT_ACTIVITY_READY]: (v) => ({ title: 'Your OJT plan is active', body: `${v.courseTitle ?? 'Your OJT program'} has started. Open My learning to see the activities.` }),
+  [NOTIFICATION_TYPES.OJT_ASSESSMENT_REQUIRED]: (v) => ({ title: 'OJT assessment due', body: `${v.employeeName ?? 'A trainee'} has finished the required activities of ${v.courseTitle ?? 'an OJT program'}. Please record your assessment.` }),
+  [NOTIFICATION_TYPES.OJT_COMPLETED]: (v) => ({ title: 'OJT completed', body: `Your OJT plan for ${v.courseTitle ?? 'the program'} is recorded as completed.` }),
+  [NOTIFICATION_TYPES.LEARNING_PATH_ASSIGNED]: (v) => ({ title: 'A learning path was assigned to you', body: `${v.courseTitle ?? 'A learning path'} was assigned to you${v.date ? ` with a target date of ${v.date}` : ''}.` }),
+  [NOTIFICATION_TYPES.CERTIFICATION_EXPIRING]: (v) => ({ title: 'Certification expiring', body: `${v.courseTitle ?? 'A certification'} expires on ${v.date ?? 'the recorded date'}.` }),
   // Lifecycle (Task 34): names, counts and dates only.
   [NOTIFICATION_TYPES.ONBOARDING_PLAN_STARTED]: (v) => ({ title: 'Your onboarding has started', body: `Your onboarding checklist is ready${v.date ? ` (start date ${v.date})` : ''}. Open My Onboarding to see your tasks.` }),
   [NOTIFICATION_TYPES.ONBOARDING_TASK_ASSIGNED]: (v) => ({ title: 'Onboarding tasks assigned to you', body: `${v.taskCount ?? 'Some'} onboarding task(s) for ${v.employeeName ?? 'a new joiner'} are assigned to you.` }),

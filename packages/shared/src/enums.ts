@@ -308,7 +308,7 @@ export const DOCUMENT_STATUSES = ['ACTIVE', 'ARCHIVED'] as const;
 export const DOCUMENT_EXPIRY_STATES = ['VALID', 'EXPIRING_SOON', 'EXPIRED', 'NONE'] as const;
 export type DocumentExpiryState = (typeof DOCUMENT_EXPIRY_STATES)[number];
 /** The only things a document may be attached to. A table name never comes from a request. */
-export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK'] as const;
+export const DOCUMENT_LINK_ENTITY_TYPES = ['EMPLOYEE', 'TRAINING_ENROLLMENT', 'IDP', 'RECRUITMENT_CANDIDATE', 'RECRUITMENT_APPLICATION', 'EMPLOYEE_RELATION_CASE', 'DISCIPLINARY_ACTION', 'ONBOARDING_TASK', 'OFFBOARDING_TASK', 'OJT_ACTIVITY', 'EMPLOYEE_CERTIFICATION'] as const;
 export type DocumentLinkEntityType = (typeof DOCUMENT_LINK_ENTITY_TYPES)[number];
 export const REPORT_VISIBILITIES = ['PRIVATE', 'SHARED'] as const;
 export const REPORT_FIELD_TYPES = ['STRING', 'NUMBER', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN', 'ENUM'] as const;
@@ -364,6 +364,12 @@ export const NOTIFICATION_TYPES = {
   OFFBOARDING_STARTED: 'OFFBOARDING_STARTED',
   OFFBOARDING_TASK_ASSIGNED: 'OFFBOARDING_TASK_ASSIGNED',
   OFFBOARDING_COMPLETED: 'OFFBOARDING_COMPLETED',
+  OJT_PLAN_ASSIGNED: 'OJT_PLAN_ASSIGNED',
+  OJT_ACTIVITY_READY: 'OJT_ACTIVITY_READY',
+  OJT_ASSESSMENT_REQUIRED: 'OJT_ASSESSMENT_REQUIRED',
+  OJT_COMPLETED: 'OJT_COMPLETED',
+  LEARNING_PATH_ASSIGNED: 'LEARNING_PATH_ASSIGNED',
+  CERTIFICATION_EXPIRING: 'CERTIFICATION_EXPIRING',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -381,7 +387,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -653,6 +659,27 @@ export const AUDIT_ACTIONS = {
   COMPLETE_EMPLOYMENT_SEPARATION: 'COMPLETE_EMPLOYMENT_SEPARATION',
   CANCEL_OFFBOARDING_CASE: 'CANCEL_OFFBOARDING_CASE',
   RECORD_EXIT_INTERVIEW: 'RECORD_EXIT_INTERVIEW',
+  CREATE_OJT_PROGRAM: 'CREATE_OJT_PROGRAM',
+  UPDATE_OJT_PROGRAM: 'UPDATE_OJT_PROGRAM',
+  CREATE_OJT_PLAN: 'CREATE_OJT_PLAN',
+  UPDATE_OJT_PLAN: 'UPDATE_OJT_PLAN',
+  ACTIVATE_OJT_PLAN: 'ACTIVATE_OJT_PLAN',
+  UPDATE_OJT_ACTIVITY: 'UPDATE_OJT_ACTIVITY',
+  SUBMIT_OJT_OBSERVATION: 'SUBMIT_OJT_OBSERVATION',
+  SUBMIT_OJT_ASSESSMENT: 'SUBMIT_OJT_ASSESSMENT',
+  COMPLETE_OJT_PLAN: 'COMPLETE_OJT_PLAN',
+  CANCEL_OJT_PLAN: 'CANCEL_OJT_PLAN',
+  CREATE_COMPETENCY_EVIDENCE_FROM_OJT: 'CREATE_COMPETENCY_EVIDENCE_FROM_OJT',
+  CREATE_LEARNING_PATH: 'CREATE_LEARNING_PATH',
+  UPDATE_LEARNING_PATH: 'UPDATE_LEARNING_PATH',
+  ASSIGN_LEARNING_PATH: 'ASSIGN_LEARNING_PATH',
+  UPDATE_LEARNING_PATH_ASSIGNMENT: 'UPDATE_LEARNING_PATH_ASSIGNMENT',
+  CANCEL_LEARNING_PATH: 'CANCEL_LEARNING_PATH',
+  CREATE_CERTIFICATION_DEFINITION: 'CREATE_CERTIFICATION_DEFINITION',
+  UPDATE_CERTIFICATION_DEFINITION: 'UPDATE_CERTIFICATION_DEFINITION',
+  ISSUE_EMPLOYEE_CERTIFICATION: 'ISSUE_EMPLOYEE_CERTIFICATION',
+  RENEW_EMPLOYEE_CERTIFICATION: 'RENEW_EMPLOYEE_CERTIFICATION',
+  REVOKE_EMPLOYEE_CERTIFICATION: 'REVOKE_EMPLOYEE_CERTIFICATION',
   CREATE_OT_POLICY: 'CREATE_OT_POLICY',
   UPDATE_OT_POLICY: 'UPDATE_OT_POLICY',
   CREATE_OVERTIME_REQUEST: 'CREATE_OVERTIME_REQUEST',
@@ -724,6 +751,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   workforce: 'Workforce planning',
   engagement: 'Engagement surveys',
   lifecycle: 'Employee lifecycle',
+  learning: 'OJT, learning paths and certifications',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

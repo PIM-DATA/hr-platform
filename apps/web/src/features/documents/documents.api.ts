@@ -8,8 +8,8 @@ const qs = (f: Record<string, unknown>) => { const p = new URLSearchParams(); fo
 
 export const useDocumentPolicy = () => useQuery({ queryKey: [KEY, 'policy'], queryFn: () => api.get<DocumentPolicyDto>('/documents/policy').then((r) => r.data), staleTime: 300_000 });
 export const useDocumentCategories = (includeInactive = false) => useQuery({ queryKey: [KEY, 'categories', includeInactive], queryFn: () => api.get<DocumentCategoryDto[]>(`/documents/categories?includeInactive=${includeInactive}`).then((r) => r.data) });
-export const useMyDocuments = () => useQuery({ queryKey: [KEY, 'my'], queryFn: () => api.get<DocumentDto[]>('/documents/my').then((r) => r.data) });
-export const useDocuments = (f: Record<string, unknown>) => useQuery({ queryKey: [KEY, 'list', f], queryFn: () => api.get<DocumentDto[]>(`/documents?${qs(f)}`), placeholderData: (p) => p });
+export const useMyDocuments = (enabled = true) => useQuery({ queryKey: [KEY, 'my'], queryFn: () => api.get<DocumentDto[]>('/documents/my').then((r) => r.data), enabled });
+export const useDocuments = (f: Record<string, unknown>, enabled = true) => useQuery({ queryKey: [KEY, 'list', f], queryFn: () => api.get<DocumentDto[]>(`/documents?${qs(f)}`), placeholderData: (p) => p, enabled });
 export const useDocument = (id: string | null) => useQuery({ queryKey: [KEY, 'detail', id ?? ''], queryFn: () => api.get<DocumentDetailDto>(`/documents/${id}`).then((r) => r.data), enabled: !!id });
 
 /** Multipart upload: the file plus its metadata fields, straight to the API (the JSON client cannot carry a File). */

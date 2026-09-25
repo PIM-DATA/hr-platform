@@ -3314,3 +3314,357 @@ model OffboardingTask {
   @@index([assigneeUserId, status])
   @@map("offboarding_tasks")
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Task 35 — OJT, learning paths and certifications. Learning records beside Task 25 training and Task 24
+// competency: nothing here changes a competency level, a performance score or an employment status.
+// ---------------------------------------------------------------------------------------------------------------
+
+model LearningSequence {
+  kind String
+  year Int
+  next Int    @default(1)
+
+  @@id([kind, year])
+  @@map("learning_sequences")
+}
+
+model OjtProgram {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String?
+  organizationId  String?  @map("organization_id")
+  jobId           String?  @map("job_id")
+  durationDays    Int?     @map("duration_days")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  competencies OjtProgramCompetency[]
+  activities   OjtProgramActivity[]
+  plans        OjtPlan[]
+
+  @@map("ojt_programs")
+}
+
+/// A learning objective: the level the program aims at is expected evidence, never a level granted.
+model OjtProgramCompetency {
+  id           String     @id @default(cuid())
+  programId    String     @map("program_id")
+  program      OjtProgram @relation(fields: [programId], references: [id])
+  competencyId String     @map("competency_id")
+  targetLevel  Int?       @map("target_level")
+  importance   String? // CORE | SUPPORTING
+  description  String?
+
+  @@unique([programId, competencyId])
+  @@map("ojt_program_competencies")
+}
+
+model OjtProgramActivity {
+  id                       String     @id @default(cuid())
+  programId                String     @map("program_id")
+  program                  OjtProgram @relation(fields: [programId], references: [id])
+  title                    String
+  description              String?
+  activityType             String     @map("activity_type") // OBSERVE | PRACTICE | PERFORM | REVIEW | OTHER
+  sequence                 Int
+  required                 Boolean    @default(true)
+  expectedDays             Int?       @map("expected_days")
+  documentEvidenceRequired Boolean    @default(false) @map("document_evidence_required")
+
+  criteria OjtActivityCriterion[]
+
+  @@index([programId, sequence])
+  @@map("ojt_program_activities")
+}
+
+model OjtActivityCriterion {
+  id         String             @id @default(cuid())
+  activityId String             @map("activity_id")
+  activity   OjtProgramActivity @relation(fields: [activityId], references: [id])
+  criterion  String
+  sequence   Int
+  required   Boolean            @default(true)
+
+  @@index([activityId, sequence])
+  @@map("ojt_activity_criteria")
+}
+
+/// One trainee's plan: a snapshot of the program at creation with its own activity and criterion copies.
+model OjtPlan {
+  id                   String      @id @default(cuid())
+  planNumber           String      @unique @map("plan_number")
+  employeeId           String      @map("employee_id")
+  programId            String?     @map("program_id")
+  program              OjtProgram? @relation(fields: [programId], references: [id])
+  programNameSnapshot  String      @map("program_name_snapshot")
+  employeeCodeSnapshot String      @map("employee_code_snapshot")
+  employeeNameSnapshot String      @map("employee_name_snapshot")
+  organizationSnapshot String?     @map("organization_snapshot")
+  departmentSnapshot   String?     @map("department_snapshot")
+  departmentIdSnapshot String?     @map("department_id_snapshot")
+  jobSnapshot          String?     @map("job_snapshot")
+  positionSnapshot     String?     @map("position_snapshot")
+  trainerEmployeeId    String?     @map("trainer_employee_id")
+  trainerUserId        String?     @map("trainer_user_id")
+  trainerNameSnapshot  String?     @map("trainer_name_snapshot")
+  startDate            String      @map("start_date")
+  targetEndDate        String?     @map("target_end_date")
+  status               String      @default("DRAFT") // DRAFT | ACTIVE | COMPLETED | CANCELLED
+  trainingNeedId       String?     @map("training_need_id")
+  idpItemId            String?     @map("idp_item_id")
+  createdByUserId      String      @map("created_by_user_id")
+  activatedAt          DateTime?   @map("activated_at")
+  completedAt          DateTime?   @map("completed_at")
+  cancelledAt          DateTime?   @map("cancelled_at")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  competencies OjtPlanCompetency[]
+  activities   OjtPlanActivity[]
+  assessments  OjtPlanAssessment[]
+
+  @@index([employeeId, status])
+  @@index([trainerUserId, status])
+  @@index([status])
+  @@map("ojt_plans")
+}
+
+model OjtPlanCompetency {
+  id                     String  @id @default(cuid())
+  planId                 String  @map("plan_id")
+  plan                   OjtPlan @relation(fields: [planId], references: [id])
+  competencyId           String  @map("competency_id")
+  competencyCodeSnapshot String  @map("competency_code_snapshot")
+  competencyNameSnapshot String  @map("competency_name_snapshot")
+  targetLevel            Int?    @map("target_level")
+  importance             String?
+  description            String?
+
+  @@index([planId])
+  @@map("ojt_plan_competencies")
+}
+
+model OjtPlanActivity {
+  id                  String    @id @default(cuid())
+  planId              String    @map("plan_id")
+  plan                OjtPlan   @relation(fields: [planId], references: [id])
+  titleSnapshot       String    @map("title_snapshot")
+  descriptionSnapshot String?   @map("description_snapshot")
+  activityType        String    @map("activity_type")
+  sequence            Int
+  required            Boolean   @default(true)
+  expectedDays        Int?      @map("expected_days")
+  requiresEvidence    Boolean   @default(false) @map("requires_evidence")
+  documentId          String?   @map("document_id")
+  status              String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED
+  startedAt           DateTime? @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  /// Trainer's words: trainer and HR only. Employee's words: the employee, the trainer and HR. Neither is audited.
+  trainerComment      String?   @map("trainer_comment")
+  employeeReflection  String?   @map("employee_reflection")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  criteria     OjtPlanCriterion[]
+  observations OjtActivityObservation[]
+
+  @@index([planId, sequence])
+  @@map("ojt_plan_activities")
+}
+
+model OjtPlanCriterion {
+  id                String          @id @default(cuid())
+  planActivityId    String          @map("plan_activity_id")
+  planActivity      OjtPlanActivity @relation(fields: [planActivityId], references: [id])
+  criterionSnapshot String          @map("criterion_snapshot")
+  sequence          Int
+  required          Boolean         @default(true)
+
+  observations OjtActivityObservation[]
+
+  @@index([planActivityId, sequence])
+  @@map("ojt_plan_criteria")
+}
+
+/// Evidence, not a score: one final observation per criterion per observer, replaced on resubmission.
+model OjtActivityObservation {
+  id             String           @id @default(cuid())
+  planActivityId String           @map("plan_activity_id")
+  planActivity   OjtPlanActivity  @relation(fields: [planActivityId], references: [id])
+  criterionId    String           @map("criterion_id")
+  criterion      OjtPlanCriterion @relation(fields: [criterionId], references: [id])
+  observerUserId String           @map("observer_user_id")
+  result         String // NOT_OBSERVED | MEETS | NEEDS_PRACTICE
+  comment        String?
+  observedAt     String           @map("observed_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  @@unique([criterionId, observerUserId])
+  @@index([planActivityId])
+  @@map("ojt_activity_observations")
+}
+
+/// A human's final word on the plan. No number.
+model OjtPlanAssessment {
+  id             String   @id @default(cuid())
+  planId         String   @map("plan_id")
+  plan           OjtPlan  @relation(fields: [planId], references: [id])
+  assessorUserId String   @map("assessor_user_id")
+  outcome        String // COMPLETED | MORE_PRACTICE_REQUIRED
+  comment        String?
+  submittedAt    DateTime @default(now()) @map("submitted_at")
+
+  @@index([planId, submittedAt])
+  @@map("ojt_plan_assessments")
+}
+
+/// The handoff to competency assessment: a pointer an assessor can read, never a level written anywhere.
+model CompetencyEvidence {
+  id              String   @id @default(cuid())
+  employeeId      String   @map("employee_id")
+  competencyId    String   @map("competency_id")
+  sourceType      String   @map("source_type") // OJT
+  sourceId        String   @map("source_id")
+  sourceLabel     String   @map("source_label")
+  observedLevel   Int?     @map("observed_level")
+  note            String?
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([sourceType, sourceId, competencyId])
+  @@index([employeeId, competencyId])
+  @@map("competency_evidence")
+}
+
+model LearningPath {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  description    String?
+  organizationId String?  @map("organization_id")
+  targetJobId    String?  @map("target_job_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  steps       LearningPathStep[]
+  assignments LearningPathAssignment[]
+
+  @@map("learning_paths")
+}
+
+model LearningPathStep {
+  id                 String       @id @default(cuid())
+  pathId             String       @map("path_id")
+  path               LearningPath @relation(fields: [pathId], references: [id])
+  stepType           String       @map("step_type") // COURSE | OJT_PROGRAM | IDP_ACTIVITY | CERTIFICATION
+  referenceId        String?      @map("reference_id")
+  titleSnapshot      String       @map("title_snapshot")
+  sequence           Int
+  required           Boolean      @default(true)
+  prerequisiteStepId String?      @map("prerequisite_step_id")
+
+  @@index([pathId, sequence])
+  @@map("learning_path_steps")
+}
+
+model LearningPathAssignment {
+  id                     String       @id @default(cuid())
+  pathId                 String       @map("path_id")
+  path                   LearningPath @relation(fields: [pathId], references: [id])
+  pathNameSnapshot       String       @map("path_name_snapshot")
+  targetJobTitleSnapshot String?      @map("target_job_title_snapshot")
+  employeeId             String       @map("employee_id")
+  employeeCodeSnapshot   String       @map("employee_code_snapshot")
+  employeeNameSnapshot   String       @map("employee_name_snapshot")
+  organizationSnapshot   String?      @map("organization_snapshot")
+  departmentSnapshot     String?      @map("department_snapshot")
+  departmentIdSnapshot   String?      @map("department_id_snapshot")
+  jobSnapshot            String?      @map("job_snapshot")
+  positionSnapshot       String?      @map("position_snapshot")
+  assignedByUserId       String       @map("assigned_by_user_id")
+  assignedAt             DateTime     @default(now()) @map("assigned_at")
+  targetDate             String?      @map("target_date")
+  status                 String       @default("ACTIVE") // ACTIVE | COMPLETED | CANCELLED
+  completedAt            DateTime?    @map("completed_at")
+  cancelledAt            DateTime?    @map("cancelled_at")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
+
+  steps LearningPathAssignmentStep[]
+
+  @@index([employeeId, status])
+  @@index([pathId, status])
+  @@map("learning_path_assignments")
+}
+
+/// The steps as they were when assigned. Fulfilment is a projection of the source domain, cached when observed.
+model LearningPathAssignmentStep {
+  id                   String                 @id @default(cuid())
+  assignmentId         String                 @map("assignment_id")
+  assignment           LearningPathAssignment @relation(fields: [assignmentId], references: [id])
+  stepType             String                 @map("step_type")
+  referenceId          String?                @map("reference_id")
+  titleSnapshot        String                 @map("title_snapshot")
+  sequence             Int
+  required             Boolean                @default(true)
+  prerequisiteSequence Int?                   @map("prerequisite_sequence")
+  fulfilledAt          DateTime?              @map("fulfilled_at")
+  fulfilledSourceId    String?                @map("fulfilled_source_id")
+  fulfilledByUserId    String?                @map("fulfilled_by_user_id")
+  note                 String?
+
+  @@index([assignmentId, sequence])
+  @@map("learning_path_assignment_steps")
+}
+
+model CertificationDefinition {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  description      String?
+  issuerType       String   @map("issuer_type") // INTERNAL | EXTERNAL
+  issuerName       String?  @map("issuer_name")
+  organizationId   String?  @map("organization_id")
+  validityDays     Int?     @map("validity_days")
+  expiryWindowDays Int?     @map("expiry_window_days")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  certifications EmployeeCertification[]
+
+  @@map("certification_definitions")
+}
+
+/// One issuance. A renewal is a new row pointing at the old one; the old one is never overwritten.
+model EmployeeCertification {
+  id                     String                  @id @default(cuid())
+  employeeId             String                  @map("employee_id")
+  definitionId           String                  @map("definition_id")
+  definition             CertificationDefinition @relation(fields: [definitionId], references: [id])
+  definitionNameSnapshot String                  @map("definition_name_snapshot")
+  certificateNumber      String?                 @map("certificate_number")
+  issuedDate             String                  @map("issued_date")
+  expiryDate             String?                 @map("expiry_date")
+  issuerName             String?                 @map("issuer_name")
+  documentId             String?                 @map("document_id")
+  renewedFromId          String?                 @unique @map("renewed_from_id")
+  revokedAt              DateTime?               @map("revoked_at")
+  revokedByUserId        String?                 @map("revoked_by_user_id")
+  revokeReason           String?                 @map("revoke_reason")
+  note                   String?
+  createdByUserId        String                  @map("created_by_user_id")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+
+  @@unique([employeeId, definitionId, issuedDate])
+  @@index([employeeId])
+  @@index([definitionId, expiryDate])
+  @@map("employee_certifications")
+}

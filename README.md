@@ -293,7 +293,8 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 - Payroll: no tax, social security, provident fund, bank file or GL posting; monthly only, one currency, one run per period, no off-cycle or retroactive run, no reopen after closing.
 - Performance: no 360 feedback, calibration, 9-box, forced ranking, competency scoring, bonus/payroll linkage, OKR tree, automatic achievement formulas, AI-written reviews, reopen after close or cycle scheduler.
 - Competency: no certification, endorsement, 360 assessment, HR override, position-specific overrides, AI skill inference, evidence attachments, reassessment schedule, or performance/payroll linkage.
-- Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, certificate upload, full OJT workflow, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
+- Training: no LMS/SCORM, exam engine, self-enrolment or request workflow, waitlist, budget/procurement, provider integration, AI recommendation, scheduler/reminders, effectiveness framework, or automatic competency increase after training.
+- Learning (OJT, paths, certifications): no LMS/SCORM, exam engine, external certification registry or accreditation integration, automatic competency level change, AI observation or assessment, certificate PDF, expiry scheduler or reminder delivery, trainer workload balancing, path recommendation, promotion on path completion, or bulk certification import.
 - Employee relations: no legal rule engine or automatic escalation, no termination or employment-status change, no grievance/appeal workflow, no evidence upload, no e-signature, no PDF service, no investigation or witness management, no payroll or performance effect, no correction/reissue of an issued document, no retention automation, no acknowledgement reminders.
 - Recruitment: no job board, careers page, candidate portal, CV upload/parsing, email or calendar integration, e-signature, background checks, AI/rule screening, scoring or ranking, automatic hire/reject, offer PDF, onboarding tasks, time-to-fill report, agency management, or protected-attribute fields.
 - Career & talent: no automatic promotion, AI ranking, automatic successor recommendation, external successors, movement workflow, compensation/bonus linkage, attrition prediction, workforce forecasting, succession simulation, advanced replacement chart, psychometrics, talent marketplace, employee-visible nomination or AI career recommendation.
@@ -995,6 +996,25 @@ reviews and Team offboarding.
   through the employees domain, disables the account and revokes sessions through the users domain, in one
   transaction. **Not** automatic IT provisioning or deprovisioning, statutory termination, final payroll, severance,
   leave payout, asset management, or AI probation decisions.
+
+## OJT, learning paths and certifications (Task 35)
+
+Guide: [docs/ojt-learning-certification.md](docs/ojt-learning-certification.md). HRD → Training & development
+(OJT, Learning paths, Certifications, Learning reports); employees see them in My development; managers see "My OJT
+trainees" for plans HR assigned to them.
+
+- **OJT** — programs are templates with competency objectives (expected level of evidence, never a granted level),
+  ordered activities and observation criteria; a plan is a frozen copy per trainee with an HR-chosen trainer who
+  acts only on assigned plans. Observations are MEETS / NEEDS_PRACTICE / NOT_OBSERVED per criterion, one final row
+  per observer; a required activity completes only with the required MEETS results and, where required, a Document
+  Center evidence link. The final assessment is human; completion is HR's explicit act; "use as competency evidence"
+  writes evidence pointers for the assessor and changes no level.
+- **Learning paths** — ordered steps (course, OJT program, IDP activity, certification) with prerequisites; an
+  assignment copies the steps and projects progress from real completions. Finishing a path is a record, not a
+  promotion.
+- **Certifications** — definitions with validity and an expiring-soon window; issue, renew (new row, history kept)
+  and revoke (manual, with reason); status derived on read. **Not** an LMS, SCORM, an exam engine, an accreditation
+  registry, automatic competency change, AI assessment, certificate PDFs or an expiry scheduler.
 
 ## Pilot release
 

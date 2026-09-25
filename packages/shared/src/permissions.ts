@@ -122,6 +122,15 @@ export const PERMISSIONS = {
   OFFBOARDING_COMPLETE_TASKS: 'offboarding.complete_tasks',
   OFFBOARDING_COMPLETE_SEPARATION: 'offboarding.complete_separation',
   LIFECYCLE_VIEW_REPORTS: 'lifecycle.view_reports',
+  OJT_VIEW: 'ojt.view',
+  OJT_MANAGE: 'ojt.manage',
+  OJT_TRAIN: 'ojt.train',
+  OJT_ASSESS: 'ojt.assess',
+  LEARNING_PATH_VIEW: 'learning_path.view',
+  LEARNING_PATH_MANAGE: 'learning_path.manage',
+  CERTIFICATION_VIEW: 'certification.view',
+  CERTIFICATION_MANAGE: 'certification.manage',
+  LEARNING_VIEW_REPORTS: 'learning.view_reports',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -251,6 +260,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.OFFBOARDING_COMPLETE_TASKS, module: 'lifecycle', description: 'Complete offboarding tasks assigned to me' },
   { code: PERMISSIONS.OFFBOARDING_COMPLETE_SEPARATION, module: 'lifecycle', description: 'Complete an employment separation from a ready offboarding case (the one action that changes the employee master)' },
   { code: PERMISSIONS.LIFECYCLE_VIEW_REPORTS, module: 'lifecycle', description: 'Aggregate lifecycle reporting: joiners, onboarding completion, probation outcomes, departures — counts only' },
+  { code: PERMISSIONS.OJT_VIEW, module: 'learning', description: 'See OJT plans within the data scope (own plans for an employee)' },
+  { code: PERMISSIONS.OJT_MANAGE, module: 'learning', description: 'Define OJT programs, open plans, assign trainers, activate and complete plans, hand evidence to competency assessment' },
+  { code: PERMISSIONS.OJT_TRAIN, module: 'learning', description: 'As the assigned trainer: record observations and trainer comments on assigned OJT plans only' },
+  { code: PERMISSIONS.OJT_ASSESS, module: 'learning', description: 'Submit the final OJT assessment on plans assigned to me' },
+  { code: PERMISSIONS.LEARNING_PATH_VIEW, module: 'learning', description: 'See learning paths and own assignments' },
+  { code: PERMISSIONS.LEARNING_PATH_MANAGE, module: 'learning', description: 'Define learning paths and assign them to employees' },
+  { code: PERMISSIONS.CERTIFICATION_VIEW, module: 'learning', description: 'See certification definitions and certifications within the data scope' },
+  { code: PERMISSIONS.CERTIFICATION_MANAGE, module: 'learning', description: 'Define certifications; issue, renew and revoke employee certifications' },
+  { code: PERMISSIONS.LEARNING_VIEW_REPORTS, module: 'learning', description: 'Aggregate learning reporting: training, OJT, learning path and certification counts' },
 ];
 
 /**

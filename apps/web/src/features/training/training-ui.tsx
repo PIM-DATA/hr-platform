@@ -58,13 +58,17 @@ export function useTrainingTabs() {
   const manage = hasPermission(PERMISSIONS.TRAINING_MANAGE);
   const teamScope = user?.dataScope === 'TEAM' || user?.dataScope === 'ALL';
   return [
-    !!user?.employee && { label: 'My development', to: '/hrd/training', end: true },
+    !!user?.employee && hasPermission(PERMISSIONS.TRAINING_VIEW) && { label: 'My development', to: '/hrd/training', end: true },
     teamScope && !manage && { label: 'Team development', to: '/hrd/training/team' },
     manage && { label: 'Training needs', to: '/hrd/training/needs' },
     { label: 'Courses', to: '/hrd/training/courses' },
     { label: 'Sessions', to: '/hrd/training/sessions' },
     hasPermission(PERMISSIONS.IDP_MANAGE) && { label: 'Development plans', to: '/hrd/training/idps' },
+    (hasPermission(PERMISSIONS.OJT_VIEW) || hasPermission(PERMISSIONS.OJT_MANAGE)) && { label: 'OJT', to: '/hrd/training/ojt' },
+    (hasPermission(PERMISSIONS.LEARNING_PATH_VIEW) || hasPermission(PERMISSIONS.LEARNING_PATH_MANAGE)) && { label: 'Learning paths', to: '/hrd/training/paths' },
+    (hasPermission(PERMISSIONS.CERTIFICATION_VIEW) || hasPermission(PERMISSIONS.CERTIFICATION_MANAGE)) && { label: 'Certifications', to: '/hrd/training/certifications' },
     manage && { label: 'Reports', to: '/hrd/training/reports' },
+    hasPermission(PERMISSIONS.LEARNING_VIEW_REPORTS) && { label: 'Learning reports', to: '/hrd/training/learning-reports' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];
 }
 
@@ -74,7 +78,7 @@ export function TrainingLayout() {
     <>
       <PageHeader
         title="Training & development"
-        description="From a competency gap to a development need, a course, a place on a session and a plan. Completing a course is development history — it never changes a competency level by itself."
+        description="From a competency gap to a development need, a course, on-the-job training, a learning path, a certification and a plan. Completing any of them is development history — it never changes a competency level by itself."
       />
       {tabs.length > 1 && <div className="mb-5"><Tabs items={tabs} /></div>}
       <Outlet />

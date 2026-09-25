@@ -238,7 +238,16 @@ export const privacyService = {
         tx.offboardingCase.findMany({ where: { employeeId }, select: { reasonCode: true, plannedLastWorkingDate: true, actualLastWorkingDate: true, status: true, activatedAt: true, completedAt: true, cancelledAt: true, tasks: { where: { assigneeEmployeeId: employeeId }, select: { titleSnapshot: true, categorySnapshot: true, dueDate: true, status: true, completedAt: true } } }, orderBy: { createdAt: 'desc' } }),
       ]);
       const lifecycle = { onboardingPlans, probationCases, offboardingCases };
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle };
+      // Learning (Task 35): the subject's own OJT participation and activity completion, their reflections, path
+      // assignments and certifications. Trainer comments and observation comments are the trainer's and HR's words and are not exported.
+      const [ojtPlans, pathAssignments, certifications, competencyEvidence] = await Promise.all([
+        tx.ojtPlan.findMany({ where: { employeeId }, select: { planNumber: true, programNameSnapshot: true, status: true, startDate: true, targetEndDate: true, activatedAt: true, completedAt: true, activities: { select: { titleSnapshot: true, activityType: true, status: true, startedAt: true, completedAt: true, employeeReflection: true, observations: { select: { result: true, observedAt: true } } } }, assessments: { select: { outcome: true, submittedAt: true } } }, orderBy: { startDate: 'desc' } }),
+        tx.learningPathAssignment.findMany({ where: { employeeId }, select: { pathNameSnapshot: true, status: true, assignedAt: true, targetDate: true, completedAt: true, steps: { select: { titleSnapshot: true, stepType: true, required: true, fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' } }),
+        tx.employeeCertification.findMany({ where: { employeeId }, select: { definitionNameSnapshot: true, certificateNumber: true, issuedDate: true, expiryDate: true, issuerName: true, revokedAt: true, note: true }, orderBy: { issuedDate: 'desc' } }),
+        tx.competencyEvidence.findMany({ where: { employeeId }, select: { competencyId: true, sourceType: true, sourceLabel: true, observedLevel: true, createdAt: true } }),
+      ]);
+      const learning = { ojtPlans, pathAssignments, certifications, competencyEvidence };
+      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -263,6 +272,7 @@ export const privacyService = {
         { category: 'audit events recorded by other actors', reason: 'The audit schema identifies who performed an action, not who every record is about, so events about this person performed by others cannot be attributed reliably.' },
         { category: 'database backups', reason: 'Backup archives are operational copies and are handled through the backup retention process, not this export.' },
         { category: 'potential assessments, 9-box placement, reviewer comments and succession notes', reason: 'These are internal organizational judgments about the subject made by named reviewers and nominators. The export carries the factual records (review participation, pool membership, nominations and recorded readiness); disclosing the judgments themselves is a policy decision made outside this export.' },
+        { category: 'OJT trainer comments and observation comments', reason: 'These are the trainer\'s and HR\'s words about the subject\'s work; the export carries the observation results, the subject\'s own reflections, activity completion and the assessment outcomes.' },
         { category: 'probation review comments, offboarding reason notes and exit-interview notes', reason: 'These are internal HR and reviewer records about the subject; the export carries the dates, statuses and outcomes of each process and the subject\'s own task list.' },
         { category: 'anonymous survey answers', reason: 'Answers to anonymous surveys are stored with survey-local cohort tokens only — no employee, user, assignment, organization, department, job or position identifier — so they cannot be attributed to the subject and are not reconstructed. The participation record (invited, completed) is exported.' },
         { category: 'employee relations case narratives and internal notes', reason: 'The case description and HR investigation notes are HR working records that may concern other people; the export carries the documents issued to the subject and their acknowledgements.' },
@@ -282,6 +292,7 @@ export const privacyService = {
           talentReviews: data.talentReviews.length, talentPools: data.talentPools.length, successionNominations: data.successionNominations.length,
           engagementParticipation: data.engagement.participation.length, identifiedSurveyResponses: data.engagement.identifiedResponses.length,
           onboardingPlans: data.lifecycle.onboardingPlans.length, probationCases: data.lifecycle.probationCases.length, offboardingCases: data.lifecycle.offboardingCases.length,
+          ojtPlans: data.learning.ojtPlans.length, learningPathAssignments: data.learning.pathAssignments.length, certifications: data.learning.certifications.length,
         },
       },
     });

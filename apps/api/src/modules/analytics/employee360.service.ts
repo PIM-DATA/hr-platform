@@ -1,4 +1,4 @@
-import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem, checklistProgress } from '@hr/shared';
+import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem, checklistProgress, certificationStatus, CERTIFICATION_EXPIRY_WINDOW_DAYS } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { hasPermission } from '../../services/authorization/authorization.service';
@@ -153,6 +153,20 @@ export const employee360Service = {
           openNeeds: d.needs.filter((n) => ['OPEN', 'PLANNED', 'IN_PROGRESS'].includes(n.status)).slice(0, 10).map((n) => ({ id: n.id, title: n.title, status: n.status, priority: n.priority, competencyName: n.competency?.name ?? null })),
           upcoming: d.upcoming.slice(0, 5).map((e) => ({ courseTitle: e.course.title, startAt: e.session.startAt, timezone: e.session.timezone })),
           recentCompleted: completed.slice(0, 5).map((e) => ({ courseTitle: e.course.title, completedAt: e.session.startAt })),
+          // Learning (Task 35): statuses and dates only. No trainer comment, reflection, evidence or certificate number.
+          learning: await (async () => {
+            const [ojt, paths, certs] = await Promise.all([
+              prisma.ojtPlan.findMany({ where: { employeeId, status: { not: 'CANCELLED' } }, select: { id: true, planNumber: true, programNameSnapshot: true, status: true, startDate: true, completedAt: true, activities: { select: { status: true } } }, orderBy: { startDate: 'desc' }, take: 10 }),
+              prisma.learningPathAssignment.findMany({ where: { employeeId, status: { not: 'CANCELLED' } }, select: { id: true, pathNameSnapshot: true, status: true, steps: { select: { fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' }, take: 10 }),
+              prisma.employeeCertification.findMany({ where: { employeeId }, select: { id: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, definition: { select: { expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 20 }),
+            ]);
+            const t = new Date().toISOString().slice(0, 10);
+            return {
+              ojt: ojt.map((p) => ({ id: p.id, planNumber: p.planNumber, program: p.programNameSnapshot, status: p.status, startDate: p.startDate, completedAt: p.completedAt?.toISOString() ?? null, activitiesCompleted: p.activities.filter((a) => a.status === 'COMPLETED').length, activities: p.activities.length })),
+              learningPaths: paths.map((a) => ({ id: a.id, path: a.pathNameSnapshot, status: a.status, stepsFulfilled: a.steps.filter((x) => x.fulfilledAt).length, steps: a.steps.length })),
+              certifications: certs.map((c) => ({ id: c.id, name: c.definitionNameSnapshot, issuedDate: c.issuedDate, expiryDate: c.expiryDate, status: certificationStatus({ expiryDate: c.expiryDate, revokedAt: c.revokedAt }, t, c.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS) })),
+            };
+          })(),
         };
       }) : null,
       may.employeeRelations ? section('employeeRelations', async () => {

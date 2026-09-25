@@ -20,4 +20,5 @@ export * from './copilot';
 export * from './workforce';
 export * from './engagement';
 export * from './lifecycle';
+export * from './learning';
 export * from './schemas';
