@@ -72,7 +72,7 @@ export interface OjtPlanDto {
   activatedAt: string | null; completedAt: string | null; cancelledAt: string | null; createdAt: string; updatedAt: string; can: { manage: boolean; train: boolean; assess: boolean; complete: boolean; handoff: boolean };
 }
 export interface OjtPlanDetailDto extends OjtPlanDto { activities: OjtPlanActivityDto[] }
-export interface CompetencyEvidenceDto { id: string; employeeId: string; competencyId: string; competencyName: string; sourceType: string; sourceId: string; sourceLabel: string; observedLevel: number | null; note: string | null; createdAt: string; createdByName: string | null }
+export interface CompetencyEvidenceDto { id: string; employeeId: string; competencyId: string; competencyName: string; sourceType: string; sourceId: string; sourceLabel: string; /** what the source aimed at (OJT objective) */ objectiveLevel: number | null; /** an explicit human level observation; always null for OJT handoffs in this release */ observedLevel: number | null; note: string | null; createdAt: string; createdByName: string | null }
 
 export interface LearningPathStepDto { id: string; stepType: (typeof LEARNING_STEP_TYPES)[number]; referenceId: string | null; title: string; sequence: number; required: boolean; prerequisiteStepId: string | null }
 export interface LearningPathDto { id: string; code: string; name: string; description: string | null; organizationId: string | null; targetJobId: string | null; targetJobTitle: string | null; isActive: boolean; steps: LearningPathStepDto[]; assignmentCount: number; createdAt: string; updatedAt: string }

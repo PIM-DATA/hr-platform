@@ -281,8 +281,9 @@ export const ojtPlanService = {
   },
   /**
    * "Use as evidence for competency assessment": creates one evidence pointer per program competency (or the chosen
-   * ones) with the target level as *observed objective* and the plan as source. It changes no competency level and is
-   * idempotent per competency.
+   * ones) carrying the program's *objective* level and the plan as source. `observedLevel` stays null: nobody in this
+   * flow observed a level on the competency scale, and an objective must never read as an achievement. It changes no
+   * competency level and is idempotent per competency.
    */
   async handoffEvidence(id: string, input: { competencyIds?: string[]; note?: string | null }, actor: Actor): Promise<CompetencyEvidenceDto[]> {
     const created = await prisma.$transaction(async (tx) => {
@@ -292,7 +293,7 @@ export const ojtPlanService = {
       const comps = plan.competencies.filter((c) => !input.competencyIds || input.competencyIds.includes(c.competencyId));
       if (!comps.length) throw new AppError(422, 'VALIDATION_ERROR', 'No matching program competency', [{ field: 'competencyIds', message: 'Unknown competency for this plan' }]);
       let n = 0;
-      for (const c of comps) { const r = await tx.competencyEvidence.upsert({ where: { sourceType_sourceId_competencyId: { sourceType: 'OJT', sourceId: id, competencyId: c.competencyId } }, create: { employeeId: plan.employeeId, competencyId: c.competencyId, sourceType: 'OJT', sourceId: id, sourceLabel: `OJT ${plan.planNumber} — ${plan.programNameSnapshot}`, observedLevel: c.targetLevel, note: input.note ?? null, createdByUserId: actor.auth.userId }, update: {} }); if (r.createdByUserId === actor.auth.userId) n += 1; }
+      for (const c of comps) { const r = await tx.competencyEvidence.upsert({ where: { sourceType_sourceId_competencyId: { sourceType: 'OJT', sourceId: id, competencyId: c.competencyId } }, create: { employeeId: plan.employeeId, competencyId: c.competencyId, sourceType: 'OJT', sourceId: id, sourceLabel: `OJT ${plan.planNumber} — ${plan.programNameSnapshot}`, objectiveLevelSnapshot: c.targetLevel, observedLevel: null, note: input.note ?? null, createdByUserId: actor.auth.userId }, update: {} }); if (r.createdByUserId === actor.auth.userId) n += 1; }
       await auditService.log(learningAudit(actor, AUDIT_ACTIONS.CREATE_COMPETENCY_EVIDENCE_FROM_OJT, 'OjtPlan', id, { competencies: comps.map((c) => c.competencyId), ...textAudit('note', null, input.note ?? null) }), tx);
       return n;
     });
@@ -307,7 +308,7 @@ export const ojtPlanService = {
     const rows = await prisma.competencyEvidence.findMany({ where: { employeeId }, orderBy: { createdAt: 'desc' } });
     const [comps, names] = await Promise.all([prisma.competency.findMany({ where: { id: { in: rows.map((r) => r.competencyId) } }, select: { id: true, name: true } }), userNames(prisma, rows.map((r) => r.createdByUserId))]);
     const cn = new Map(comps.map((c) => [c.id, c.name]));
-    return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, competencyId: r.competencyId, competencyName: cn.get(r.competencyId) ?? '?', sourceType: r.sourceType, sourceId: r.sourceId, sourceLabel: r.sourceLabel, observedLevel: r.observedLevel, note: r.note, createdAt: r.createdAt.toISOString(), createdByName: names.get(r.createdByUserId) ?? null }));
+    return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, competencyId: r.competencyId, competencyName: cn.get(r.competencyId) ?? '?', sourceType: r.sourceType, sourceId: r.sourceId, sourceLabel: r.sourceLabel, objectiveLevel: r.objectiveLevelSnapshot, observedLevel: r.observedLevel, note: r.note, createdAt: r.createdAt.toISOString(), createdByName: names.get(r.createdByUserId) ?? null }));
   },
 };
 const addDays = (date: string, days: number) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };

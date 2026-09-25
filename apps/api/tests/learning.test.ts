@@ -322,7 +322,9 @@ describe('OJT plans', () => {
     expect(err(await as(mgrA, 'post', `${L}/ojt/plans/${planId}/competency-evidence`).send({}))).toBe('403 FORBIDDEN');
     const h = await as(hrAdmin, 'post', `${L}/ojt/plans/${planId}/competency-evidence`).send({ note: 'Observed during OJT-2026' });
     expect(h.status).toBe(201);
-    expect(h.body.data.map((e: { competencyName: string; observedLevel: number; sourceType: string }) => [e.competencyName, e.observedLevel, e.sourceType]).sort()).toEqual([['SQL', 4, 'OJT'], ['Visualization', 3, 'OJT']]);
+    expect(h.body.data.map((e: { competencyName: string; objectiveLevel: number; observedLevel: number | null; sourceType: string }) => [e.competencyName, e.objectiveLevel, e.observedLevel, e.sourceType]).sort()).toEqual([['SQL', 4, null, 'OJT'], ['Visualization', 3, null, 'OJT']]);
+    // The objective is what the OJT aimed at; nobody observed a level, so the row must not manufacture one.
+    expect(await prisma.$queryRaw`SELECT "objective_level_snapshot" AS objective, "observed_level" AS observed FROM "competency_evidence" WHERE "competency_id" = ${comp.SQL}`).toEqual([{ objective: 4, observed: null }]);
     expect(h.body.data[0].sourceLabel).toMatch(/^OJT OJT-2026-\d{6}/);
     await as(hrAdmin, 'post', `${L}/ojt/plans/${planId}/competency-evidence`).send({ competencyIds: [comp.SQL] });
     expect(await prisma.competencyEvidence.count()).toBe(2);
@@ -331,6 +333,7 @@ describe('OJT plans', () => {
     expect(rows).toEqual([{ final_level: 3 }]);
     expect((await profileSql(emp)).currentLevel).toBe(3);
     expect(await prisma.competencyAssessment.count()).toBe(1); // no assessment created or finalized by OJT
+    expect(await prisma.competencyAssessmentItem.findFirstOrThrow({ where: { competencyId: comp.SQL }, select: { finalLevel: true, updatedAt: true } })).toMatchObject({ finalLevel: 3 });
     // the employee and the competency assessor can read the pointers; another employee cannot
     expect((await as(emp, 'get', `${L}/competency-evidence/${employees.EMP003}`)).body.data).toHaveLength(2);
     expect((await as(mgrA, 'get', `${L}/competency-evidence/${employees.EMP003}`)).body.data).toHaveLength(2);

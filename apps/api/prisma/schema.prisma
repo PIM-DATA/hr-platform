@@ -3531,6 +3531,9 @@ model CompetencyEvidence {
   sourceType      String   @map("source_type") // OJT
   sourceId        String   @map("source_id")
   sourceLabel     String   @map("source_label")
+  /// The level the source aimed at (an OJT program objective). It is what the evidence was gathered *towards*, never a level anybody observed.
+  objectiveLevelSnapshot Int? @map("objective_level_snapshot")
+  /// Set only by an explicit human level observation on the competency's scale. No such action exists in this release, so it stays null.
   observedLevel   Int?     @map("observed_level")
   note            String?
   createdByUserId String   @map("created_by_user_id")

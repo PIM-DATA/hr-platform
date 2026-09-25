@@ -62,9 +62,13 @@ permissions and the employee data scope, never a role name.
   under a row lock. It records the date, marks a linked need FULFILLED, notifies the trainee (`OJT_COMPLETED`), and
   writes no competency, IDP, performance or talent record.
 - **Competency evidence handoff** ("use as evidence for competency assessment"): from a COMPLETED plan, HR records
-  one `competency_evidence` pointer per program competency (or the chosen ones) with the expected level as
-  `observedLevel` and the plan as source. Idempotent. The assessor reads them; the level changes only when an
-  assessment is finalized. The SQL test in `tests/learning.test.ts` checks the level by raw SQL before and after.
+  one `competency_evidence` pointer per program competency (or the chosen ones) with the program's target as
+  `objectiveLevelSnapshot` ("this OJT was designed towards level 4") and the plan as source. `observedLevel` stays
+  **null**: nobody in this flow observed a level on the competency scale, and an objective must never read as an
+  achievement. Idempotent. The assessor reads the pointers; the level changes only when a Task 24 assessment is
+  finalized. The test in `tests/learning.test.ts` checks the level by raw SQL before and after and asserts the
+  evidence row carries objective 4 and observed null. A future explicit "observed level" would have to be a human
+  action validated on the scale, distinguishable from the objective, and still not applied to the current level.
 
 ## 4. Learning paths
 

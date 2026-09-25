@@ -32,8 +32,8 @@ export function MyLearningSections() {
       </Card>
       {d.evidence.length > 0 && (
         <Card>
-          <CardHeader title="Evidence for competency assessment" description="Pointers from completed OJT that your assessor can read. They change no level by themselves." />
-          <ul className="divide-y divide-slate-200">{d.evidence.map((e) => <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm"><span>{e.competencyName}<span className="block text-xs text-slate-500">{e.sourceLabel}{e.observedLevel ? ` · evidence expected at level ${e.observedLevel}` : ''}</span></span></li>)}</ul>
+          <CardHeader title="Evidence for competency assessment" description="Pointers from completed OJT that your assessor can read. An objective is what the OJT aimed at, not a level you were observed at; nothing here changes a level." />
+          <ul className="divide-y divide-slate-200">{d.evidence.map((e) => <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm"><span>{e.competencyName}<span className="block text-xs text-slate-500">{e.sourceLabel}{e.objectiveLevel ? ` · OJT objective: level ${e.objectiveLevel}` : ''} · available as evidence for competency assessment</span></span></li>)}</ul>
         </Card>
       )}
     </>
