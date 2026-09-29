@@ -453,7 +453,9 @@ describe('who sees what', () => {
     expect(rep.status).toBe(200);
     const hw = rep.body.data.byPlan.find((p: { plan: string }) => p.plan === '2026 Health & Wellness Allowance');
     expect(hw).toMatchObject({ enrolled: 2, claims: expect.any(Number) });
-    expect(Number(hw.approvedAmount)).toBeGreaterThanOrEqual(3250.5);
+    // Task 42 correction: report money is keyed by currency (amounts[]), never a cross-currency total.
+    expect(hw.amounts.map((m: { currency: string }) => m.currency)).toEqual(['THB']);
+    expect(Number(hw.amounts[0].approvedAmount)).toBeGreaterThanOrEqual(3250.5);
     for (const payload of [dash.body.data, rep.body.data]) expect(forbiddenKeys(payload, /^(employeeId|employeeCode|employeeName|firstName|lastName|name|email|claimNumber|description|documentId|paymentReference|department)$/)).toEqual([]);
     expect(text(rep.body.data)).not.toMatch(/Emma|EMP003|BCL-|check-up|TRF-|Clinic/);
     expect(err(await as(exec, 'get', `${B}/claims`))).toBe('403 FORBIDDEN');

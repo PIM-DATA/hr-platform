@@ -174,13 +174,14 @@ export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { lo
         for (const a of def.aggregations) {
           const alias = a.alias ?? `${a.fieldId}_${a.function.toLowerCase()}`;
           const vals = members.map((m) => m[a.fieldId]).filter((v) => v !== null);
-          const nums = vals.map((v) => new Prisma.Decimal(String(v)));
-          const sum = nums.reduce((acc, n) => acc.plus(n), new Prisma.Decimal(0));
+          // Decimal only for SUM / AVG: COUNT of a text field must not try to parse "First aid" as a number.
+          const nums = () => vals.map((v) => new Prisma.Decimal(String(v)));
+          const total = () => nums().reduce((acc, n) => acc.plus(n), new Prisma.Decimal(0));
           switch (a.function) {
             case 'COUNT': out[alias] = members.length; break;
             case 'COUNT_DISTINCT': out[alias] = new Set(vals.map(String)).size; break;
-            case 'SUM': out[alias] = sum.toFixed(2); break;
-            case 'AVG': out[alias] = nums.length ? sum.div(nums.length).toFixed(2) : null; break;
+            case 'SUM': out[alias] = total().toFixed(2); break;
+            case 'AVG': out[alias] = vals.length ? total().div(vals.length).toFixed(2) : null; break;
             case 'MIN': out[alias] = vals.length ? (vals.map(String).sort()[0] ?? null) : null; break;
             case 'MAX': out[alias] = vals.length ? (vals.map(String).sort().pop() ?? null) : null; break;
           }

@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { BenefitsDashboardDto, BenefitsReportDto } from '@hr/shared';
+import type { BenefitMoneyByCurrencyDto, BenefitsDashboardDto, BenefitsReportDto } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { ZERO, dec, money, toMoneyString } from '../payroll/money';
 import { availableOf, sumsOf } from './benefit-ledger';
@@ -46,14 +46,24 @@ export const benefitsReportService = {
       prisma.benefitClaim.findMany({ where: { ...(orgName ? { organizationSnapshot: orgName } : {}), OR: [{ submittedDate: { gte: from, lte: to } }, { paidDate: { gte: from, lte: to } }, { status: { in: ['DRAFT', 'PENDING_APPROVAL'] } }] }, select: { planId: true, status: true, currency: true, claimedAmount: true, approvedAmount: true, submittedDate: true, paidDate: true } }),
     ]);
     const inRange = (d: string | null) => !!d && d >= from && d <= to;
-    const byPlan = plans.map((p) => {
-      const ents = entitlements.filter((e) => e.planId === p.id); const cl = claims.filter((c) => c.planId === p.id && (inRange(c.submittedDate) || c.status === 'DRAFT'));
-      const approved = cl.filter((c) => ['READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID'].includes(c.status));
-      return { plan: p.name, category: p.category.name, planType: p.planType, currency: p.currency, enrolled: enrollments.filter((e) => e.planId === p.id).length, entitlements: ents.length, granted: toMoneyString(sum(ents.map((e) => e.grantedAmount))), consumed: toMoneyString(sum(ents.map((e) => e.consumedAmount))), available: toMoneyString(sum(ents.map((e) => availableOf(sumsOf(e))))), claims: cl.length, approvedClaims: approved.length, rejectedClaims: cl.filter((c) => c.status === 'REJECTED').length, approvedAmount: toMoneyString(sum(approved.map((c) => c.approvedAmount ?? ZERO))), paidAmount: toMoneyString(sum(cl.filter((c) => c.status === 'PAID' && inRange(c.paidDate)).map((c) => c.approvedAmount ?? ZERO))) };
+    const approvedStatus = (st: string) => ['READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID'].includes(st);
+    type Ent = (typeof entitlements)[number]; type Claim = (typeof claims)[number];
+    const inReport = (c: Claim) => inRange(c.submittedDate) || c.status === 'DRAFT';
+    /** One entry per currency present on the rows themselves (entitlement / claim currency), summed as Decimal. */
+    const moneyOf = (ents: Ent[], cl: Claim[]): BenefitMoneyByCurrencyDto[] => [...new Set([...ents.map((e) => e.currency), ...cl.map((c) => c.currency)])].sort().map((currency) => {
+      const e = ents.filter((x) => x.currency === currency); const c = cl.filter((x) => x.currency === currency);
+      return { currency, granted: toMoneyString(sum(e.map((x) => x.grantedAmount))), consumed: toMoneyString(sum(e.map((x) => x.consumedAmount))), available: toMoneyString(sum(e.map((x) => availableOf(sumsOf(x))))), approvedAmount: toMoneyString(sum(c.filter((x) => inReport(x) && approvedStatus(x.status)).map((x) => x.approvedAmount ?? ZERO))), paidAmount: toMoneyString(sum(c.filter((x) => x.status === 'PAID' && inRange(x.paidDate)).map((x) => x.approvedAmount ?? ZERO))) };
+    });
+    const planRows = plans.map((p) => {
+      const ents = entitlements.filter((e) => e.planId === p.id); const all = claims.filter((c) => c.planId === p.id); const cl = all.filter(inReport);
+      return { plan: p.name, category: p.category.name, planType: p.planType, enrolled: enrollments.filter((e) => e.planId === p.id).length, entitlements: ents.length, claims: cl.length, approvedClaims: cl.filter((c) => approvedStatus(c.status)).length, rejectedClaims: cl.filter((c) => c.status === 'REJECTED').length, amounts: moneyOf(ents, all), ents, all };
     }).sort((a, b) => a.plan.localeCompare(b.plan));
-    const cats = new Map<string, typeof byPlan>(); for (const r of byPlan) cats.set(r.category, [...(cats.get(r.category) ?? []), r]);
-    const byCategory = [...cats].map(([category, rows]) => ({ category, plans: rows.length, enrolled: rows.reduce((n, r) => n + r.enrolled, 0), claims: rows.reduce((n, r) => n + r.claims, 0), approvedAmount: toMoneyString(sum(rows.map((r) => dec(r.approvedAmount)))) })).sort((a, b) => a.category.localeCompare(b.category));
-    const statuses = new Map<string, Prisma.Decimal[]>(); for (const c of claims.filter((c) => inRange(c.submittedDate) || c.status === 'DRAFT' || c.status === 'PENDING_APPROVAL')) statuses.set(c.status, [...(statuses.get(c.status) ?? []), c.claimedAmount]);
-    return { range: { from, to }, byPlan, byCategory, claimsByStatus: [...statuses].map(([status, amounts]) => ({ status, count: amounts.length, amount: toMoneyString(sum(amounts)) })).sort((a, b) => a.status.localeCompare(b.status)) };
+    const byPlan = planRows.map(({ ents: _e, all: _a, ...r }) => r);
+    const cats = new Map<string, typeof planRows>(); for (const r of planRows) cats.set(r.category, [...(cats.get(r.category) ?? []), r]);
+    const byCategory = [...cats].map(([category, rows]) => ({ category, plans: rows.length, enrolled: rows.reduce((n, r) => n + r.enrolled, 0), claims: rows.reduce((n, r) => n + r.claims, 0), amounts: moneyOf(rows.flatMap((r) => r.ents), rows.flatMap((r) => r.all)).filter((m) => rows.some((r) => r.all.some((c) => c.currency === m.currency))).map((m) => ({ currency: m.currency, approvedAmount: m.approvedAmount, paidAmount: m.paidAmount })) })).sort((a, b) => a.category.localeCompare(b.category));
+    const statusRows = claims.filter((c) => inRange(c.submittedDate) || c.status === 'DRAFT' || c.status === 'PENDING_APPROVAL');
+    const statuses = [...new Set(statusRows.map((c) => c.status))].sort();
+    const claimsByStatus = statuses.map((status) => { const rows = statusRows.filter((c) => c.status === status); return { status, count: rows.length, amounts: [...new Set(rows.map((c) => c.currency))].sort().map((currency) => { const cr = rows.filter((c) => c.currency === currency); return { currency, count: cr.length, amount: toMoneyString(sum(cr.map((c) => c.claimedAmount))) }; }) }; });
+    return { range: { from, to }, byPlan, byCategory, claimsByStatus, totals: moneyOf(entitlements, claims) };
   },
 };

@@ -16,6 +16,17 @@ const DEFINITIONS = {
   pathsActive: 'Learning path assignments in ACTIVE status.', pathProgress: 'Average of fulfilled steps ÷ steps over active assignments.',
   certActive: 'Certifications not revoked, with no expiry or an expiry after the window.', expiringSoon: 'Certifications whose expiry falls within the definition\'s window (default 30 days).', expired: 'Certifications past their expiry date and not revoked.',
 };
+/**
+ * A certification row has no organization snapshot (Task 35), and this report already attributes certifications to
+ * the employee's *current* department — so the organization filter uses the employee's current organization too.
+ * OJT plans and path assignments keep their own organization snapshots. The id list comes from one indexed query
+ * on the employee master: no page cap, no first-N.
+ */
+export async function certOrganizationWhere(organizationId: string | undefined): Promise<Prisma.EmployeeCertificationWhereInput> {
+  if (!organizationId) return {};
+  const ids = (await prisma.employee.findMany({ where: { organizationId }, select: { id: true } })).map((e) => e.id);
+  return { employeeId: { in: ids } };
+}
 async function scope(auth: AuthContext) { const ids = await scopedEmployeeIds(auth); return ids === null ? {} : { employeeId: { in: ids } }; }
 
 export const learningReportService = {
@@ -50,7 +61,7 @@ export const learningReportService = {
     const [plans, asgs, certs] = await Promise.all([
       prisma.ojtPlan.findMany({ where: { ...s, ...org, OR: [{ startDate: { gte: from, lte: to } }, { status: 'ACTIVE' }] }, select: { status: true, startDate: true, completedAt: true, departmentSnapshot: true, programNameSnapshot: true, activities: { select: { status: true } } } }),
       prisma.learningPathAssignment.findMany({ where: { ...s, ...(org as Prisma.LearningPathAssignmentWhereInput), OR: [{ assignedAt: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T23:59:59Z`) } }, { status: 'ACTIVE' }] }, select: { status: true, pathNameSnapshot: true, departmentSnapshot: true, steps: { select: { fulfilledAt: true } } } }),
-      prisma.employeeCertification.findMany({ where: s, select: { employeeId: true, expiryDate: true, revokedAt: true, definitionNameSnapshot: true, definition: { select: { expiryWindowDays: true } } } }),
+      prisma.employeeCertification.findMany({ where: { AND: [s, await certOrganizationWhere(q.organizationId)] }, select: { employeeId: true, expiryDate: true, revokedAt: true, definitionNameSnapshot: true, definition: { select: { expiryWindowDays: true } } } }),
     ]);
     const group = <T, K extends string>(rows: T[], key: (r: T) => K) => { const m = new Map<K, T[]>(); for (const r of rows) { const k = key(r); m.set(k, [...(m.get(k) ?? []), r]); } return m; };
     const completedPlans = plans.filter((p) => p.status === 'COMPLETED' && p.completedAt);

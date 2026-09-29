@@ -59,7 +59,7 @@ export function executiveOverviewCsv(o: ExecutiveOverviewDto): string {
     section('Benefits (current, organization level)', ['Metric', 'Value'], [['Active plans', b.current.activePlans], ['Enrolled', b.current.enrolled], ['Coverage-only enrolments', b.current.coverageOnlyEnrolled], ['Claims pending approval', b.current.claims.pendingApproval], ['Claims ready for payment', b.current.claims.readyForPayment], ['Claims sent to payroll', b.current.claims.sentToPayroll], ['Claims paid', b.current.claims.paid]]);
     section('Benefits money (current)', ['Currency', 'Granted', 'Consumed', 'Available', 'Pending (claimed)', 'Ready for payment', 'Sent to payroll', 'Paid'], b.current.money.map((m) => [m.currency, m.granted, m.consumed, m.available, m.claimedPending, m.readyForPayment, m.sentToPayroll, m.paid]));
     section('Benefits approved and paid in range', ['Currency', 'Approved', 'Paid'], b.inRange.money.map((m) => [m.currency, m.approvedAmount, m.paidAmount]));
-    section('Benefits by category (in range)', ['Category', 'Currency', 'Plans', 'Enrolled', 'Claims', 'Approved'], b.inRange.byCategory.map((c) => [c.category, c.currency ?? '', c.plans, c.enrolled, c.claims, c.approvedAmount]));
+    section('Benefits by category (in range)', ['Category', 'Plans', 'Enrolled', 'Claims', 'Currency', 'Approved', 'Paid'], b.inRange.byCategory.flatMap((c) => (c.amounts.length ? c.amounts : [null]).map((m) => [c.category, c.plans, c.enrolled, c.claims, m?.currency ?? '', m?.approvedAmount ?? '', m?.paidAmount ?? ''])));
   }
   if (s.expense) {
     const x = s.expense;

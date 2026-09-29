@@ -39,6 +39,10 @@ Every amount is PostgreSQL `NUMERIC(18,2)`, `Prisma.Decimal` inside, a decimal s
 payroll money helper (`dec`, `money`, `toMoneyString`; two places, half-up, once). No `Number(amount)`, no
 `parseFloat`, no float arithmetic anywhere in the module or the web (the browser only displays strings). Each
 monetary plan has one ISO currency; a claim's currency must equal its period's snapshot; there is no conversion.
+Because a plan's currency can change between periods, reports key money by the **row's** currency (the
+entitlement's or claim's), never the plan's current setting. Every monetary aggregate — dashboard, report
+(`byPlan[].amounts`, `byCategory[].amounts`, `claimsByStatus[].amounts`, `totals`), executive roll-up, copilot —
+is per currency; amounts in different currencies are never added (Task 42 correction).
 
 ## 4. Categories and plans
 
@@ -176,11 +180,13 @@ approver on its workflow, through the review view. Employees never see another e
   statuses, dates, own description, payment method and reference) are exported. Reviewer comments on benefits
   workflows are redacted in the workflow section and adjustment notes are not exported; both are listed under "not
   included" with the reason.
-- **Dashboard and report** (`/benefits/dashboard`, `/benefits/reports`): counts and Decimal totals by plan and
-  category, organization-wide. **No department breakdown**: a department of three with one health claim is a
+- **Dashboard and report** (`/benefits/dashboard`, `/benefits/reports`): counts, and Decimal totals per currency by plan,
+  category and claim status, organization-wide. **No department breakdown**: a department of three with one health claim is a
   person. No employee, claim number, description, document or payment reference (recursive key check in the test).
 - **Report Center datasets** `benefit_enrollment_summary`, `benefit_entitlement_summary`, `benefit_claim_summary`
-  are aggregate-only with exact decimal columns, organization at snapshot, no department, no person.
+  are aggregate-only with exact decimal columns, organization at snapshot, no department, no person. Money columns
+  declare their currency field: SUM / AVG / MIN / MAX need the currency in the grouping or an EQ currency filter
+  (422 `REPORT_CURRENCY_GROUP_REQUIRED`).
 
 ## 14. Notifications and audit
 

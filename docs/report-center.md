@@ -10,7 +10,10 @@ A report definition is JSON validated by a strict schema: `columns` (field ids),
 `value`), `sort`, `groupBy`, `aggregations` (`fieldId`, `function`, `alias`), `pageSize`. Unknown properties are
 rejected, so `sql`, `where`, `table`, `join`, `selectRaw`, `orderByRaw` never reach a runner. Field ids are
 resolved against the dataset's registry entry; an unknown field, a disallowed operator, a bad value, a sort on an
-unsortable field or an aggregation the field does not permit is refused with a 422. Users choose from the registry;
+unsortable field or an aggregation the field does not permit is refused with a 422. A money field declares its
+`currencyField`; SUM / AVG / MIN / MAX over it are refused (422 `REPORT_CURRENCY_GROUP_REQUIRED`) unless the currency
+is a group key or the report is filtered to one currency — currencies are never added (Task 42 correction; applies
+to the benefit and expense datasets; no FX conversion exists). COUNT stays allowed. Users choose from the registry;
 they cannot name a table, a column or a join.
 
 ## 2. Dataset registry

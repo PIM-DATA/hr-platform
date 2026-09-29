@@ -433,18 +433,18 @@ registerDataset(memoryDataset({
   },
 }));
 registerDataset(memoryDataset({
-  id: 'certification_summary', name: 'Certification summary', description: 'One row per certification issuance: certification, issuer type, department, issue and expiry months, derived status. No names, no certificate numbers.',
+  id: 'certification_summary', name: 'Certification summary', description: 'One row per certification issuance: certification, issuer type, the employee\'s current organization and department (a certification has no snapshot; same rule as the learning report), issue and expiry months, derived status. No names, no certificate numbers.',
   requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
   fields: [
-    f({ id: 'certification', label: 'Certification', type: 'STRING', column: 'certification', groupable: true }), f({ id: 'issuerType', label: 'Issuer type', type: 'ENUM', column: 'issuerType', groupable: true, options: opts(['INTERNAL', 'EXTERNAL']) }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
+    f({ id: 'certification', label: 'Certification', type: 'STRING', column: 'certification', groupable: true }), f({ id: 'issuerType', label: 'Issuer type', type: 'ENUM', column: 'issuerType', groupable: true, options: opts(['INTERNAL', 'EXTERNAL']) }), f({ id: 'organization', label: 'Organization (current)', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
     f({ id: 'issuedMonth', label: 'Issued month', type: 'STRING', column: 'issuedMonth', groupable: true }), f({ id: 'expiryMonth', label: 'Expiry month', type: 'STRING', column: 'expiryMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'REVOKED']) }), f({ id: 'renewal', label: 'Is renewal', type: 'BOOLEAN', column: 'renewal', groupable: true }),
   ],
   async load(auth) {
     need(auth, ...LEARNING_VIEW);
     const t = new Date().toISOString().slice(0, 10);
     const rows = await prisma.employeeCertification.findMany({ where: await learningScope(auth), select: { employeeId: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, renewedFromId: true, definition: { select: { issuerType: true, expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 50000 });
-    const depts = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, department: { select: { name: true } } } })).map((e) => [e.id, e.department.name]));
-    return rows.map((r): Row => ({ certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, department: depts.get(r.employeeId) ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
+    const depts = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, department: { select: { name: true } }, organization: { select: { name: true } } } })).map((e) => [e.id, e]));
+    return rows.map((r): Row => ({ certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, organization: depts.get(r.employeeId)?.organization.name ?? null, department: depts.get(r.employeeId)?.department.name ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
   },
 }));
 
@@ -469,7 +469,7 @@ registerDataset(memoryDataset({
   fields: [
     f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'period', label: 'Period', type: 'STRING', column: 'period', groupable: true }), f({ id: 'periodStatus', label: 'Period status', type: 'ENUM', column: 'periodStatus', groupable: true, options: opts(['DRAFT', 'OPEN', 'CLOSED']) }),
     f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
-    f({ id: 'granted', label: 'Granted', type: 'DECIMAL', column: 'granted', aggregatable: true }), f({ id: 'adjustment', label: 'Adjustment', type: 'DECIMAL', column: 'adjustment', aggregatable: true }), f({ id: 'reserved', label: 'Reserved', type: 'DECIMAL', column: 'reserved', aggregatable: true }), f({ id: 'consumed', label: 'Consumed', type: 'DECIMAL', column: 'consumed', aggregatable: true }), f({ id: 'available', label: 'Available', type: 'DECIMAL', column: 'available', aggregatable: true }),
+    f({ id: 'granted', label: 'Granted', type: 'DECIMAL', column: 'granted', aggregatable: true , currencyField: 'currency' }), f({ id: 'adjustment', label: 'Adjustment', type: 'DECIMAL', column: 'adjustment', aggregatable: true , currencyField: 'currency' }), f({ id: 'reserved', label: 'Reserved', type: 'DECIMAL', column: 'reserved', aggregatable: true , currencyField: 'currency' }), f({ id: 'consumed', label: 'Consumed', type: 'DECIMAL', column: 'consumed', aggregatable: true , currencyField: 'currency' }), f({ id: 'available', label: 'Available', type: 'DECIMAL', column: 'available', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...BENEFITS_REPORTS);
@@ -484,7 +484,7 @@ registerDataset(memoryDataset({
     f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'period', label: 'Period', type: 'STRING', column: 'period', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
     f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
     f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'paidMonth', label: 'Paid month', type: 'STRING', column: 'paidMonth', groupable: true }), f({ id: 'paymentMethod', label: 'Payment method', type: 'STRING', column: 'paymentMethod', groupable: true }),
-    f({ id: 'claimedAmount', label: 'Claimed', type: 'DECIMAL', column: 'claimedAmount', aggregatable: true }), f({ id: 'approvedAmount', label: 'Approved', type: 'DECIMAL', column: 'approvedAmount', aggregatable: true }),
+    f({ id: 'claimedAmount', label: 'Claimed', type: 'DECIMAL', column: 'claimedAmount', aggregatable: true , currencyField: 'currency' }), f({ id: 'approvedAmount', label: 'Approved', type: 'DECIMAL', column: 'approvedAmount', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...BENEFITS_REPORTS);
@@ -500,7 +500,7 @@ registerDataset(memoryDataset({
   requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
   fields: [
     f({ id: 'travelPolicy', label: 'Travel policy', type: 'STRING', column: 'travelPolicy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'tripMonth', label: 'Trip month', type: 'STRING', column: 'tripMonth', groupable: true }),
-    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'tripDays', label: 'Trip days', type: 'NUMBER', column: 'tripDays', aggregatable: true }), f({ id: 'estimatedAmount', label: 'Estimated', type: 'DECIMAL', column: 'estimatedAmount', aggregatable: true }),
+    f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'tripDays', label: 'Trip days', type: 'NUMBER', column: 'tripDays', aggregatable: true }), f({ id: 'estimatedAmount', label: 'Estimated', type: 'DECIMAL', column: 'estimatedAmount', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
@@ -514,7 +514,7 @@ registerDataset(memoryDataset({
   fields: [
     f({ id: 'policy', label: 'Policy', type: 'STRING', column: 'policy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'paidMonth', label: 'Paid month', type: 'STRING', column: 'paidMonth', groupable: true }),
     f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'paymentMethod', label: 'Payment method', type: 'STRING', column: 'paymentMethod', groupable: true }), f({ id: 'linkedToTravel', label: 'Linked to travel', type: 'BOOLEAN', column: 'linkedToTravel', groupable: true }),
-    f({ id: 'items', label: 'Items', type: 'NUMBER', column: 'items', aggregatable: true }), f({ id: 'total', label: 'Total', type: 'DECIMAL', column: 'total', aggregatable: true }),
+    f({ id: 'items', label: 'Items', type: 'NUMBER', column: 'items', aggregatable: true }), f({ id: 'total', label: 'Total', type: 'DECIMAL', column: 'total', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
@@ -527,7 +527,7 @@ registerDataset(memoryDataset({
   requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
   fields: [
     f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'policy', label: 'Policy', type: 'STRING', column: 'policy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'expenseMonth', label: 'Expense month', type: 'STRING', column: 'expenseMonth', groupable: true }),
-    f({ id: 'reportStatus', label: 'Report status', type: 'ENUM', column: 'reportStatus', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'receiptRequired', label: 'Receipt required', type: 'BOOLEAN', column: 'receiptRequired', groupable: true }), f({ id: 'amount', label: 'Amount', type: 'DECIMAL', column: 'amount', aggregatable: true }),
+    f({ id: 'reportStatus', label: 'Report status', type: 'ENUM', column: 'reportStatus', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'receiptRequired', label: 'Receipt required', type: 'BOOLEAN', column: 'receiptRequired', groupable: true }), f({ id: 'amount', label: 'Amount', type: 'DECIMAL', column: 'amount', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);

@@ -38,11 +38,11 @@ number to a person.
 | employeeRelations | `erReportService.report` (Task 26) | date range, department (case snapshot) |
 | talent | `talentReportService.talent()` / `.succession()` (Task 28) | none — current state |
 | payroll | `payrollRunService.summary` per closed run, department split discarded (Task 22) | date range (period), organization |
-| benefits (Task 42) | `benefitsReportService.dashboard` + `.report` (Task 36), regrouped per currency | organization (snapshot); date range for approved / paid |
+| benefits (Task 42) | `benefitsReportService.dashboard` + `.report` (Task 36); per-currency amounts as the report returns them | organization (snapshot); date range for approved / paid |
 | expense (Task 42) | `expenseAnalyticsService.dashboard` + `.report` (Task 39) | organization (snapshot); date range for submitted / approved / paid (submitted date) |
 | employeeServices (Task 42) | `serviceAnalyticsService.dashboard` + `.report` (Task 40) | organization (snapshot); date range for submitted requests and issued letters |
 | lifecycle (Task 42) | `lifecycleReportService.report` (Task 34), totals only | date range, organization; the viewer's lifecycle scope |
-| learning (Task 42) | `learningReportService.report` (Task 35), totals only | date range, organization; the viewer's learning scope |
+| learning (Task 42) | `learningReportService.report` (Task 35), totals only | date range, organization (OJT / paths: the plan's organization snapshot; certifications: the employee's current organization — a certification has no snapshot); the viewer's learning scope |
 | workforcePlanning (Task 42) | `workforcePlanService.dashboard` (Task 32) for the latest ACTIVE / FINALIZED cycle | organization (selects the cycle); the viewer's workforce scope |
 | engagement (Task 42) | `resultsService.dashboard` (Task 33) — threshold applied by the engagement module | none; any population filter hides it |
 
@@ -164,6 +164,7 @@ by default and no payroll split below organization level. No all-in-one employee
 Task 42 roll-ups: no department / job split for benefits, expense, employee services, lifecycle, learning,
 workforce planning or engagement; no individual financial surveillance; no inference (fraud, health, hardship,
 engagement, performance, flight risk) from welfare, spend or request activity; current-state figures are "now",
-not historical snapshots; the certification counts inside the learning roll-up are not organization-filtered (the
-Task 35 report's own limitation); a source's per-category benefit total in the Benefits report page still adds plan
-currencies together (the executive view regroups by currency; the Task 36 page is unchanged).
+not historical snapshots. There is no FX conversion: amounts in different currencies are listed side by side and
+never added. (Task 42 correction: the learning roll-up's certification counts now follow the organization filter —
+by the employee's current organization — and the benefits report itself keys every amount by currency, so the
+executive view reuses it instead of regrouping.)

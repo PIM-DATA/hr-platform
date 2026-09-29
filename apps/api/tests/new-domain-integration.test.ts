@@ -48,13 +48,14 @@ function forbiddenKeys(v: unknown, path = '$', hits: string[] = []): string[] {
 const leaks = (v: unknown) => SECRETS.filter((s) => text(v).includes(s));
 
 let hrAdmin: Session, hr: Session, mgr: Session, emp: Session, exec: Session, execOnly: Session;
-let deptId: string, orgId: string;
+let deptId: string, orgId: string, otherOrgId: string, adminUserId: string;
+const emp42: Record<string, string> = {};
 
 beforeAll(async () => {
   await resetDatabase();
   const org = await prisma.organization.create({ data: { code: 'A42', name: 'Rollup Co', timezone: 'Asia/Bangkok' } });
   orgId = org.id;
-  await prisma.organization.create({ data: { code: 'B42', name: 'Other Co', timezone: 'Asia/Bangkok' } });
+  otherOrgId = (await prisma.organization.create({ data: { code: 'B42', name: 'Other Co', timezone: 'Asia/Bangkok' } })).id;
   const dept = await prisma.department.create({ data: { organizationId: org.id, code: 'OPS', name: 'Operations' } });
   deptId = dept.id;
   const job = await prisma.job.create({ data: { code: 'OFF', title: 'Officer', level: 2 } });
@@ -76,7 +77,8 @@ beforeAll(async () => {
   for (const code of ['analytics.view_executive', 'copilot.use', 'dashboard.view']) await prisma.rolePermission.create({ data: { roleId: role.id, permissionId: (await prisma.permission.findUniqueOrThrow({ where: { code } })).id } });
   await createUser({ email: 'execonly@a42.local', password: PW, role: 'EXEC_ONLY' });
   [hrAdmin, hr, mgr, emp, exec, execOnly] = await Promise.all(['hradmin', 'hr', 'mgr', 'emp', 'exec', 'execonly'].map((u) => loginAs(app, `${u}@a42.local`, PW)));
-  const by = hrAdmin.user.id;
+  const by = hrAdmin.user.id; adminUserId = by;
+  Object.assign(emp42, { e1, e2, e3, dept: dept.id, pos: pos.id });
   const snap = (employeeId: string, code: string, org = 'Rollup Co') => ({ employeeId, employeeCodeSnapshot: code, employeeNameSnapshot: 'Ada Lovelace', organizationSnapshot: org, departmentSnapshot: 'Operations' });
 
   // ---------- benefits ----------
@@ -164,7 +166,7 @@ describe('executive analytics — benefits, expense, employee services', () => {
     ]);
     // In range: approved = submitted in range and now ready / sent / paid; paid = paid date in range. Never THB + USD.
     expect(b.inRange.money).toEqual([{ currency: 'THB', approvedAmount: '1500.25', paidAmount: '200.10' }, { currency: 'USD', approvedAmount: '100.05', paidAmount: '100.05' }]);
-    expect(b.inRange.byCategory).toEqual(expect.arrayContaining([{ category: 'Medical', currency: 'THB', plans: 1, enrolled: 2, claims: 5, approvedAmount: '1500.25' }, { category: 'Medical', currency: 'USD', plans: 1, enrolled: 1, claims: 1, approvedAmount: '100.05' }, { category: 'Life', currency: null, plans: 1, enrolled: 1, claims: 0, approvedAmount: '0.00' }]));
+    expect(b.inRange.byCategory).toEqual(expect.arrayContaining([{ category: 'Medical', plans: 2, enrolled: 3, claims: 6, amounts: [{ currency: 'THB', approvedAmount: '1500.25', paidAmount: '200.10' }, { currency: 'USD', approvedAmount: '100.05', paidAmount: '100.05' }] }, { category: 'Life', plans: 1, enrolled: 1, claims: 0, amounts: [] }]));
   });
 
   it('the organization filter narrows to that organization\'s snapshot', async () => {
@@ -407,5 +409,111 @@ describe('copilot — aggregate tools for the newer domains', () => {
       expect(err(await as(exec, 'get', '/api/v1/employee-services/reports?from=2026-01-01&to=2026-09-30'))).toBe('200');
       expect((await as(exec, 'get', '/api/v1/copilot/status')).body.data.enabled).toBe(false);
     } finally { env.COPILOT_ENABLED = true; resetCopilotProvider(); }
+  });
+});
+
+/**
+ * Task 42 data-correctness correction. Runs last: it adds rows the earlier state assertions do not expect.
+ * (1) Learning certifications follow the organization filter (employee's current organization — a certification
+ * has no snapshot). (2) Benefits money is keyed by the row's currency everywhere and never added across currencies.
+ */
+describe('correction — organization-filtered certifications and currency-keyed benefit money', () => {
+  let decimalOrg: string;
+  beforeAll(async () => {
+    // Certifications: 10 for employees of Rollup Co, 7 for employees of Other Co.
+    const otherDept = await prisma.department.create({ data: { organizationId: otherOrgId, code: 'B-OPS', name: 'Other ops' } });
+    const otherPos = await prisma.position.create({ data: { departmentId: otherDept.id, code: 'B-OFF', title: 'Officer' } });
+    const other: string[] = [];
+    for (let i = 0; i < 2; i += 1) other.push((await prisma.employee.create({ data: { employeeCode: `E42-B${i}`, firstName: 'Ada', lastName: 'Lovelace', email: `b${i}@a42.local`, hireDate: new Date('2021-01-01T00:00:00Z'), organizationId: otherOrgId, departmentId: otherDept.id, positionId: otherPos.id, employmentType: 'FULL_TIME', employmentStatus: 'ACTIVE' } })).id);
+    const def = await prisma.certificationDefinition.create({ data: { code: 'FIRST-AID', name: 'First aid', issuerType: 'INTERNAL' } });
+    const cert = (employeeId: string, day: number) => prisma.employeeCertification.create({ data: { employeeId, definitionId: def.id, definitionNameSnapshot: 'First aid', issuedDate: `2026-0${1 + Math.floor(day / 28)}-${String((day % 28) + 1).padStart(2, '0')}`, createdByUserId: adminUserId } });
+    for (let i = 0; i < 10; i += 1) await cert([emp42.e1!, emp42.e2!, emp42.e3!][i % 3]!, i);
+    for (let i = 0; i < 7; i += 1) await cert(other[i % 2]!, i);
+
+    // Benefits in a separate organization so the earlier assertions keep their numbers: one category, three currencies of rows.
+    decimalOrg = (await prisma.organization.create({ data: { code: 'C42', name: 'Decimal Co', timezone: 'Asia/Bangkok' } })).id;
+    const dental = await prisma.benefitCategory.create({ data: { code: 'DENT', name: 'Dental' } });
+    // The plan's currency was THB when the first period opened and USD later: rows keep their own currency.
+    const plan = await prisma.benefitPlan.create({ data: { code: 'DENT', name: 'Dental plan', categoryId: dental.id, organizationId: decimalOrg, planType: 'REIMBURSEMENT', currency: 'USD', status: 'ACTIVE', effectiveFrom: '2026-01-01', createdByUserId: adminUserId } });
+    const pThb = await prisma.benefitPeriod.create({ data: { planId: plan.id, name: 'H1', periodStart: '2026-01-01', periodEnd: '2026-06-30', status: 'CLOSED', currencySnapshot: 'THB', createdByUserId: adminUserId } });
+    const pUsd = await prisma.benefitPeriod.create({ data: { planId: plan.id, name: 'H2', periodStart: '2026-07-01', periodEnd: '2026-12-31', status: 'OPEN', currencySnapshot: 'USD', createdByUserId: adminUserId } });
+    const snap = { employeeId: emp42.e1!, employeeCodeSnapshot: 'E42-001', employeeNameSnapshot: 'Ada Lovelace', organizationSnapshot: 'Decimal Co' };
+    await prisma.benefitEntitlement.create({ data: { ...snap, planId: plan.id, periodId: pThb.id, currency: 'THB', grantedAmount: '5000.00', consumedAmount: '1333.47', createdByUserId: adminUserId } });
+    await prisma.benefitEntitlement.create({ data: { ...snap, planId: plan.id, periodId: pUsd.id, currency: 'USD', grantedAmount: '100.00', consumedAmount: '12.34', createdByUserId: adminUserId } });
+    let k = 0;
+    const claim = (periodId: string, currency: string, amount: string, status: string, paidDate: string | null = null) => prisma.benefitClaim.create({ data: { claimNumber: `BEN-2026-9${String(++k).padStart(5, '0')}`, ...snap, planId: plan.id, periodId, planCodeSnapshot: 'DENT', planNameSnapshot: 'Dental plan', categorySnapshot: 'Dental', currency, claimedAmount: amount, approvedAmount: amount, serviceDate: '2026-05-01', submittedDate: '2026-05-02', status, paidDate, createdByUserId: adminUserId } });
+    await claim(pThb.id, 'THB', '1000.10', 'READY_FOR_PAYMENT');
+    await claim(pThb.id, 'THB', '333.37', 'PAID', '2026-05-20');
+    await claim(pUsd.id, 'USD', '12.34', 'PAID', '2026-08-20');
+  });
+
+  const certs = async (q: string) => (await as(exec, 'get', `${A}/executive/overview?${RANGE}${q}`)).body.data.sections.learning.certifications;
+
+  it('learning report: certifications follow the organization filter (10 / 7 / 17)', async () => {
+    const r = (q: string) => as(exec, 'get', `/api/v1/learning/reports?from=2026-01-01&to=2026-09-30${q}`);
+    expect((await r(`&organizationId=${orgId}`)).body.data.certifications.active).toBe(10);
+    expect((await r(`&organizationId=${otherOrgId}`)).body.data.certifications.active).toBe(7);
+    expect((await r('')).body.data.certifications.active).toBe(17);
+  });
+
+  it('executive overview uses the same numbers', async () => {
+    expect((await certs(`&organizationId=${orgId}`)).active).toBe(10);
+    expect((await certs(`&organizationId=${otherOrgId}`)).active).toBe(7);
+    expect((await certs('')).active).toBe(17);
+  });
+
+  it('copilot overview and the report tool use the same organization semantics', async () => {
+    scriptFakeProvider([call('executive_hr_overview', { from: '2026-01-01', to: '2026-09-30', organizationId: otherOrgId }), answer()]);
+    expect(err(await chat(exec, 'Certifications in Other Co'))).toBe('200');
+    expect((toolResults()[0] as { data: { learning: { certifications: { active: number } } } }).data.learning.certifications.active).toBe(7);
+    const run = await as(exec, 'post', '/api/v1/reports/run').send({ datasetId: 'certification_summary', definition: { columns: ['organization'], filters: [], sort: [], groupBy: ['organization'], aggregations: [{ fieldId: 'certification', function: 'COUNT' }], pageSize: 50 }, page: 1 });
+    expect(err(run)).toBe('200');
+    const counts = Object.fromEntries(run.body.data.rows.map((r: Record<string, unknown>) => [r.organization, Object.values(r).find((v) => typeof v === 'number')]));
+    expect(counts).toEqual({ 'Rollup Co': 10, 'Other Co': 7 });
+  });
+
+  it('benefits report: one category, amounts per currency, exact — THB 1333.47 and USD 12.34, never 1345.81', async () => {
+    const r = await as(exec, 'get', `/api/v1/benefits/reports?from=2026-01-01&to=2026-09-30&organizationId=${decimalOrg}`);
+    expect(err(r)).toBe('200');
+    const d = r.body.data;
+    const dental = d.byCategory.find((c: { category: string }) => c.category === 'Dental');
+    expect(dental.amounts).toEqual([{ currency: 'THB', approvedAmount: '1333.47', paidAmount: '333.37' }, { currency: 'USD', approvedAmount: '12.34', paidAmount: '12.34' }]);
+    const plan = d.byPlan.find((p: { plan: string }) => p.plan === 'Dental plan');
+    expect(plan.amounts).toEqual([{ currency: 'THB', granted: '5000.00', consumed: '1333.47', available: '3666.53', approvedAmount: '1333.47', paidAmount: '333.37' }, { currency: 'USD', granted: '100.00', consumed: '12.34', available: '87.66', approvedAmount: '12.34', paidAmount: '12.34' }]);
+    expect(d.claimsByStatus.find((x: { status: string }) => x.status === 'PAID').amounts).toEqual([{ currency: 'THB', count: 1, amount: '333.37' }, { currency: 'USD', count: 1, amount: '12.34' }]);
+    expect(d.totals.map((t: { currency: string }) => t.currency)).toEqual(['THB', 'USD']);
+    expect(text(d)).not.toContain('1345.81');
+  });
+
+  it('executive and copilot carry the source currency grouping unchanged', async () => {
+    const b = (await as(exec, 'get', `${A}/executive/overview?${RANGE}&organizationId=${decimalOrg}`)).body.data.sections.benefits;
+    expect(b.inRange.byCategory.find((c: { category: string }) => c.category === 'Dental').amounts).toEqual([{ currency: 'THB', approvedAmount: '1333.47', paidAmount: '333.37' }, { currency: 'USD', approvedAmount: '12.34', paidAmount: '12.34' }]);
+    expect(b.inRange.money).toEqual([{ currency: 'THB', approvedAmount: '1333.47', paidAmount: '333.37' }, { currency: 'USD', approvedAmount: '12.34', paidAmount: '12.34' }]);
+    expect(b.current.money.map((m: { currency: string; consumed: string }) => [m.currency, m.consumed])).toEqual([['THB', '1333.47'], ['USD', '12.34']]);
+    scriptFakeProvider([call('benefits_summary', { from: '2026-01-01', to: '2026-09-30', organizationId: decimalOrg }), answer()]);
+    expect(err(await chat(exec, 'Dental benefits by currency'))).toBe('200');
+    const shown = text(toolResults());
+    expect(shown).toContain('"currency":"THB","approvedAmount":"1333.47"');
+    expect(shown).toContain('"currency":"USD","approvedAmount":"12.34"');
+    expect(shown).not.toContain('1345.81');
+  });
+
+  it('report center: money needs a currency grouping or a single-currency filter', async () => {
+    const run = (definition: Record<string, unknown>) => as(exec, 'post', '/api/v1/reports/run').send({ datasetId: 'benefit_claim_summary', definition: { columns: [], filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50, ...definition }, page: 1 });
+    for (const fn of ['SUM', 'AVG', 'MIN', 'MAX']) expect(err(await run({ columns: ['category'], groupBy: ['category'], aggregations: [{ fieldId: 'approvedAmount', function: fn }] }))).toBe('422 REPORT_CURRENCY_GROUP_REQUIRED');
+    const g = await run({ columns: ['category', 'currency'], groupBy: ['category', 'currency'], filters: [{ fieldId: 'category', operator: 'EQ', value: 'Dental' }], aggregations: [{ fieldId: 'approvedAmount', function: 'SUM', alias: 'approved' }] });
+    expect(err(g)).toBe('200');
+    expect(g.body.data.rows.map((r: Record<string, unknown>) => [r.currency, r.approved])).toEqual(expect.arrayContaining([['THB', '1333.47'], ['USD', '12.34']]));
+    const one = await run({ columns: ['category'], groupBy: ['category'], filters: [{ fieldId: 'currency', operator: 'EQ', value: 'USD' }, { fieldId: 'category', operator: 'EQ', value: 'Dental' }], aggregations: [{ fieldId: 'approvedAmount', function: 'SUM', alias: 'approved' }] });
+    expect(err(one)).toBe('200');
+    expect(one.body.data.rows[0].approved).toBe('12.34');
+    // COUNT is not money and stays allowed without a currency key.
+    expect(err(await run({ columns: ['category'], groupBy: ['category'], aggregations: [{ fieldId: 'approvedAmount', function: 'COUNT' }] }))).toBe('200');
+    // The copilot report tool goes through the same registry.
+    scriptFakeProvider([call('report_query', { datasetId: 'benefit_claim_summary', definition: { columns: ['category'], groupBy: ['category'], aggregations: [{ fieldId: 'approvedAmount', function: 'SUM' }] } }), answer()]);
+    const c = await chat(exec, 'Total benefit approved');
+    expect(err(c)).toBe('200');
+    expect(toolResults()[0]).toBeNull();
+    expect(text(seen.map((q) => q.messages))).toMatch(/group by currency/);
   });
 });

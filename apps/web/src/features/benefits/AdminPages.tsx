@@ -19,6 +19,9 @@ import { useBenefitClaims, useBenefitEnrollments, useBenefitEntitlement, useBene
 import { BalanceBar, BenefitBadge, Stat, Table, fmtDate, money, titleCase } from './benefits-ui';
 import { ClaimModal } from './ClaimDialogs';
 
+/** Amounts in different currencies are listed side by side, never added (no FX conversion exists). */
+const perCurrency = <T extends { currency: string }>(amounts: T[], key: keyof T) => (amounts.length ? amounts.map((m) => `${m.currency} ${String(m[key])}`).join(' · ') : '—');
+
 // ---------- periods ----------
 export function PeriodsPage() {
   const periods = useBenefitPeriods(); const plans = useBenefitPlans(); const m = useBenefitsMutations(); const toast = useToast();
@@ -155,10 +158,10 @@ export function BenefitsReportsPage() {
       <Card><div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3"><Input label="From" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /><Input label="To" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div></Card>
       {r.isLoading && <LoadingBlock />}
       {d && (<>
-        <Card><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">By plan (organization-wide; no department breakdown by design)</div><Table head={['Plan', 'Category', 'Type', 'Enrolled', 'Granted', 'Consumed', 'Available', 'Claims', 'Approved', 'Rejected', 'Approved amount', 'Paid amount']} rows={d.byPlan.map((x) => [x.plan, x.category, titleCase(x.planType), x.enrolled, x.granted, x.consumed, x.available, x.claims, x.approvedClaims, x.rejectedClaims, x.approvedAmount, x.paidAmount])} /></Card>
+        <Card><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">By plan (organization-wide; no department breakdown by design)</div><Table head={['Plan', 'Category', 'Type', 'Enrolled', 'Granted', 'Consumed', 'Available', 'Claims', 'Approved', 'Rejected', 'Approved amount', 'Paid amount']} rows={d.byPlan.map((x) => [x.plan, x.category, titleCase(x.planType), x.enrolled, perCurrency(x.amounts, 'granted'), perCurrency(x.amounts, 'consumed'), perCurrency(x.amounts, 'available'), x.claims, x.approvedClaims, x.rejectedClaims, perCurrency(x.amounts, 'approvedAmount'), perCurrency(x.amounts, 'paidAmount')])} /></Card>
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <Card><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">By category</div><Table head={['Category', 'Plans', 'Enrolled', 'Claims', 'Approved amount']} rows={d.byCategory.map((x) => [x.category, x.plans, x.enrolled, x.claims, x.approvedAmount])} /></Card>
-          <Card><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Claims by status</div><Table head={['Status', 'Count', 'Claimed amount']} rows={d.claimsByStatus.map((x) => [titleCase(x.status), x.count, x.amount])} /></Card>
+          <Card><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">By category</div><Table head={['Category', 'Plans', 'Enrolled', 'Claims', 'Approved amount']} rows={d.byCategory.map((x) => [x.category, x.plans, x.enrolled, x.claims, perCurrency(x.amounts, 'approvedAmount')])} /></Card>
+          <Card><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Claims by status</div><Table head={['Status', 'Count', 'Claimed amount']} rows={d.claimsByStatus.map((x) => [titleCase(x.status), x.count, perCurrency(x.amounts, 'amount')])} /></Card>
         </div>
       </>)}
       {hasPermission(PERMISSIONS.REPORTS_VIEW) && <p className="text-xs text-slate-500">Report Center datasets: <Link to="/hrm/reports/builder" className="text-brand-700 underline">Benefit enrolment summary</Link>, <Link to="/hrm/reports/builder" className="text-brand-700 underline">Benefit entitlement summary</Link>, <Link to="/hrm/reports/builder" className="text-brand-700 underline">Benefit claim summary</Link> — aggregates, exact decimals, no person.</p>}

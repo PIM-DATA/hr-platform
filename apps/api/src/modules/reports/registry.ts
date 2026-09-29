@@ -53,6 +53,10 @@ export function validateDefinition(dataset: ReportDataset, def: ReportDefinition
     const f = field(a.fieldId, 'aggregation');
     if (!f.aggregatable && !(a.function === 'COUNT' || a.function === 'COUNT_DISTINCT')) throw new AppError(422, 'REPORT_AGGREGATION_NOT_ALLOWED', `"${f.label}" cannot be aggregated with ${a.function}`);
     if ((a.function === 'SUM' || a.function === 'AVG') && !['NUMBER', 'DECIMAL'].includes(f.type)) throw new AppError(422, 'REPORT_AGGREGATION_NOT_ALLOWED', `${a.function} needs a numeric field`);
+    // Money in several currencies is never added: the currency must be a group key, or the report filtered to one currency.
+    if (f.currencyField && a.function !== 'COUNT' && a.function !== 'COUNT_DISTINCT' && !def.groupBy.includes(f.currencyField) && !def.filters.some((x) => x.fieldId === f.currencyField && x.operator === 'EQ')) {
+      throw new AppError(422, 'REPORT_CURRENCY_GROUP_REQUIRED', `"${f.label}" is money: group by currency or filter to one currency before ${a.function}`);
+    }
   }
   if (def.groupBy.length && def.aggregations.length === 0) throw new AppError(422, 'REPORT_AGGREGATION_REQUIRED', 'A grouped report needs at least one aggregation');
   if (def.groupBy.length && def.columns.some((c) => !def.groupBy.includes(c))) throw new AppError(422, 'REPORT_COLUMNS_MUST_BE_GROUPED', 'In a grouped report every column must be a group field; other values come from aggregations');

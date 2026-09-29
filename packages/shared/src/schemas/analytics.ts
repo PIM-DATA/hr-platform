@@ -181,7 +181,7 @@ export interface BenefitsExecutiveDto {
   inRange: {
     claimsByStatus: { status: string; count: number }[];
     money: { currency: string; approvedAmount: string; paidAmount: string }[];
-    byCategory: { category: string; currency: string | null; plans: number; enrolled: number; claims: number; approvedAmount: string }[];
+    byCategory: { category: string; plans: number; enrolled: number; claims: number; amounts: { currency: string; approvedAmount: string; paidAmount: string }[] }[];
   };
 }
 export interface ExpenseExecutiveDto {

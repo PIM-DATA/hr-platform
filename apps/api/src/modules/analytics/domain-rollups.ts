@@ -52,8 +52,7 @@ function sumBy<T>(rows: T[], key: (r: T) => string, fields: (keyof T)[]) {
 export const domainRollups = {
   async benefits(f: RollupFilter): Promise<BenefitsExecutiveDto> {
     const [d, r] = await Promise.all([benefitsReportService.dashboard({ organizationId: f.organizationId }), benefitsReportService.report({ from: f.from, to: f.to, organizationId: f.organizationId })]);
-    // Plans carry their own currency; the report's per-category total is regrouped by currency here so two currencies are never added.
-    const priced = r.byPlan.filter((p) => p.currency);
+    // The benefits report owns the currency semantics: every amount there is already keyed by the row's currency.
     return {
       range: r.range,
       current: {
@@ -64,12 +63,8 @@ export const domainRollups = {
       },
       inRange: {
         claimsByStatus: r.claimsByStatus.map((c) => ({ status: c.status, count: c.count })),
-        money: sumBy(priced, (p) => p.currency!, ['approvedAmount', 'paidAmount']).map((g) => ({ currency: g.key, approvedAmount: g.sum('approvedAmount'), paidAmount: g.sum('paidAmount') })),
-        byCategory: sumBy(r.byPlan, (p) => `${p.category}\u0000${p.currency ?? ''}`, ['approvedAmount']).map((g) => {
-          const [category, currency] = g.key.split('\u0000');
-          const rows = r.byPlan.filter((p) => p.category === category && (p.currency ?? '') === currency);
-          return { category: category!, currency: currency || null, plans: g.count, enrolled: rows.reduce((n, p) => n + p.enrolled, 0), claims: rows.reduce((n, p) => n + p.claims, 0), approvedAmount: g.sum('approvedAmount') };
-        }),
+        money: r.totals.map((m) => ({ currency: m.currency, approvedAmount: m.approvedAmount, paidAmount: m.paidAmount })),
+        byCategory: r.byCategory,
       },
     };
   },

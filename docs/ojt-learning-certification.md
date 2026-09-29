@@ -116,7 +116,16 @@ evidence pointers; trainer comments and observation comments are listed under *n
 
 `GET /learning/dashboard` (counts with stated definitions) and `GET /learning/reports?from&to&organizationId`
 (OJT by department / program with average completion days, paths by path / department, certifications by definition /
-department). Report Center datasets `ojt_summary`, `learning_path_summary`, `certification_summary` are
+department).
+
+**Organization filter.** OJT plans and learning-path assignments are filtered by their own organization snapshot.
+A certification row has no snapshot and this report already attributes certifications to the employee's *current*
+department, so the organization filter uses the employee's *current* organization (one query on the employee
+master; no page cap). An employee who moved organizations after certification counts in the new one. The executive
+dashboard, the copilot overview and the `certification_summary` dataset (which gained an *Organization (current)*
+column) use the same rule.
+
+Report Center datasets `ojt_summary`, `learning_path_summary`, `certification_summary` are
 aggregate-only: departments, programs, paths, definitions, months, statuses and counts — never a name, a comment,
 an evidence title or a certificate number.
 

@@ -114,9 +114,16 @@ export interface BenefitsDashboardDto {
   money: { currency: string; granted: string; reserved: string; consumed: string; available: string; claimedPending: string; approved: string; readyForPayment: string; sentToPayroll: string; paid: string }[];
   definitions: Record<string, string>; generatedAt: string;
 }
+/**
+ * Money in the benefits report is always keyed by currency — the currency recorded on the entitlement or claim
+ * row, never the plan's current setting — and never added across currencies. There is no FX conversion.
+ */
+export interface BenefitMoneyByCurrencyDto { currency: string; granted: string; consumed: string; available: string; approvedAmount: string; paidAmount: string }
 export interface BenefitsReportDto {
   range: { from: string; to: string };
-  byPlan: { plan: string; category: string; planType: string; currency: string | null; enrolled: number; entitlements: number; granted: string; consumed: string; available: string; claims: number; approvedClaims: number; rejectedClaims: number; approvedAmount: string; paidAmount: string }[];
-  byCategory: { category: string; plans: number; enrolled: number; claims: number; approvedAmount: string }[];
-  claimsByStatus: { status: string; count: number; amount: string }[];
+  byPlan: { plan: string; category: string; planType: string; enrolled: number; entitlements: number; claims: number; approvedClaims: number; rejectedClaims: number; amounts: BenefitMoneyByCurrencyDto[] }[];
+  byCategory: { category: string; plans: number; enrolled: number; claims: number; amounts: { currency: string; approvedAmount: string; paidAmount: string }[] }[];
+  claimsByStatus: { status: string; count: number; amounts: { currency: string; count: number; amount: string }[] }[];
+  /** Per currency across all plans in the report. */
+  totals: BenefitMoneyByCurrencyDto[];
 }

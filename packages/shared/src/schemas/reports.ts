@@ -37,6 +37,8 @@ export interface ReportFieldDto {
   id: string; label: string; type: (typeof REPORT_FIELD_TYPES)[number]; sensitivity: (typeof REPORT_FIELD_SENSITIVITIES)[number];
   selectable: boolean; filterable: boolean; sortable: boolean; groupable: boolean; aggregatable: boolean;
   options?: { value: string; label: string }[];
+  /** A money field: SUM / AVG / MIN / MAX need this currency field in the grouping or an EQ filter on it — currencies are never added together. */
+  currencyField?: string;
 }
 export interface ReportDatasetDto {
   id: string; name: string; description: string; aggregateOnly: boolean;
