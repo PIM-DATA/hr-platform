@@ -301,3 +301,17 @@ Administration  Overview · Users · Roles · Permissions · Audit Logs · Workf
 ### Still open (unchanged priorities)
 
 G-13 compensation planning decision (P2), G-15 copilot and executive roll-up of the five newest domains (P3), G-17 timesheets decision (P4), G-18 enterprise-only items (P4), and NAV-9 (HROD group naming, a product decision). Administration itself (G-07, G-08, G-09) shipped in Task 41: the hub reports each area's real capability, the workflow monitor is read-only with source-module confidentiality, and payroll master data is editable in the UI.
+
+---
+
+## 18. Task 42 addendum — executive analytics and copilot new-domain integration (2026-09-29)
+
+| ID | Status | What changed |
+|---|---|---|
+| G-15 / INT-2 | RESOLVED | The executive dashboard rolls up benefits, expenses & travel and employee services (new sections), and lifecycle, OJT / learning paths / certifications, workforce plan and engagement (a "People operations" row). Each needs the source module's report permission; none is split by department or job; money is exact per currency; every section reports `OK / NOT_AUTHORIZED / UNAVAILABLE / NOT_APPLICABLE_TO_FILTER` so an absent section is never shown as zero. Engagement eNPS keeps the survey's anonymity threshold. See `docs/hr-analytics.md`. |
+| G-15 / INT-1 | RESOLVED for benefits, expense, employee services; PARTIAL for the others | New read-only aggregate tools `benefits_summary`, `expense_travel_summary`, `employee_services_summary`; `executive_hr_overview` carries the seven roll-ups and says which are unavailable and why. Lifecycle, learning, workforce planning and engagement reach the copilot through that overview and their Report Center datasets, not dedicated tools. Suggested prompts added for holders of the report permissions. See `docs/hr-copilot.md`. |
+
+Still open: compensation planning decision, timesheets decision, own-data copilot tools for benefits / expenses /
+requests (deferred), and the enterprise-readiness items (MFA, SSO, monitoring, retention automation, secret
+management) listed in `docs/production-readiness.md`.
+

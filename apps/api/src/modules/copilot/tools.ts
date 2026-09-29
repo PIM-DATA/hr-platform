@@ -6,6 +6,7 @@ import { hasPermission } from '../../services/authorization/authorization.servic
 import type { AuthContext } from '../auth/auth.types';
 import { employee360Service } from '../analytics/employee360.service';
 import { executiveAnalyticsService } from '../analytics/executive-analytics.service';
+import { ROLLUP_PERMISSIONS, domainRollups, mayRollup, type RollupKey } from '../analytics/domain-rollups';
 import { reportsService } from '../reports/reports.service';
 import { getDataset } from '../reports/registry';
 import { documentService } from '../documents/documents.service';
@@ -71,6 +72,13 @@ async function section(ctx: ToolContext, lookup: { employeeId?: string; employee
   const d = await employee360Service.getOverview({ employeeId: who.id, actor: ctx.actor });
   return { who, d };
 }
+
+/** Date range + optional organization for the Task 42 aggregate tools. No department, job or person filter exists. */
+const rangeSchema = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), organizationId: z.string().min(1).optional() }).strict();
+const rangeOf = (a: { from?: string; to?: string; organizationId?: string }) => ({ from: a.from ?? `${new Date().getUTCFullYear()}-01-01`, to: a.to ?? today(), organizationId: a.organizationId });
+/** Defence in depth: the orchestrator already offers these tools only to holders of the source report permission. */
+const requireRollup = (ctx: ToolContext, key: RollupKey) => { if (!mayRollup(ctx.auth, key)) throw new AppError(403, 'FORBIDDEN', 'You do not have access to this report'); };
+const AGGREGATE_NOTE = 'Organization-level aggregate. There is no person, department or individual amount in this data, and none can be derived from it. Do not infer fraud, dishonesty, health, financial hardship, engagement, performance or flight risk from it.';
 
 const tools: CopilotTool[] = [
   {
@@ -207,7 +215,7 @@ const tools: CopilotTool[] = [
     },
   },
   {
-    id: 'executive_hr_overview', description: 'Organization-level HR aggregates for a date range (default: this year): headcount and movements, leave, attendance, overtime, performance completion, competency coverage, training completion, recruitment funnel and time to hire, employee-relations counts, succession coverage. Counts only — no individual. Optional organizationId / departmentId filters.',
+    id: 'executive_hr_overview', description: 'Organization-level HR aggregates for a date range (default: this year): headcount and movements, leave, attendance, overtime, performance completion, competency coverage, training completion, recruitment funnel and time to hire, employee-relations counts, succession coverage, and — when the user holds each module\'s report permission — benefits, expenses/travel, employee services, lifecycle, OJT/learning, workforce planning and engagement headlines. `unavailable` lists sections that are absent and why (NOT_AUTHORIZED, UNAVAILABLE, NOT_APPLICABLE_TO_FILTER) — never present an absent section as zero. Counts only — no individual. Optional organizationId / departmentId filters.',
     statusLabel: 'กำลังสรุปภาพรวม HR…', inputSchema: z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), organizationId: z.string().min(1).optional(), departmentId: z.string().min(1).optional() }).strict(), requiredPermissions: [PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE], sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 40, sourceLabel: 'Executive analytics',
     async handler(args, ctx) {
       const a = args as { from?: string; to?: string; organizationId?: string; departmentId?: string };
@@ -228,10 +236,51 @@ const tools: CopilotTool[] = [
         employeeRelations: s.employeeRelations ? s.employeeRelations.actions : null,
         talent: s.talent ? { succession: s.talent.succession.plans, criticalWithoutSuccessor: s.talent.succession.criticalWithoutSuccessor, nineBox: s.talent.talent.nineBox.filter((c) => c.count > 0) } : null,
         payroll: s.payroll ? { runs: s.payroll.runs, employeesPaid: s.payroll.employeesPaid, grossTotal: s.payroll.grossTotal, netTotal: s.payroll.netTotal, currency: s.payroll.currencyCode, note: s.payroll.note } : null,
+        benefits: s.benefits ? { current: s.benefits.current, approvedAndPaidInRange: s.benefits.inRange.money } : null,
+        expense: s.expense ? { current: s.expense.current, submittedInRange: s.expense.inRange.money, travelInRange: s.expense.inRange.travel } : null,
+        employeeServices: s.employeeServices ? { current: s.employeeServices.current, inRange: s.employeeServices.inRange.totals, letters: { issued: s.employeeServices.inRange.letters.issued, voided: s.employeeServices.inRange.letters.voided } } : null,
+        lifecycle: s.lifecycle ? { onboarding: s.lifecycle.onboarding, probation: s.lifecycle.probation, offboarding: s.lifecycle.offboarding } : null,
+        learning: s.learning ? { ojt: s.learning.ojt, paths: s.learning.paths, certifications: s.learning.certifications } : null,
+        workforcePlanning: s.workforcePlanning,
+        engagement: s.engagement,
+        unavailable: Object.entries(o.sectionStatus).filter(([, st]) => st !== 'OK').map(([section, status]) => ({ section, status })),
       };
       const sources = [src(`Executive HR dashboard · ${from} → ${to}`, 'analytics', o.generatedAt, '/analytics/executive')];
       if (s.payroll) sources.push(src('Payroll totals (organization level)', 'payroll', o.generatedAt, link(ctx.auth, PERMISSIONS.PAYROLL_MANAGE, '/hrm/payroll')));
+      if (s.benefits) sources.push(src('Benefits (organization level)', 'benefits', o.generatedAt, link(ctx.auth, ROLLUP_PERMISSIONS.benefits, '/hrm/benefits/reports')));
+      if (s.expense) sources.push(src('Expenses & travel (organization level)', 'expense', o.generatedAt, link(ctx.auth, ROLLUP_PERMISSIONS.expense, '/hrm/expenses/analytics')));
+      if (s.employeeServices) sources.push(src('Employee services (organization level)', 'employee_services', o.generatedAt, link(ctx.auth, ROLLUP_PERMISSIONS.employeeServices, '/hrm/services/reports')));
       return { data, sources, consulted: 'ภาพรวม HR' };
+    },
+  },
+  {
+    id: 'benefits_summary', description: 'Organization-level benefits aggregates: active plans, enrolments (incl. coverage-only), claims by state right now (pending approval, ready for payment, sent to payroll, paid — separate states, never add them), per-currency granted / consumed / available / pending / ready / paid amounts, and claims approved and paid in a date range (default: this year) by currency and category. No claimant, claim number, description, document or department. Optional organizationId.',
+    statusLabel: 'กำลังสรุปข้อมูลสวัสดิการ…', inputSchema: rangeSchema, requiredPermissions: ROLLUP_PERMISSIONS.benefits, sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Benefits report',
+    async handler(args, ctx) {
+      requireRollup(ctx, 'benefits');
+      const r = rangeOf(args as { from?: string; to?: string; organizationId?: string });
+      const b = await domainRollups.benefits(r);
+      return { data: { ...b, inRange: { ...b.inRange, byCategory: b.inRange.byCategory.slice(0, 15) }, note: AGGREGATE_NOTE }, sources: [src(`Benefits report · ${r.from} → ${r.to}`, 'benefits', asOfNow(), link(ctx.auth, ROLLUP_PERMISSIONS.benefits, '/hrm/benefits/reports'), 'Consumed = approved claims (not paid). Ready for payment, sent to payroll and paid are separate states. Amounts per currency.')], consulted: 'สวัสดิการ' };
+    },
+  },
+  {
+    id: 'expense_travel_summary', description: 'Organization-level expense and travel aggregates: reports right now pending approval / ready for payment / sent to payroll / paid (separate states) with per-currency totals, and for a date range (default: this year) the submitted / approved / paid totals per currency (attributed to the submitted date), totals by expense category and month, and travel requests with the requested estimate. No employee, report number, merchant, description, purpose, destination, receipt or reference. Optional organizationId.',
+    statusLabel: 'กำลังสรุปค่าใช้จ่ายและการเดินทาง…', inputSchema: rangeSchema, requiredPermissions: ROLLUP_PERMISSIONS.expense, sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 30, sourceLabel: 'Expense report',
+    async handler(args, ctx) {
+      requireRollup(ctx, 'expense');
+      const r = rangeOf(args as { from?: string; to?: string; organizationId?: string });
+      const x = await domainRollups.expense(r);
+      return { data: { ...x, inRange: { ...x.inRange, byCategory: x.inRange.byCategory.slice(0, 15), byMonth: x.inRange.byMonth.slice(-12) }, note: AGGREGATE_NOTE }, sources: [src(`Expense & travel report · ${r.from} → ${r.to}`, 'expense', asOfNow(), link(ctx.auth, ROLLUP_PERMISSIONS.expense, '/hrm/expenses/analytics'), 'Pending, ready for payment, sent to payroll and paid are separate states. In-range totals follow the report submitted date. Amounts per currency.')], consulted: 'ค่าใช้จ่ายและการเดินทาง' };
+    },
+  },
+  {
+    id: 'employee_services_summary', description: 'Organization-level employee service request and HR letter aggregates: requests open and overdue right now, and for a date range (default: this year) submitted / fulfilled / rejected / still open, average fulfilment days, counts by category and month, and HR letters issued / voided by letter type. No requester, request number, subject, form answers, messages, notes, letter text or salary figure. Optional organizationId.',
+    statusLabel: 'กำลังสรุปคำขอ Employee Services…', inputSchema: rangeSchema, requiredPermissions: ROLLUP_PERMISSIONS.employeeServices, sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Employee services report',
+    async handler(args, ctx) {
+      requireRollup(ctx, 'employeeServices');
+      const r = rangeOf(args as { from?: string; to?: string; organizationId?: string });
+      const v = await domainRollups.employeeServices(r);
+      return { data: { ...v, inRange: { ...v.inRange, byMonth: v.inRange.byMonth.slice(-12) }, note: AGGREGATE_NOTE }, sources: [src(`Employee services report · ${r.from} → ${r.to}`, 'employee_services', asOfNow(), link(ctx.auth, ROLLUP_PERMISSIONS.employeeServices, '/hrm/services/reports'), 'Overdue = open with a due date before today. Average fulfilment = mean calendar days from submission to fulfilment.')], consulted: 'Employee Services' };
     },
   },
   {

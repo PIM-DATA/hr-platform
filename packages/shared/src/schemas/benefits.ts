@@ -111,7 +111,7 @@ export interface MyBenefitsDto {
 export interface BenefitsDashboardDto {
   plans: { active: number; draft: number; inactive: number }; enrollments: { enrolled: number; waived: number; eligible: number }; periods: { open: number };
   claims: { draft: number; pendingApproval: number; readyForPayment: number; sentToPayroll: number; paid: number; rejected: number; cancelled: number };
-  money: { currency: string; granted: string; reserved: string; consumed: string; available: string; claimedPending: string; approved: string; paid: string }[];
+  money: { currency: string; granted: string; reserved: string; consumed: string; available: string; claimedPending: string; approved: string; readyForPayment: string; sentToPayroll: string; paid: string }[];
   definitions: Record<string, string>; generatedAt: string;
 }
 export interface BenefitsReportDto {

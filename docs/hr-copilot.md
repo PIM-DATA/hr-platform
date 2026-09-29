@@ -27,7 +27,7 @@ browser ── POST /copilot/chat {message, history[]} ──▶ orchestrator �
   the sources the tools returned. Logs one operational line and writes one `COPILOT_QUERY` audit event.
 - `copilot.routes.ts` — `GET /copilot/status` (enabled, provider, role-aware suggestions), `POST /copilot/chat`,
   both behind `copilot.use`, the chat behind a per-user limiter.
-- Shared: `packages/shared/src/copilot.ts` (system instructions `v1`, the high-impact classifier and notice,
+- Shared: `packages/shared/src/copilot.ts` (system instructions `v2` since Task 42, the high-impact classifier and notice,
   limits) and `schemas/copilot.ts` (request and response DTOs).
 - Web: `apps/web/src/features/copilot/` — the page, the in-memory thread, source chips, the Report Center handoff.
 
@@ -90,13 +90,26 @@ are not offered per-person tools at all.
 | `training_development_summary` | training.view | PERSON | 360 development section (needs, IDP, upcoming, completed) | PERSONAL | 15 |
 | `career_readiness` | career.view | PERSON | 360 career section (paths, next-job readiness facts) — no promotion recommendation | PERSONAL | 10 |
 | `team_summary` | leave.view / attendance.view / performance.view / training.view | TEAM (direct reports) | leave requests (scoped), attendance report (scoped), plans where the actor is the snapshot reviewer, team development report | PERSONAL | 30 |
-| `executive_hr_overview` | analytics.view_executive | ORG | Task 29 executive overview — counts, rates, distributions; payroll totals only with analytics.view_payroll_aggregate | AGGREGATE | 40 |
+| `executive_hr_overview` | analytics.view_executive | ORG | Task 29 executive overview — counts, rates, distributions; payroll totals only with analytics.view_payroll_aggregate; Task 42 headlines for benefits, expense, employee services, lifecycle, learning, workforce plan and engagement when the actor holds each module's report permission, plus `unavailable` (section + NOT_AUTHORIZED / UNAVAILABLE / NOT_APPLICABLE_TO_FILTER) | AGGREGATE | 40 |
+| `benefits_summary` | benefits.view_reports / benefits.manage | ORG | Task 42 benefits roll-up — plans, enrolments, claims by state, per-currency granted / consumed / available / pending / ready / sent / paid; approved and paid in range | AGGREGATE | 20 |
+| `expense_travel_summary` | expense.view_reports / expense.manage | ORG | Task 42 expense roll-up — reports by state with per-currency totals; submitted / approved / paid in range; by category and month; travel requests with the requested estimate | AGGREGATE | 30 |
+| `employee_services_summary` | hr_letter.view_reports / service_request.manage | ORG | Task 42 services roll-up — open / overdue now; submitted / fulfilled / rejected / open and average fulfilment days in range; by category and month; letters issued / voided by type | AGGREGATE | 20 |
 | `recruitment_summary` | recruitment.manage | ORG | recruitment report — funnel, sources, interviews, offers, hires, average time to hire; no candidate | AGGREGATE | 20 |
 | `succession_coverage` | talent.view_reports | ORG | talent/succession reports — plans with/without successor, readiness counts, 9-box cell counts; no nominee, no comment | AGGREGATE | 20 |
 | `skill_gap_report` | competency.view | ORG | competency gap report — coverage, top gaps, by department | AGGREGATE | 20 |
 | `analytics_metric_definition` | copilot.use | ORG | the Task 29 metric dictionary, verbatim | NORMAL | 20 |
 | `report_query` | reports.view | ORG | Report Center registry: datasets the actor may use, validated definition, ≤ 50 rows, returns a DRAFT | SENSITIVE | 50 rows |
 | `document_metadata_search` | documents.view_own / documents.view / documents.manage | PERSON | document center metadata (number, title, category, classification, dates, version count) — no bytes, key, hash or path | PERSONAL | 20 |
+
+The three Task 42 tools call the same `domainRollups` functions as the executive dashboard
+(`analytics/domain-rollups.ts`), take only `from`, `to` and `organizationId`, and re-check the source permission in
+the handler. They return no claimant, requester, number, description, merchant, purpose, destination, subject,
+answer, message, note, letter text, salary, document or payment reference; each result carries a note telling the
+model the data is organization-level and must not be read as fraud, health, hardship, engagement, performance or
+flight-risk evidence. A manager or employee is offered none of them, cannot name them (422
+`COPILOT_TOOL_NOT_ALLOWED`), and the Report Center tool hides the eight benefit / expense / service datasets from
+them (the registry's own permission). No self-service tools for own benefits / expenses / requests were added
+(deferred; the self-service pages already show them).
 
 **There is no write tool.** No tool takes a free-form identifier for payroll, employee relations, talent judgments
 or candidates, and no tool returns: individual salary to anyone but the employee (own closed payslips), ER
@@ -148,6 +161,13 @@ server-side (`isHighImpactQuestion`, Thai and English) and answered with the bou
 factual, unranked records the actor may see. The instructions forbid protected-attribute reasoning, cross-person
 evaluative comparison, and inferring talent or potential from disciplinary history. The notice is prepended by the
 server regardless of what the model wrote.
+
+Task 42 (instructions `v2`) extends both layers to the newer domains: the instructions forbid inferring fraud,
+dishonesty, a health condition, financial hardship, engagement, performance or flight risk from benefits, expense,
+travel or service-request figures, and forbid suggesting that a benefit be removed or anyone disciplined because of
+them; the classifier adds English and Thai patterns for "who is committing fraud / is sick / is in financial
+trouble", "remove / cut / revoke benefits", "expenses prove … dishonest" and "discipline / fire because of
+expenses / claims / requests".
 
 ## 9. Prompt injection model
 
@@ -202,3 +222,7 @@ Readiness never depends on the provider.
   boundary, but without the server-prepended notice.
 - The rate limiter is in-memory per instance.
 - No proactive insights, notifications, scheduled digests, or actions of any kind.
+- Task 42: no own-data copilot tools for benefits, expenses or service requests; no dedicated tools for lifecycle,
+  learning, workforce planning or engagement (they reach the copilot through `executive_hr_overview` and the Report
+  Center datasets). Manager team scope never opens benefits, expense or service-request data. Executive answers are
+  aggregate only; nothing predicts or infers from welfare, spend or request activity.

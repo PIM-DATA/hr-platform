@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { MAX_REPORT_MONTHS, PERMISSIONS, monthsSpan, payrollPeriodLabel, type AnalyticsFilter, type AttendanceReportDto, type ExecutiveOverviewDto, type OvertimeReportDto, type PayrollAggregateDto, type WorkforceAnalyticsDto } from '@hr/shared';
+import { MAX_REPORT_MONTHS, PERMISSIONS, monthsSpan, payrollPeriodLabel, type AnalyticsFilter, type AttendanceReportDto, type ExecutiveOverviewDto, type ExecutiveSectionKey, type ExecutiveSectionStatus, type OvertimeReportDto, type PayrollAggregateDto, type WorkforceAnalyticsDto } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
 import { hasPermission } from '../../services/authorization/authorization.service';
@@ -15,6 +15,7 @@ import { recruitmentReportService } from '../recruitment/report.service';
 import { erReportService } from '../employee-relations/er-report.service';
 import { talentReportService } from '../talent/talent-report.service';
 import { payrollRunService } from '../payroll/payroll-run.service';
+import { domainRollups, mayRollup, type RollupKey } from './domain-rollups';
 
 /**
  * Executive analytics — organization-level aggregates, composed from the domain report services.
@@ -31,6 +32,17 @@ type Sections = ExecutiveOverviewDto['sections'];
 
 async function part<T>(name: string, run: () => Promise<T>): Promise<T | null> {
   try { return await run(); } catch (e) { log.warn({ section: name, error: e instanceof Error ? e.message : String(e) }, 'executive section failed'); return null; }
+}
+
+/**
+ * A Task 42 roll-up: the source module's report permission first, then the filter (these domains are never split
+ * by department or job — a small group would reveal a person), then the call. The status says which one applied.
+ */
+async function rollup<T>(auth: AuthContext, key: RollupKey, applicable: boolean, run: () => Promise<T>): Promise<[T | null, ExecutiveSectionStatus]> {
+  if (!mayRollup(auth, key)) return [null, 'NOT_AUTHORIZED'];
+  if (!applicable) return [null, 'NOT_APPLICABLE_TO_FILTER'];
+  const v = await part(key, run);
+  return [v, v === null ? 'UNAVAILABLE' : 'OK'];
 }
 
 const monthsIn = (from: string, to: string): string[] => {
@@ -178,6 +190,19 @@ export const executiveAnalyticsService = {
     const leaveFrom = monthsSpan(f.from, f.to) > MAX_REPORT_MONTHS ? `${monthsIn(f.from, f.to).slice(-MAX_REPORT_MONTHS)[0]}-01` : f.from;
     const payrollAllowed = hasPermission(auth, PERMISSIONS.ANALYTICS_VIEW_PAYROLL_AGGREGATE);
 
+    const orgLevel = !f.departmentId && !f.jobId;
+    const range = { from: f.from, to: f.to, organizationId: f.organizationId };
+    // Started before the older sections are awaited so both batches run concurrently.
+    const rollups = Promise.all([
+      rollup(auth, 'benefits', orgLevel, () => domainRollups.benefits(range)),
+      rollup(auth, 'expense', orgLevel, () => domainRollups.expense(range)),
+      rollup(auth, 'employeeServices', orgLevel, () => domainRollups.employeeServices(range)),
+      rollup(auth, 'lifecycle', orgLevel, () => domainRollups.lifecycle(auth, range)),
+      rollup(auth, 'learning', orgLevel, () => domainRollups.learning(auth, range)),
+      rollup(auth, 'workforcePlanning', orgLevel, () => domainRollups.workforcePlanning(auth, range)),
+      // Engagement results have no organization dimension on the dashboard; any population filter hides the section.
+      rollup(auth, 'engagement', orgLevel && !f.organizationId, () => domainRollups.engagement(auth)),
+    ]);
     const [wf, leave, attendance, overtime, performance, competency, training, recruitment, employeeRelations, talent, payroll] = await Promise.all([
       workforce(f),
       part('leave', () => leaveReportsService.overview(auth, { from: leaveFrom, to: f.to, organizationId: f.organizationId, departmentId: f.departmentId })),
@@ -191,9 +216,17 @@ export const executiveAnalyticsService = {
       part('talent', async () => ({ talent: await talentReportService.talent(), succession: await talentReportService.succession() })),
       payrollAllowed ? part('payroll', () => payrollAggregate(f)) : Promise.resolve(null),
     ]);
+    const [[benefits, sBenefits], [expense, sExpense], [employeeServices, sServices], [lifecycle, sLifecycle], [learning, sLearning], [workforcePlanning, sWorkforcePlanning], [engagement, sEngagement]] = await rollups;
+    const loaded = (v: unknown): ExecutiveSectionStatus => (v === null ? 'UNAVAILABLE' : 'OK');
+    const sectionStatus: Record<ExecutiveSectionKey, ExecutiveSectionStatus> = {
+      workforce: 'OK', leave: loaded(leave), attendance: loaded(attendance), overtime: loaded(overtime), performance: loaded(performance), competency: loaded(competency), training: loaded(training), recruitment: loaded(recruitment), employeeRelations: loaded(employeeRelations), talent: loaded(talent),
+      payroll: payrollAllowed ? loaded(payroll) : 'NOT_AUTHORIZED',
+      benefits: sBenefits, expense: sExpense, employeeServices: sServices, lifecycle: sLifecycle, learning: sLearning, workforcePlanning: sWorkforcePlanning, engagement: sEngagement,
+    };
     return {
       filters: { ...f, organizationName: organization?.name ?? null, departmentName: department?.name ?? null, jobTitle: job?.title ?? null },
-      sections: { workforce: wf, leave, attendance, overtime, performance, competency, training, recruitment, employeeRelations, talent, payroll },
+      sections: { workforce: wf, leave, attendance, overtime, performance, competency, training, recruitment, employeeRelations, talent, payroll, benefits, expense, employeeServices, lifecycle, learning, workforcePlanning, engagement },
+      sectionStatus,
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - started,
     };

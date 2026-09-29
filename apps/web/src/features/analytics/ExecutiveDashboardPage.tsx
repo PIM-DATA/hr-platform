@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { errorMessage } from '@/features/organization/shared';
 import { downloadExecutiveCsv, useAnalyticsOptions, useExecutiveOverview, useMetricDefinitions } from './analytics.api';
 import { BarList, Donut, TrendLine } from './charts';
+import { BenefitsSection, EmployeeServicesSection, ExpenseSection, PeopleOperationsSection } from './ExecutiveDomainSections';
 
 const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
 const n = (v: number | null | undefined) => (v === null || v === undefined ? '—' : new Intl.NumberFormat('en-US').format(v));
@@ -42,6 +43,7 @@ export function ExecutiveDashboardPage() {
   const d = ov.data;
   const s = d?.sections;
   const link = (permission: PermissionCode | PermissionCode[], to: string, label: string) => ((Array.isArray(permission) ? permission.some((p) => hasPermission(p)) : hasPermission(permission)) ? <Link to={to} className="text-xs text-brand-700 underline">{label}</Link> : undefined);
+  const href = (permissions: PermissionCode[], to: string) => (permissions.some((p) => hasPermission(p)) ? to : null);
   const exportCsv = async () => { setExporting(true); try { await downloadExecutiveCsv(filters); } catch (e) { toast.error(errorMessage(e)); } finally { setExporting(false); } };
 
   return (
@@ -74,6 +76,8 @@ export function ExecutiveDashboardPage() {
               <Card><CardHeader title="New hires by month" /><div className="p-4"><TrendLine points={s.workforce.newHiresByMonth.map((m) => ({ x: m.month, y: m.count }))} label="New hires by month" /><Donut parts={s.workforce.byEmploymentType.map((t, i) => ({ label: titleCase(t.type), value: t.active, className: ['text-brand-600', 'text-sky-500', 'text-amber-500', 'text-slate-400'][i % 4]! }))} /></div></Card>
             </div>
           </section>
+
+          <PeopleOperationsSection s={s} status={d.sectionStatus} links={{ lifecycle: href([PERMISSIONS.LIFECYCLE_VIEW_REPORTS, PERMISSIONS.ONBOARDING_MANAGE], '/hrm/lifecycle/reports'), workforce: href([PERMISSIONS.WORKFORCE_VIEW, PERMISSIONS.WORKFORCE_PLAN], '/hrod/workforce'), engagement: href([PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE], '/hrod/engagement'), learning: href([PERMISSIONS.LEARNING_VIEW_REPORTS, PERMISSIONS.OJT_MANAGE], '/hrd/training/reports?view=learning') }} />
 
           <section>
             <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold text-slate-900">Time & attendance</h2>{link([PERMISSIONS.ATTENDANCE_VIEW], '/hrm/attendance', 'Attendance reports')}</div>
@@ -133,6 +137,10 @@ export function ExecutiveDashboardPage() {
             {s.employeeRelations ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Stat label="Actions issued" value={n(s.employeeRelations.actions.issued)} /><Stat label="Active warnings" value={n(s.employeeRelations.actions.active)} /><Stat label="Awaiting acknowledgement" value={n(s.employeeRelations.actions.awaitingAcknowledgement)} /><Stat label="Overdue acknowledgement" value={n(s.employeeRelations.actions.overdueAcknowledgement)} /></div> : <Card><p className="p-4 text-sm text-slate-400">Not available.</p></Card>}
           </section>
 
+          <BenefitsSection data={s.benefits} status={d.sectionStatus.benefits} reportLink={href([PERMISSIONS.BENEFITS_VIEW_REPORTS, PERMISSIONS.BENEFITS_MANAGE], '/hrm/benefits/reports')} />
+          <ExpenseSection data={s.expense} status={d.sectionStatus.expense} reportLink={href([PERMISSIONS.EXPENSE_VIEW_REPORTS, PERMISSIONS.EXPENSE_MANAGE], '/hrm/expenses/analytics')} />
+          <EmployeeServicesSection data={s.employeeServices} status={d.sectionStatus.employeeServices} reportLink={href([PERMISSIONS.HR_LETTER_VIEW_REPORTS, PERMISSIONS.SERVICE_REQUEST_MANAGE], '/hrm/services/reports')} />
+
           {s.payroll && (
             <section>
               <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold text-slate-900">Payroll (organization totals)</h2>{link(PERMISSIONS.PAYROLL_MANAGE, '/hrm/payroll', 'Payroll')}</div>
@@ -160,7 +168,7 @@ function DefinitionsModal({ open, onClose }: { open: boolean; onClose: () => voi
       {defs.isLoading && <LoadingBlock />}
       <ul className="divide-y divide-slate-100 text-sm">
         {(defs.data ?? []).map((m) => (
-          <li key={m.key} className="py-2"><div className="font-medium text-slate-900">{m.name}</div><div className="text-slate-700">{m.definition}</div><div className="text-xs text-slate-500">Source: {m.source} · Attribution: {m.attribution} · Population: {m.population} · Filters: {m.filters}</div></li>
+          <li key={m.key} className="py-2"><div className="font-medium text-slate-900">{m.name}</div><div className="text-slate-700">{m.definition}</div><div className="text-xs text-slate-500">Source: {m.source} · Attribution: {m.attribution} · Population: {m.population} · Filters: {m.filters}{m.currency ? ` · Currency: ${m.currency}` : ''}</div>{m.limitations && <div className="text-xs text-slate-500">Limitations: {m.limitations}</div>}</li>
         ))}
       </ul>
     </Modal>

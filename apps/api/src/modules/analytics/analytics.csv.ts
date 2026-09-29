@@ -54,5 +54,29 @@ export function executiveOverviewCsv(o: ExecutiveOverviewDto): string {
     section('9-box distribution', ['Cell', 'Count'], s.talent.talent.nineBox.map((c) => [c.cell, c.count]));
   }
   if (s.payroll) section('Payroll (organization-level totals)', ['Period', 'Employees paid', 'Gross', 'Net'], s.payroll.byPeriod.map((p) => [p.periodLabel, p.employees, p.grossTotal, p.netTotal]));
+  if (s.benefits) {
+    const b = s.benefits;
+    section('Benefits (current, organization level)', ['Metric', 'Value'], [['Active plans', b.current.activePlans], ['Enrolled', b.current.enrolled], ['Coverage-only enrolments', b.current.coverageOnlyEnrolled], ['Claims pending approval', b.current.claims.pendingApproval], ['Claims ready for payment', b.current.claims.readyForPayment], ['Claims sent to payroll', b.current.claims.sentToPayroll], ['Claims paid', b.current.claims.paid]]);
+    section('Benefits money (current)', ['Currency', 'Granted', 'Consumed', 'Available', 'Pending (claimed)', 'Ready for payment', 'Sent to payroll', 'Paid'], b.current.money.map((m) => [m.currency, m.granted, m.consumed, m.available, m.claimedPending, m.readyForPayment, m.sentToPayroll, m.paid]));
+    section('Benefits approved and paid in range', ['Currency', 'Approved', 'Paid'], b.inRange.money.map((m) => [m.currency, m.approvedAmount, m.paidAmount]));
+    section('Benefits by category (in range)', ['Category', 'Currency', 'Plans', 'Enrolled', 'Claims', 'Approved'], b.inRange.byCategory.map((c) => [c.category, c.currency ?? '', c.plans, c.enrolled, c.claims, c.approvedAmount]));
+  }
+  if (s.expense) {
+    const x = s.expense;
+    section('Expenses (current)', ['Metric', 'Value'], [['Reports pending approval', x.current.reports.pendingApproval], ['Ready for payment', x.current.reports.readyForPayment], ['Sent to payroll', x.current.reports.sentToPayroll], ['Paid', x.current.reports.paid], ['Travel requests pending', x.current.travel.pendingApproval]]);
+    section('Expense money (current)', ['Currency', 'Pending', 'Ready for payment', 'Sent to payroll'], x.current.money.map((m) => [m.currency, m.pendingTotal, m.readyForPaymentTotal, m.sentToPayrollTotal]));
+    section('Expenses submitted in range', ['Currency', 'Reports', 'Submitted', 'Approved', 'Paid'], x.inRange.money.map((m) => [m.currency, m.reports, m.submittedTotal, m.approvedTotal, m.paidTotal]));
+    section('Expenses by category (in range)', ['Category', 'Currency', 'Items', 'Total'], x.inRange.byCategory.map((c) => [c.category, c.currency, c.items, c.total]));
+    section('Travel requests (in range)', ['Currency', 'Requests', 'Estimated'], x.inRange.travel.estimated.map((t) => [t.currency, t.requests, t.estimatedTotal]));
+  }
+  if (s.employeeServices) {
+    const v = s.employeeServices;
+    section('Employee services', ['Metric', 'Value'], [['Open now', v.current.open], ['Overdue now', v.current.overdue], ['Submitted in range', v.inRange.totals.submitted], ['Fulfilled in range', v.inRange.totals.fulfilled], ['Rejected in range', v.inRange.totals.rejected], ['Average fulfilment days', v.inRange.totals.averageFulfillmentDays ?? ''], ['Letters issued', v.inRange.letters.issued], ['Letters voided', v.inRange.letters.voided]]);
+    section('Service requests by category (in range)', ['Category', 'Submitted', 'Fulfilled'], v.inRange.byCategory.map((c) => [c.category, c.submitted, c.fulfilled]));
+  }
+  if (s.lifecycle) section('Lifecycle', ['Metric', 'Value'], [['Onboarding plans started', s.lifecycle.onboarding.plansStarted], ['Onboarding plans completed', s.lifecycle.onboarding.plansCompleted], ['Probation active', s.lifecycle.probation.active], ['Probation due within 14 days', s.lifecycle.probation.dueSoon], ['Probation passed', s.lifecycle.probation.passed], ['Offboarding active', s.lifecycle.offboarding.active], ['Upcoming departures', s.lifecycle.offboarding.upcomingDepartures], ['Completed separations', s.lifecycle.offboarding.completedSeparations]]);
+  if (s.learning) section('OJT, learning paths, certifications', ['Metric', 'Value'], [['OJT plans', s.learning.ojt.plans], ['OJT active', s.learning.ojt.active], ['OJT completed', s.learning.ojt.completed], ['Path assignments', s.learning.paths.assigned], ['Paths completed', s.learning.paths.completed], ['Certifications active', s.learning.certifications.active], ['Expiring soon', s.learning.certifications.expiringSoon], ['Expired', s.learning.certifications.expired]]);
+  if (s.workforcePlanning) section('Workforce planning', ['Metric', 'Value'], [['Cycle', s.workforcePlanning.cycle?.name ?? 'none'], ['Current headcount', s.workforcePlanning.currentHeadcount], ['Planned headcount', s.workforcePlanning.plannedHeadcount], ['Net delta', s.workforcePlanning.netDelta], ['Vacant positions', s.workforcePlanning.vacantPositions], ['Remaining demand', s.workforcePlanning.remainingDemand]]);
+  if (s.engagement) section('Engagement', ['Metric', 'Value'], [['Open surveys', s.engagement.openSurveys], ['Open-survey response rate %', s.engagement.openResponseRate ?? ''], ['Latest eNPS', s.engagement.latestEnps ? (s.engagement.latestEnps.suppressed ? 'suppressed (below minimum group size)' : s.engagement.latestEnps.score ?? '') : 'none']]);
   return lines.join('\r\n');
 }

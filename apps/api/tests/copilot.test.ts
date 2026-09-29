@@ -238,7 +238,7 @@ describe('the copilot never widens access', () => {
   it('the executive is offered aggregate tools only; the employee is offered no aggregate or HR tool', async () => {
     scriptFakeProvider([answer()]); await chat(exec, 'x');
     const execTools = seen[0].tools.map((t) => t.id).sort();
-    expect(execTools).toEqual(['analytics_metric_definition', 'executive_hr_overview', 'report_query', 'skill_gap_report', 'succession_coverage']);
+    expect(execTools).toEqual(['analytics_metric_definition', 'benefits_summary', 'employee_services_summary', 'executive_hr_overview', 'expense_travel_summary', 'report_query', 'skill_gap_report', 'succession_coverage']);
     seen.length = 0; scriptFakeProvider([answer()]); await chat(emp, 'x');
     const empTools = seen[0].tools.map((t) => t.id);
     expect(empTools).not.toEqual(expect.arrayContaining(['executive_hr_overview', 'recruitment_summary', 'succession_coverage', 'skill_gap_report', 'report_query', 'team_summary']));

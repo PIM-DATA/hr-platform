@@ -87,11 +87,11 @@ export interface ExpensePolicyConflictDto { policies: { id: string; code: string
 /** How the server resolved the employee's expense policy today. RESOLVED = the unique most-specific policy; AMBIGUOUS = HR must fix applicability; NONE = no policy applies. */
 export interface ExpensePolicyResolutionDto { kind: 'RESOLVED' | 'AMBIGUOUS' | 'NONE'; policy: { id: string; code: string; name: string; currency: string } | null; conflicting: { id: string; code: string; name: string }[]; message: string }
 export interface MyExpensesDto { policyResolution: ExpensePolicyResolutionDto; travelRequests: TravelRequestDto[]; reports: ExpenseReportDto[]; policies: { id: string; code: string; name: string; currency: string; isDefault: boolean }[]; travelPolicies: { id: string; code: string; name: string; currency: string }[]; queue: { instanceId: string; entityType: string; entityId: string; stepName: string; requesterName: string; submittedAt: string }[] }
-export interface ExpenseDashboardDto { travel: { draft: number; pendingApproval: number; approved: number; completed: number }; reports: { draft: number; pendingApproval: number; readyForPayment: number; sentToPayroll: number; paid: number; rejected: number }; money: { currency: string; pendingTotal: string; readyTotal: string; paidThisMonth: string; paidYearToDate: string }[]; definitions: Record<string, string>; generatedAt: string }
+export interface ExpenseDashboardDto { travel: { draft: number; pendingApproval: number; approved: number; completed: number }; reports: { draft: number; pendingApproval: number; readyForPayment: number; sentToPayroll: number; paid: number; rejected: number }; money: { currency: string; pendingTotal: string; readyTotal: string; readyForPaymentTotal: string; sentToPayrollTotal: string; paidThisMonth: string; paidYearToDate: string }[]; definitions: Record<string, string>; generatedAt: string }
 export interface ExpenseReportsDto {
   range: { from: string; to: string };
   byPolicy: { policy: string; currency: string; reports: number; submittedTotal: string; readyTotal: string; paidTotal: string; rejected: number }[];
   byCategory: { category: string; currency: string; items: number; total: string }[];
   byMonth: { month: string; currency: string; reports: number; total: string; paid: string }[];
-  travel: { requests: number; approved: number; rejected: number; estimatedTotal: string; byMonth: { month: string; requests: number; estimatedTotal: string }[] };
+  travel: { requests: number; approved: number; rejected: number; estimatedTotal: string; estimatedByCurrency: { currency: string; requests: number; estimatedTotal: string }[]; byMonth: { month: string; requests: number; estimatedTotal: string }[] };
 }

@@ -12,23 +12,27 @@ import { today } from './benefits.types';
  */
 const DEFINITIONS = {
   granted: 'Σ GRANT rows on entitlement ledgers of the selected plans.', reserved: 'Σ RESERVE + Σ RELEASE (amounts held by claims still waiting for a decision).', consumed: 'Σ CONSUME rows (approved claims). Consumed is not paid.',
-  available: 'granted + adjustment − reserved − consumed.', claimedPending: 'Claimed amounts of claims in PENDING_APPROVAL.', approved: 'Approved amounts of claims approved in the range (READY_FOR_PAYMENT, SENT_TO_PAYROLL or PAID).', paid: 'Approved amounts of claims recorded PAID in the range.',
+  available: 'granted + adjustment − reserved − consumed.', claimedPending: 'Claimed amounts of claims in PENDING_APPROVAL.', readyForPayment: 'Approved amounts of claims in READY_FOR_PAYMENT (approved, not yet paid or handed to payroll).', sentToPayroll: 'Approved amounts of claims in SENT_TO_PAYROLL (handed to a payroll run, not yet recorded paid).', approved: 'Approved amounts of claims approved in the range (READY_FOR_PAYMENT, SENT_TO_PAYROLL or PAID).', paid: 'Approved amounts of claims recorded PAID in the range.',
   claimsByStatus: 'Counts by current status; amounts are claimed amounts.',
 };
 const sum = (xs: Prisma.Decimal[]) => money(xs.reduce((a, b) => a.plus(b), ZERO));
 
 export const benefitsReportService = {
-  async dashboard(): Promise<BenefitsDashboardDto> {
+  /** Current state. With an organization, rows are those whose organization snapshot matches (plans: that organization's or global). */
+  async dashboard(q: { organizationId?: string } = {}): Promise<BenefitsDashboardDto> {
+    const orgName = q.organizationId ? (await prisma.organization.findUnique({ where: { id: q.organizationId }, select: { name: true } }))?.name ?? '?' : null;
+    const snap = orgName ? { organizationSnapshot: orgName } : {};
+    const planWhere: Prisma.BenefitPlanWhereInput = q.organizationId ? { OR: [{ organizationId: q.organizationId }, { organizationId: null }] } : {};
     const [plans, enrollments, periods, claims, entitlements] = await Promise.all([
-      prisma.benefitPlan.groupBy({ by: ['status'], _count: { _all: true } }), prisma.benefitEnrollment.groupBy({ by: ['status'], _count: { _all: true } }), prisma.benefitPeriod.count({ where: { status: 'OPEN' } }),
-      prisma.benefitClaim.findMany({ select: { status: true, currency: true, claimedAmount: true, approvedAmount: true } }), prisma.benefitEntitlement.findMany({ select: { currency: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true } }),
+      prisma.benefitPlan.groupBy({ by: ['status'], where: planWhere, _count: { _all: true } }), prisma.benefitEnrollment.groupBy({ by: ['status'], where: snap, _count: { _all: true } }), prisma.benefitPeriod.count({ where: { status: 'OPEN', plan: planWhere } }),
+      prisma.benefitClaim.findMany({ where: snap, select: { status: true, currency: true, claimedAmount: true, approvedAmount: true } }), prisma.benefitEntitlement.findMany({ where: snap, select: { currency: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true } }),
     ]);
     const count = (rows: { status: string; _count: { _all: number } }[], st: string) => rows.find((r) => r.status === st)?._count._all ?? 0;
     const currencies = [...new Set([...claims.map((c) => c.currency), ...entitlements.map((e) => e.currency)])].sort();
     return {
       plans: { active: count(plans, 'ACTIVE'), draft: count(plans, 'DRAFT'), inactive: count(plans, 'INACTIVE') + count(plans, 'ARCHIVED') }, enrollments: { enrolled: count(enrollments, 'ENROLLED'), waived: count(enrollments, 'WAIVED'), eligible: count(enrollments, 'ELIGIBLE') }, periods: { open: periods },
       claims: { draft: claims.filter((c) => c.status === 'DRAFT').length, pendingApproval: claims.filter((c) => c.status === 'PENDING_APPROVAL').length, readyForPayment: claims.filter((c) => c.status === 'READY_FOR_PAYMENT').length, sentToPayroll: claims.filter((c) => c.status === 'SENT_TO_PAYROLL').length, paid: claims.filter((c) => c.status === 'PAID').length, rejected: claims.filter((c) => c.status === 'REJECTED').length, cancelled: claims.filter((c) => c.status === 'CANCELLED').length },
-      money: currencies.map((currency) => { const ents = entitlements.filter((e) => e.currency === currency); const cl = claims.filter((c) => c.currency === currency); return { currency, granted: toMoneyString(sum(ents.map((e) => e.grantedAmount))), reserved: toMoneyString(sum(ents.map((e) => e.reservedAmount))), consumed: toMoneyString(sum(ents.map((e) => e.consumedAmount))), available: toMoneyString(sum(ents.map((e) => availableOf(sumsOf(e))))), claimedPending: toMoneyString(sum(cl.filter((c) => c.status === 'PENDING_APPROVAL').map((c) => c.claimedAmount))), approved: toMoneyString(sum(cl.filter((c) => ['READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID'].includes(c.status)).map((c) => c.approvedAmount ?? ZERO))), paid: toMoneyString(sum(cl.filter((c) => c.status === 'PAID').map((c) => c.approvedAmount ?? ZERO))) }; }),
+      money: currencies.map((currency) => { const ents = entitlements.filter((e) => e.currency === currency); const cl = claims.filter((c) => c.currency === currency); return { currency, granted: toMoneyString(sum(ents.map((e) => e.grantedAmount))), reserved: toMoneyString(sum(ents.map((e) => e.reservedAmount))), consumed: toMoneyString(sum(ents.map((e) => e.consumedAmount))), available: toMoneyString(sum(ents.map((e) => availableOf(sumsOf(e))))), claimedPending: toMoneyString(sum(cl.filter((c) => c.status === 'PENDING_APPROVAL').map((c) => c.claimedAmount))), approved: toMoneyString(sum(cl.filter((c) => ['READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID'].includes(c.status)).map((c) => c.approvedAmount ?? ZERO))), readyForPayment: toMoneyString(sum(cl.filter((c) => c.status === 'READY_FOR_PAYMENT').map((c) => c.approvedAmount ?? ZERO))), sentToPayroll: toMoneyString(sum(cl.filter((c) => c.status === 'SENT_TO_PAYROLL').map((c) => c.approvedAmount ?? ZERO))), paid: toMoneyString(sum(cl.filter((c) => c.status === 'PAID').map((c) => c.approvedAmount ?? ZERO))) }; }),
       definitions: DEFINITIONS, generatedAt: new Date().toISOString(),
     };
   },

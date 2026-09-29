@@ -11,13 +11,11 @@ One employee data · One organization structure · One permission system · One 
 | HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39), Employee services and HR letters (40) | ✅ MVPs with documented limitations |
 | HRD | Competency and skill gaps (24), Training / TNA / IDP (25), OJT / learning paths / certifications (35), Career / talent / 9-box / succession (28) | ✅ |
 | HROD | Workforce planning and organization design (32), Engagement / eNPS surveys (33) | ✅ |
-| Analytics and AI | Employee 360 and executive analytics (29), grounded HR Copilot (31) | ✅ |
+| Analytics and AI | Employee 360 and executive analytics (29), grounded HR Copilot (31); executive roll-ups and copilot aggregate summaries for benefits, expenses/travel, employee services, lifecycle, learning, workforce planning and engagement (42) | ✅ |
 | Operations | Production configuration, backups and runbook (15–16), customer data import (17), account recovery and privacy operations (18), pilot review (19) | ✅ |
 
-Not yet available (tracked in [docs/product-gap-audit.md](docs/product-gap-audit.md)): a central settings
-subsystem (the Administration page lists the tools that exist), a workflow instance monitor, editing payroll
-components and policies after creation, executive roll-up of the newest domains, expense / travel claims,
-employee service requests, compensation planning, timesheets, and the enterprise items under "Known limitations".
+Not yet available (tracked in [docs/product-gap-audit.md](docs/product-gap-audit.md)): compensation planning,
+timesheets, and the enterprise items under "Known limitations".
 
 ### Phase 2 — HRM Operations (complete)
 
@@ -940,6 +938,12 @@ Guide: [docs/hr-copilot.md](docs/hr-copilot.md). Assistant → HR Copilot (shown
   nothing is saved, shared or submitted by the copilot.
 - **No autonomous HR decisions** — hire/reject/fire/discipline/promote/pay/best/worst/successor questions get a
   boundary notice and facts only; no ranking, no protected-attribute reasoning, no disciplinary→talent inference.
+- **Newer domains (Task 42)** — the grounded copilot can query authorized aggregate summaries for benefits
+  (`benefits_summary`), expenses and travel (`expense_travel_summary`) and employee services / HR letters
+  (`employee_services_summary`), each opened only by that module's report permission; the executive overview tool
+  also carries lifecycle, learning, workforce-plan and engagement headlines. Organization level only — no claimant,
+  requester, amount per person, description, message or letter text; nothing is inferred (fraud, health, hardship)
+  from welfare, spend or request activity.
 - **Env:** `COPILOT_ENABLED`, `COPILOT_PROVIDER` (`anthropic` | `fake` — production refuses `fake`), `COPILOT_MODEL`,
   `COPILOT_API_KEY` (required in production while enabled), `COPILOT_TIMEOUT_MS`, `COPILOT_MAX_TOOL_STEPS`,
   `COPILOT_MAX_INPUT_CHARS`, `COPILOT_MAX_OUTPUT_TOKENS`, `COPILOT_RATE_LIMIT`. Questions and minimized tool results

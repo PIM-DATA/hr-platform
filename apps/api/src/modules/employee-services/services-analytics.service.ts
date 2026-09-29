@@ -18,11 +18,14 @@ const days = (from: Date, to: Date) => Math.max(0, Math.round((to.getTime() - fr
 const average = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
 
 export const serviceAnalyticsService = {
-  async dashboard(): Promise<ServiceDashboardDto> {
+  /** Current state. With an organization, rows are those whose organization snapshot matches. */
+  async dashboard(q: { organizationId?: string } = {}): Promise<ServiceDashboardDto> {
     const t = today();
+    const orgName = q.organizationId ? ((await prisma.organization.findUnique({ where: { id: q.organizationId }, select: { name: true } }))?.name ?? '?') : null;
+    const snap = orgName ? { organizationSnapshot: orgName } : {};
     const [requests, letters] = await Promise.all([
-      prisma.serviceRequest.findMany({ select: { status: true, dueDate: true, submittedAt: true, fulfilledAt: true } }),
-      prisma.hrLetter.findMany({ select: { status: true, letterTypeSnapshot: true } }),
+      prisma.serviceRequest.findMany({ where: snap, select: { status: true, dueDate: true, submittedAt: true, fulfilledAt: true } }),
+      prisma.hrLetter.findMany({ where: snap, select: { status: true, letterTypeSnapshot: true } }),
     ]);
     const count = (s: string) => requests.filter((r) => r.status === s).length;
     const open = requests.filter((r) => ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(r.status));
@@ -59,8 +62,11 @@ export const serviceAnalyticsService = {
     })).sort((a, b) => a.requestType.localeCompare(b.requestType));
     const byCategory = [...group(requests, (r) => r.categorySnapshot as ServiceCategory)].map(([category, rows]) => ({ category, submitted: rows.length, fulfilled: rows.filter((r) => r.status === 'FULFILLED').length })).sort((a, b) => a.category.localeCompare(b.category));
     const byMonth = [...group(requests, (r) => r.submittedAt!.toISOString().slice(0, 7))].map(([month, rows]) => ({ month, submitted: rows.length, fulfilled: rows.filter((r) => r.status === 'FULFILLED').length })).sort((a, b) => a.month.localeCompare(b.month));
+    const isOpen = (st: string) => ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(st);
     return {
-      range: { from, to }, byType, byCategory, byMonth,
+      range: { from, to },
+      totals: { submitted: requests.length, fulfilled: requests.filter((r) => r.status === 'FULFILLED').length, rejected: requests.filter((r) => r.status === 'REJECTED').length, open: requests.filter((r) => isOpen(r.status)).length, averageFulfillmentDays: fulfilledDays(requests) },
+      byType, byCategory, byMonth,
       letters: {
         byType: [...group(letters, (l) => l.letterTypeSnapshot as HrLetterType)].map(([letterType, rows]) => ({ letterType, issued: rows.filter((l) => l.status === 'ISSUED').length, voided: rows.filter((l) => l.status === 'VOID').length })).sort((a, b) => a.letterType.localeCompare(b.letterType)),
         byMonth: [...group(letters, (l) => l.issuedDate.slice(0, 7))].map(([month, rows]) => ({ month, issued: rows.length })).sort((a, b) => a.month.localeCompare(b.month)),

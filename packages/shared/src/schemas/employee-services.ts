@@ -112,6 +112,7 @@ export interface ServiceDashboardDto {
 }
 export interface ServiceReportsDto {
   range: { from: string; to: string };
+  totals: { submitted: number; fulfilled: number; rejected: number; open: number; averageFulfillmentDays: number | null };
   byType: { requestType: string; category: ServiceCategory; submitted: number; fulfilled: number; rejected: number; open: number; averageFulfillmentDays: number | null }[];
   byCategory: { category: ServiceCategory; submitted: number; fulfilled: number }[];
   byMonth: { month: string; submitted: number; fulfilled: number }[];

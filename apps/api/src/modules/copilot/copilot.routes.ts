@@ -9,6 +9,7 @@ import { requestMeta } from '../../services/audit/audit.service';
 import { hasPermission } from '../../services/authorization/authorization.service';
 import { copilotOrchestrator } from './orchestrator';
 import { copilotStatus } from './provider';
+import { mayRollup } from '../analytics/domain-rollups';
 
 /**
  * HR Copilot (Task 31). `copilot.use` opens the endpoint and grants no data; the tools decide the rest.
@@ -48,6 +49,10 @@ export function suggestionsFor(auth: AuthContext): CopilotSuggestionDto[] {
     if (has(PERMISSIONS.PERFORMANCE_VIEW)) out.push({ text: 'ทีมมี Performance review ค้างที่ฉันต้องทำกี่คน', group: 'ทีม' });
     if (has(PERMISSIONS.TRAINING_VIEW)) out.push({ text: 'Training และ development ของทีมเป็นยังไง', group: 'ทีม' });
   }
+  // Before the older HR prompts so the 10-item cap does not drop them for broad roles such as HR_ADMIN.
+  const exec = has(PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE);
+  if (mayRollup(auth, 'benefits') && mayRollup(auth, 'expense')) out.push({ text: 'สรุปภาพรวมสวัสดิการและค่าใช้จ่ายเดือนนี้', group: exec ? 'ภาพรวม' : 'HR' });
+  if (mayRollup(auth, 'employeeServices')) out.push({ text: 'ตอนนี้มีคำขอ Employee Services ค้างอยู่กี่รายการ', group: exec ? 'ภาพรวม' : 'HR' });
   if (has(PERMISSIONS.REPORTS_VIEW)) out.push({ text: 'ทำรายงานจำนวนพนักงาน active แยก department', group: 'รายงาน' });
   if (has(PERMISSIONS.RECRUITMENT_MANAGE)) out.push({ text: 'ปีนี้ recruitment funnel เป็นยังไง และ time-to-hire เท่าไร', group: 'HR' });
   if (has(PERMISSIONS.COMPETENCY_MANAGE)) out.push({ text: 'Skill gaps ที่พบบ่อยที่สุดในองค์กร', group: 'HR' });
