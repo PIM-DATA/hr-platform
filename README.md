@@ -581,28 +581,34 @@ Four aggregate queries (`count` ×3 + `findMany distinct departmentId`), no empl
 
 ## Running in production
 
-Deployment contract (provider-neutral; the full runbook, checklist and gap list live in
-[docs/production-readiness.md](docs/production-readiness.md)):
+The single supported install path, checklist, reverse-proxy references and `TRUST_PROXY` guidance are in
+**[docs/deployment.md](docs/deployment.md)**; every variable is in [docs/environment-reference.md](docs/environment-reference.md).
 
 ```bash
 npm ci
-npm run build       # packages/shared → apps/api (tsc → dist) → apps/web (vite → dist)
-npm run db:deploy   # prisma migrate deploy — never migrate dev / db push / migrate reset
-                    # the Prisma CLI reads its own environment, not ENV_FILE: DATABASE_URL="…" npm run db:deploy
-npm run start       # node apps/api/dist/server.js
+npm run build       # Prisma client generation → packages/shared → apps/api (dist) → apps/web (dist); nothing to generate by hand
+npm run db:deploy   # prisma migrate deploy — the Prisma CLI reads DATABASE_URL from the environment, not ENV_FILE
+ENV_FILE=/etc/hr-platform/api.env npm start   # = NODE_ENV=production node apps/api/dist/server.js
 ```
 
+- **Runtime mode is never guessed** (Task 46): `NODE_ENV` must be exactly `development`, `test` or `production`;
+  unset, blank or anything else refuses to start. `npm run dev`, `npm test` and `npm start` set it themselves.
+- **Clean-checkout guard**: `npm run verify:clean-build` builds the committed tree from scratch (`npm ci` → `npm run build`,
+  no source maps). `npm run ops:verify-web -- https://<host>` checks a live deployment's web and API headers.
 - **Order matters**: build → migrate → start, and a failed migration aborts the release. Production never runs
   `vite dev` or `tsx watch`.
 - **HTTPS is mandatory.** The app does not terminate TLS; a reverse proxy or platform edge serves
   `apps/web/dist` and forwards `/api` to the Node process. Same-origin is the recommended setup (cookies without CORS);
   a split deployment builds the frontend with `VITE_API_BASE_URL` and lists that origin in `CORS_ORIGIN`.
 - **Fail-fast configuration**: with `NODE_ENV=production` the process exits before listening if `DATABASE_URL`,
-  `CORS_ORIGIN` or `PUBLIC_APP_URL` is missing, if an origin is `localhost`/`*`/non-https, if `SEED_DEMO_PASSWORD` is set, if a known
+  `CORS_ORIGIN`, `PUBLIC_APP_URL` or `TRUST_PROXY` is missing, if an origin is `localhost`/`*`/non-https, if `SEED_DEMO_PASSWORD` is set, if a known
   placeholder password is used, or if `COOKIE_SECURE=false`. `ENV_FILE` can point at a config file outside the repo;
   real environment variables always win. There is no session signing secret — sessions are database-backed.
-- **`TRUST_PROXY`** must equal the number of proxy hops (default `0`). It drives `req.ip` (rate limiting) and
-  `req.protocol` (secure cookies), so a wrong value is a security setting, not a formality.
+- **`TRUST_PROXY`** is required in production: `off`, the hop count, or the proxy IPs/CIDRs — never "trust everything"
+  (refused). It drives `req.ip` (rate limiting, audit attribution) and `req.protocol` (same-origin check).
+- **Caching**: every API response is `Cache-Control: no-store` (downloads `private, no-store`); the reverse proxy serves
+  `index.html` with `no-cache` and hashed `/assets/*` as immutable, and owns the web security headers and HSTS
+  (`deploy/`).
 - **Probes**: `/api/v1/health` (app + database), `/health/live`, `/health/ready` (503 when the database is down) —
   unauthenticated, rate-limit exempt, and free of internal detail.
 - **Rate limits**: failed logins per IP (`LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_MINUTES`) and a general

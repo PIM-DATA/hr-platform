@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
@@ -13,8 +14,55 @@ dotenv.config({ path: process.env.ENV_FILE ?? path.resolve(__dirname, '../../.en
  */
 const optional = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
 
+/**
+ * Runtime mode is never guessed (Task 46). A missing NODE_ENV used to mean "development", so forgetting one variable
+ * silently switched every production guard off. Now it must be one of exactly three values; anything else — unset,
+ * blank, "prod", "Production" — refuses to start. `npm run dev` / `npm test` / `npm start` set it explicitly.
+ */
+export const RUNTIME_MODES = ['development', 'test', 'production'] as const;
+
+/**
+ * Express `trust proxy`, typed (Task 46). `req.ip` drives rate limiting and audit attribution and `req.protocol` drives
+ * the same-origin check, so the setting must describe the real topology:
+ *   off                       — nothing in front (direct exposure); X-Forwarded-* is ignored
+ *   1..10                     — that many reverse-proxy hops, each appending to X-Forwarded-For
+ *   IP / CIDR list (a,b/24)   — only these proxy addresses are trusted (also: loopback, linklocal, uniquelocal)
+ * "Trust everything" (true, *, all) is refused: it lets any client choose its own IP. Production must set it explicitly.
+ */
+export type TrustProxySetting = { mode: 'off' } | { mode: 'hops'; hops: number } | { mode: 'addresses'; addresses: string[] };
+const TRUST_PRESETS = ['loopback', 'linklocal', 'uniquelocal'];
+const validCidr = (value: string) => {
+  const [ip, prefix, extra] = value.split('/');
+  if (extra !== undefined || !ip) return false;
+  const family = isIP(ip);
+  if (!family) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d{1,3}$/.test(prefix)) return false;
+  return Number(prefix) <= (family === 4 ? 32 : 128);
+};
+export function parseTrustProxy(raw: string | undefined): { ok: true; value: TrustProxySetting | undefined } | { ok: false; error: string } {
+  const v = raw?.trim();
+  if (!v) return { ok: true, value: undefined };
+  const lower = v.toLowerCase();
+  if (['off', 'false', '0', 'none'].includes(lower)) return { ok: true, value: { mode: 'off' } };
+  if (['true', '*', 'all', 'yes', 'on'].includes(lower)) return { ok: false, error: 'TRUST_PROXY must not trust every proxy (true/*/all) — any client could then choose its own IP; set a hop count or the proxy addresses' };
+  if (/^-?\d+$/.test(v)) {
+    const hops = Number(v);
+    return hops >= 1 && hops <= 10 ? { ok: true, value: { mode: 'hops', hops } } : { ok: false, error: 'TRUST_PROXY hop count must be between 1 and 10 (use "off" for no proxy)' };
+  }
+  const items = v.split(',').map((x) => x.trim()).filter(Boolean);
+  const bad = items.filter((x) => !TRUST_PRESETS.includes(x.toLowerCase()) && !validCidr(x));
+  if (!items.length || bad.length) return { ok: false, error: `TRUST_PROXY must be "off", a hop count (1-10) or a comma-separated list of proxy IP addresses / CIDR ranges (${bad.length} invalid entr${bad.length === 1 ? 'y' : 'ies'})` };
+  return { ok: true, value: { mode: 'addresses', addresses: items.map((x) => (TRUST_PRESETS.includes(x.toLowerCase()) ? x.toLowerCase() : x)) } };
+}
+/** The value handed to Express `app.set('trust proxy', …)`. */
+export const expressTrustProxy = (setting: TrustProxySetting): false | number | string[] =>
+  setting.mode === 'off' ? false : setting.mode === 'hops' ? setting.hops : setting.addresses;
+export const describeTrustProxy = (setting: TrustProxySetting) =>
+  setting.mode === 'off' ? 'off' : setting.mode === 'hops' ? `${setting.hops} hop(s)` : `${setting.addresses.length} trusted proxy address(es)`;
+
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z.enum(RUNTIME_MODES, { message: 'NODE_ENV must be exactly "development", "test" or "production" (it is never guessed)' }),
   PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DATABASE_URL: z.string().min(1),
@@ -23,10 +71,10 @@ const envSchema = z.object({
   /** Browser origin(s) allowed to call the API, comma-separated. Production requires explicit https origins. */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /**
-   * Reverse-proxy hops to trust for req.ip / req.protocol (Express `trust proxy`).
-   * 0 = trust nothing (direct exposure), 1 = one proxy in front (the usual platform setup).
+   * Reverse-proxy trust for req.ip / req.protocol (Express `trust proxy`) — see `parseTrustProxy`. Required in
+   * production; development and test default to "off".
    */
-  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+  TRUST_PROXY: optional(z.string()),
   SESSION_TTL_HOURS: z.coerce.number().positive().default(12),
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
   LOGIN_WINDOW_MINUTES: z.coerce.number().positive().default(15),
@@ -88,21 +136,30 @@ const safeUrl = (value: string): URL | null => {
 /** Trailing slashes are stripped so `${publicAppUrl}/reset-password` never produces a double slash. */
 const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, '');
 
-export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: z.infer<typeof envSchema> } | { ok: false; errors: string[] } {
+type ParsedEnv = z.infer<typeof envSchema> & { trustProxy: TrustProxySetting };
+
+export function parseEnv(source: NodeJS.ProcessEnv): { ok: true; value: ParsedEnv } | { ok: false; errors: string[] } {
+  if (!source.NODE_ENV?.trim()) {
+    return { ok: false, errors: ['NODE_ENV is required: "development", "test" or "production". It is never guessed — use `npm run dev`, `npm test` or `npm start`, or set it in the environment file.'] };
+  }
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
-    return { ok: false, errors: Object.entries(parsed.error.flatten().fieldErrors).map(([k, v]) => `${k}: ${v?.join(', ')}`) };
+    // Messages name the variable and the rule, never the value (a URL or key could be in it).
+    return { ok: false, errors: parsed.error.issues.map((i) => `${String(i.path[0] ?? 'environment')}: ${i.code === 'invalid_value' || i.path[0] === 'NODE_ENV' ? i.message : i.message.replace(/received .*/i, 'invalid value')}`) };
   }
-  const value = parsed.data;
   const errors: string[] = [];
+  const trust = parseTrustProxy(parsed.data.TRUST_PROXY);
+  if (!trust.ok) errors.push(trust.error);
+  const value: ParsedEnv = { ...parsed.data, trustProxy: (trust.ok && trust.value) || { mode: 'off' } };
 
   if (value.NODE_ENV === 'production') {
     // Fail fast: production never falls back to development defaults.
     if (!source.DATABASE_URL) errors.push('DATABASE_URL is required in production');
+    if (trust.ok && !trust.value) errors.push('TRUST_PROXY is required in production: "off" when nothing is in front of the API, the hop count, or the proxy addresses (docs/deployment.md)');
     if (value.COPILOT_ENABLED && value.COPILOT_PROVIDER === 'fake') errors.push('COPILOT_PROVIDER=fake is a test double and cannot run in production');
     if (value.COPILOT_ENABLED && value.COPILOT_PROVIDER === 'anthropic' && !source.COPILOT_API_KEY) errors.push('COPILOT_API_KEY is required in production while the copilot is enabled (set COPILOT_ENABLED=false to disable it)');
     if (value.DOCUMENTS_ENABLED && !source.DOCUMENT_STORAGE_DIR) errors.push('DOCUMENT_STORAGE_DIR is required in production while the document center is enabled (set DOCUMENTS_ENABLED=false to disable it)');
-    if (source.DOCUMENT_STORAGE_DIR && /^\/(tmp|var\/tmp|dev\/shm)(\/|$)/.test(source.DOCUMENT_STORAGE_DIR)) errors.push('DOCUMENT_STORAGE_DIR must not be a temporary path in production');
+    if (source.DOCUMENT_STORAGE_DIR && /^\/(private\/)?(tmp|var\/tmp|dev\/shm)(\/|$)/.test(source.DOCUMENT_STORAGE_DIR)) errors.push('DOCUMENT_STORAGE_DIR must not be a temporary path in production');
     if (!source.CORS_ORIGIN) errors.push('CORS_ORIGIN is required in production (the browser origin that serves the app)');
     else {
       const origins = value.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
@@ -144,7 +201,8 @@ const result = parseEnv(process.env);
 if (!result.ok) {
   // Names and reasons only — never the values themselves.
   // eslint-disable-next-line no-console
-  console.error(`Invalid environment configuration (${process.env.NODE_ENV ?? 'development'}):\n  - ${result.errors.join('\n  - ')}`);
+  const mode = process.env.NODE_ENV && (RUNTIME_MODES as readonly string[]).includes(process.env.NODE_ENV) ? process.env.NODE_ENV : 'NODE_ENV unset or invalid';
+  console.error(`Invalid environment configuration (${mode}):\n  - ${result.errors.join('\n  - ')}`);
   process.exit(1);
 }
 const data = result.value;
@@ -159,6 +217,9 @@ export const env = {
   isProduction: data.NODE_ENV === 'production',
   isTest: data.NODE_ENV === 'test',
   isDevelopment: data.NODE_ENV === 'development',
+  /** Express `trust proxy` value and a log-safe description of it. */
+  trustProxyExpress: expressTrustProxy(data.trustProxy),
+  trustProxyDescription: describeTrustProxy(data.trustProxy),
   /** Session cookies are always Secure in production, regardless of COOKIE_SECURE. */
   cookieSecure: data.NODE_ENV === 'production' || data.COOKIE_SECURE,
   /** Allowed browser origins (comma-separated in CORS_ORIGIN). */

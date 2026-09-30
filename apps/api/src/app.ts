@@ -17,9 +17,12 @@ export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
-  // Only trust the number of proxy hops that actually exist: req.ip drives rate limiting and req.protocol drives
-  // secure-cookie behaviour, so trusting a header that nothing sets would let a client spoof both.
-  app.set('trust proxy', env.TRUST_PROXY);
+  // Only trust the proxies that actually exist (TRUST_PROXY: off | hop count | proxy addresses — never "everything"):
+  // req.ip drives rate limiting and audit attribution and req.protocol drives the same-origin check, so trusting a
+  // header that nothing sets would let a client spoof both.
+  app.set('trust proxy', env.trustProxyExpress);
+  // Every API response is private and `no-store` (security-headers.ts); validators would only invite 304 revalidation.
+  app.set('etag', false);
 
   app.use(securityHeaders);
   app.use(

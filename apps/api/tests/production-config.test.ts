@@ -18,6 +18,7 @@ const PROD_BASE = {
   CORS_ORIGIN: 'https://hr.example.com',
   DOCUMENT_STORAGE_DIR: '/var/lib/hr/documents',
   PUBLIC_APP_URL: 'https://hr.example.com',
+  TRUST_PROXY: '1', // Task 46: required in production (the documented one-proxy topology)
 } as NodeJS.ProcessEnv;
 const parse = (extra: NodeJS.ProcessEnv = {}) => parseEnv({ ...PROD_BASE, ...extra });
 const errorsOf = (r: ReturnType<typeof parseEnv>) => (r.ok ? [] : r.errors).join(' | ');
@@ -68,8 +69,10 @@ describe('production environment validation', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.NODE_ENV === 'production').toBe(true);
-    expect(r.value.TRUST_PROXY).toBe(0); // opt-in, not "trust everything"
-    expect(parse({ TRUST_PROXY: '1' }).ok && (parse({ TRUST_PROXY: '1' }) as { value: { TRUST_PROXY: number } }).value.TRUST_PROXY).toBe(1);
+    // Task 46: typed and explicit — never "trust everything", never guessed in production
+    expect(r.value.trustProxy).toEqual({ mode: 'hops', hops: 1 });
+    expect(errorsOf(parse({ TRUST_PROXY: 'true' }))).toMatch(/must not trust every proxy/);
+    expect(errorsOf(parse({ TRUST_PROXY: undefined }))).toMatch(/TRUST_PROXY is required in production/);
   });
   it('the test-database guard still applies (tests may never target the development database)', () => {
     const base = { NODE_ENV: 'test', DATABASE_URL: 'postgresql://a@h/dev' } as NodeJS.ProcessEnv;
@@ -124,7 +127,7 @@ describe('password policy is one rule', () => {
         cwd: path.resolve(__dirname, '..'),
         env: {
           ...process.env,
-          NODE_ENV: 'production', DOCUMENT_STORAGE_DIR: '/var/lib/hr/documents',
+          NODE_ENV: 'production', DOCUMENT_STORAGE_DIR: '/var/lib/hr/documents', TRUST_PROXY: 'off',
           DATABASE_URL: process.env.TEST_DATABASE_URL, // never the developer database
           CORS_ORIGIN: 'https://hr.example.com',
           PUBLIC_APP_URL: 'https://hr.example.com',
@@ -175,7 +178,7 @@ describe('destructive commands refuse production', () => {
     try {
       execFileSync('npx', ['tsx', script], {
         cwd: path.resolve(__dirname, '..'),
-        env: { ...process.env, NODE_ENV: 'production', CORS_ORIGIN: 'https://hr.example.com', SEED_DEMO_PASSWORD: '', TEST_DATABASE_URL: process.env.TEST_DATABASE_URL },
+        env: { ...process.env, NODE_ENV: 'production', CORS_ORIGIN: 'https://hr.example.com', SEED_DEMO_PASSWORD: '', TEST_DATABASE_URL: process.env.TEST_DATABASE_URL, TRUST_PROXY: 'off' },
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
       });

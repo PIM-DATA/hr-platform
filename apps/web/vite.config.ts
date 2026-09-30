@@ -5,6 +5,11 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // Production bundles are published without source maps (Task 46): the source is not shipped to every browser.
+    // Enable deliberately only together with an error-tracking upload that keeps them private.
+    sourcemap: false,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

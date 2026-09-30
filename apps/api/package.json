@@ -5,25 +5,26 @@
   "description": "HR Enterprise Platform REST API",
   "main": "src/server.ts",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
+    "dev": "NODE_ENV=development tsx watch src/server.ts",
+    "start": "NODE_ENV=production node dist/server.js",
+    "typecheck": "npm run -s codegen && tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "db:test:reset": "NODE_ENV=test tsx scripts/reset-test-db.ts",
-    "test": "npm run -s db:test:reset && NODE_ENV=test vitest run",
-    "build": "tsc -p tsconfig.build.json",
+    "test": "npm run -s codegen && npm run -s db:test:reset && NODE_ENV=test vitest run",
+    "build": "npm run -s codegen && tsc -p tsconfig.build.json",
     "db:seed:demo": "tsx prisma/seed.ts",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
     "db:backup": "tsx scripts/backup-db.ts",
     "db:restore:verify": "tsx scripts/restore-verify.ts",
     "ops:check": "tsx scripts/ops-check.ts",
     "ops:revoke-sessions": "tsx scripts/revoke-sessions.ts",
-    "ops:cleanup-reset-tokens": "tsx scripts/cleanup-reset-tokens.ts"
+    "ops:cleanup-reset-tokens": "tsx scripts/cleanup-reset-tokens.ts",
+    "codegen": "prisma generate",
+    "db:generate": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

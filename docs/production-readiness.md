@@ -25,7 +25,8 @@ correct (§6); running two instances without a shared store weakens them.
 
 ## 2. Environments
 
-`NODE_ENV` is one of `development`, `test`, `production`. Production never falls back to development defaults —
+`NODE_ENV` must be exactly one of `development`, `test`, `production` — it has **no default** (Task 46): unset, blank or
+any other value refuses to start. Production never falls back to development defaults —
 `parseEnv` (apps/api/src/config/env.ts) collects every problem and the process **exits before listening**:
 
 | Rule in production | Why |
@@ -35,6 +36,10 @@ correct (§6); running two instances without a shared store weakens them.
 | `SEED_DEMO_PASSWORD` must be unset | demo accounts are a development feature |
 | `SEED_ADMIN_PASSWORD` may not be a known placeholder | e.g. `change-me-locally` |
 | `COOKIE_SECURE=false` rejected | session cookies must be `Secure` |
+| `PUBLIC_APP_URL` required (https, no credentials/query/fragment, not localhost) | reset links are built from it |
+| `TRUST_PROXY` required: `off`, hop count 1–10 or proxy IPs/CIDRs; `true`/`*`/`all` refused | client IP and protocol must match the real topology |
+| `DOCUMENT_STORAGE_DIR` required while documents are enabled; temporary paths (incl. `/private/tmp`) refused | uploaded files must survive restarts |
+| copilot `fake` provider refused; `COPILOT_API_KEY` required when enabled | no test double in production |
 | `TEST_DATABASE_URL` required under `NODE_ENV=test`, and different from `DATABASE_URL` | the suite wipes every table |
 
 A production database on the same host is allowed (single-VM install) but logged as a warning at startup.
@@ -44,10 +49,12 @@ win over file values.
 
 ### Environment inventory (names and formats only — never real values)
 
-Every variable the code actually reads. "Secret" means it must live in the platform's secret store, never in the
+The complete, current reference is **[environment-reference.md](environment-reference.md)** (Task 46); the table below
+is the short list. Every variable the code actually reads. "Secret" means it must live in the platform's secret store, never in the
 repository, a ticket or a chat message.
 
-**Required in production** — the process refuses to start without the first four; `BACKUP_DIR` is required by the
+**Required in production** — the process refuses to start without the first four (plus `TRUST_PROXY`, and
+`DOCUMENT_STORAGE_DIR` while documents are enabled — see the reference); `BACKUP_DIR` is required by the
 backup command rather than at startup.
 
 | Variable | Purpose | Example format | Secret |
@@ -119,9 +126,9 @@ would be a liability rather than a convenience; the build/run contract above is 
 
 ```bash
 npm ci
-npm run build          # packages/shared → apps/api (tsc → dist) → apps/web (vite → dist)
+npm run build          # Prisma client generation → packages/shared → apps/api (tsc → dist) → apps/web (vite → dist)
 npm run db:deploy      # prisma migrate deploy   (never migrate dev / db push / migrate reset)
-npm run start          # node apps/api/dist/server.js
+npm run start          # NODE_ENV=production node apps/api/dist/server.js
 ```
 
 Deployment order is **build → migrate → start**, and a failed migration must abort the release: the new code is not
@@ -173,28 +180,20 @@ shared store (Redis or equivalent) and is listed as a gap rather than built spec
   person's password. There is no breached-password check and no email-delivered self-service reset (§9).
 - Authorization: permission codes + data scope, verified per request; see `docs/phase-2-leave-review.md`.
 
-### Frontend Content-Security-Policy (Task 19)
+### Frontend headers (Task 19 → Task 46)
 
-The API sends its own strict policy (`default-src 'none'`). The **static frontend** is served by something else — nginx,
-Caddy, a CDN — so its policy is set there. The build emits one JavaScript bundle, one stylesheet, no inline script, no
-external script, font or image host, so a strict policy is possible and has been verified against the built bundle
-(login → leave → approvals → notifications → account security → reset page, at phone width, with the policy enforced:
-no violations):
-
-```
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
-```
-
-`style-src` needs `'unsafe-inline'` because React sets `style` attributes for progress bars and tree indentation;
-everything else is `'self'`. In a **split-origin** deployment (the frontend on a different host from the API) add the
-API origin to `connect-src`. Serve the same host's responses with `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`.
+The static frontend is served by the reverse proxy, which owns its headers, caching and HSTS. The verified policy and
+reference configurations (Apache, verified end-to-end over TLS; nginx, equivalent) are in `deploy/`, with
+`deploy/security-headers.json` as the single source; see [deployment.md §9](deployment.md). Task 46 tightened the Task 19
+policy: `style-src 'self'` without `'unsafe-inline'` (React applies style props through the CSSOM, and 75 page visits on
+real data produced no violation) and Zod runs `jitless`, so there is no eval probe either. Check a live deployment with
+`npm run ops:verify-web -- https://<host>`.
 
 ## 8. Deployment checklist
 
 **Pre-deploy**
 - [ ] `NODE_ENV=production` and every required variable set (the process refuses to start otherwise)
-- [ ] `CORS_ORIGIN` = the public https origin(s); `TRUST_PROXY` = real number of proxy hops
+- [ ] `CORS_ORIGIN` = the public https origin(s); `TRUST_PROXY` matches the topology (docs/deployment.md §8)
 - [ ] `PUBLIC_APP_URL` = the https origin users open — **required**; the process refuses to start without it, and it must have no credentials, query string or fragment (reset links are built from it, never from the request host)
 - [ ] PostgreSQL reachable, credentials stored in the platform's secret store (never in the repository)
 - [ ] `npm ci && npm run build` succeeds; `npm run typecheck` and `npm test` green
@@ -207,7 +206,7 @@ API origin to `connect-src`. Serve the same host's responses with `X-Content-Typ
 - [ ] `GET /api/v1/health/ready` returns 200
 
 **Post-deploy smoke**
-- [ ] Static frontend served with the Content-Security-Policy from §7
+- [ ] `npm run ops:verify-web -- https://<host>` passes (web headers, caching, single HSTS, API no-store)
 - [ ] Sign in as an administrator; the session cookie shows `Secure`, `HttpOnly`, `SameSite=Lax`
 - [ ] Dashboard loads; create → submit → approve one leave request; balance and notification update
 - [ ] `/api/v1/leave/reports/overview` returns figures
@@ -232,7 +231,8 @@ API origin to `connect-src`. Serve the same host's responses with `X-Content-Typ
 - **Account recovery**: admin-assisted recovery is available (self-service password change, one-time reset links,
   session revocation — `docs/account-recovery.md`). Self-service email delivery is **not implemented**: there is no
   email/SMS provider, so an administrator must hand the link over. No MFA and no SSO.
-- **Frontend CSP** and other static-hosting headers are not defined.
+- ~~Frontend CSP and other static-hosting headers are not defined.~~ Defined, shipped as reference proxy configurations
+  and verified (Task 46, `deploy/`).
 - **Horizontal scaling**: rate limiting (and any future in-process state) assumes a single instance.
 - **Privacy/retention**: a privacy operations foundation exists — request register and personal-data export
   (`docs/privacy-operations.md`). Still required from the customer: a legal/retention policy, audit-log and

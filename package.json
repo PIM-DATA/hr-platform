@@ -28,7 +28,10 @@
     "db:restore:verify": "npm run db:restore:verify -w apps/api",
     "ops:check": "npm run ops:check -w apps/api",
     "ops:revoke-sessions": "npm run ops:revoke-sessions -w apps/api",
-    "ops:cleanup-reset-tokens": "npm run ops:cleanup-reset-tokens -w apps/api"
+    "ops:cleanup-reset-tokens": "npm run ops:cleanup-reset-tokens -w apps/api",
+    "codegen": "npm run codegen -w apps/api",
+    "verify:clean-build": "node scripts/verify-clean-build.mjs",
+    "ops:verify-web": "node scripts/verify-web-headers.mjs"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,

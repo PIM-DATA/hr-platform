@@ -7,7 +7,7 @@ const app = createApp();
 const server = app.listen(env.PORT, () => {
   // Startup logs carry no connection string, host or credential — only what an operator needs to confirm the process.
   logger.info(
-    { port: env.PORT, env: env.NODE_ENV, version: env.APP_VERSION ?? 'unknown', trustProxy: env.TRUST_PROXY, allowedOrigins: env.allowedOrigins.length },
+    { port: env.PORT, env: env.NODE_ENV, version: env.APP_VERSION ?? 'unknown', trustProxy: env.trustProxyDescription, allowedOrigins: env.allowedOrigins.length },
     'API started',
   );
   // Not an error: a single-host install is a supported topology. Said out loud so nobody deploys it by accident.
