@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   USERS_CREATE: 'users.create',
   USERS_UPDATE: 'users.update',
   USERS_ACTIVATE: 'users.activate',
+  USERS_MANAGE_PRIVILEGED: 'users.manage_privileged',
 
   ROLES_VIEW: 'roles.view',
   ROLES_MANAGE: 'roles.manage',
@@ -197,6 +198,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.USERS_CREATE, module: 'users', description: 'Create user accounts' },
   { code: PERMISSIONS.USERS_UPDATE, module: 'users', description: 'Edit user accounts and assign roles' },
   { code: PERMISSIONS.USERS_ACTIVATE, module: 'users', description: 'Activate / deactivate user accounts' },
+  { code: PERMISSIONS.USERS_MANAGE_PRIVILEGED, module: 'users', description: 'Administer privileged accounts (those holding roles.manage or this permission): reset links, sign-out, edit, activate/deactivate, role changes. Grants no business access' },
 
   { code: PERMISSIONS.ROLES_VIEW, module: 'roles', description: 'View roles and permissions' },
   { code: PERMISSIONS.ROLES_MANAGE, module: 'roles', description: 'Change role ↔ permission mapping' },
@@ -352,21 +354,41 @@ export const CRITICAL_PERMISSIONS: PermissionCode[] = [
   PERMISSIONS.USERS_CREATE,
   PERMISSIONS.USERS_UPDATE,
   PERMISSIONS.USERS_ACTIVATE,
+  PERMISSIONS.USERS_MANAGE_PRIVILEGED,
   PERMISSIONS.ROLES_VIEW,
   PERMISSIONS.ROLES_MANAGE,
 ];
+
+/**
+ * Account and RBAC administration permissions. `blockingGrantPermissions` never lets anyone hand these out without
+ * holding them, and a role edit can never add them for someone who lacks them. `account.manage_recovery` is here
+ * because an administrator-issued reset link is a way into the account.
+ */
+export const ADMINISTRATION_PERMISSIONS: PermissionCode[] = [...CRITICAL_PERMISSIONS, PERMISSIONS.ACCOUNT_MANAGE_RECOVERY];
+
+/**
+ * A privileged account is one that can administer RBAC or other privileged accounts. The test is the account's
+ * effective permissions, never a role name. Only a holder of `users.manage_privileged` may reset, sign out, edit,
+ * (de)activate or re-role such an account.
+ */
+export const PRIVILEGED_ACCOUNT_PERMISSIONS: PermissionCode[] = [PERMISSIONS.ROLES_MANAGE, PERMISSIONS.USERS_MANAGE_PRIVILEGED];
+export const isPrivilegedAccount = (effectivePermissions: readonly string[]) => PRIVILEGED_ACCOUNT_PERMISSIONS.some((p) => effectivePermissions.includes(p));
+
+const SCOPE_RANK: Record<string, number> = { SELF: 0, TEAM: 1, ALL: 2 };
+/** SELF < TEAM < ALL; unknown values rank as SELF. */
+export const scopeRank = (scope: string) => SCOPE_RANK[scope] ?? 0;
 
 /**
  * Role-grant rule (users.create / users.update). Returns the permissions of a role that block the actor from granting
  * it; empty means the grant is allowed (the separate data-scope rule still applies).
  *
  *  - Default: a role may be granted only if its permissions ⊆ the actor's (no escalation beyond your own authority).
- *  - RBAC administration: an actor holding `roles.manage` — who can already change any role's permission mapping —
- *    may grant a role holding business permissions they do not exercise themselves (e.g. SYSTEM_ADMIN grants
- *    MANAGER without holding compensation_planning.plan). Granting is not using: the actor gains nothing.
- *  - Never bypassed: user/role administration permissions the actor lacks (CRITICAL_PERMISSIONS), and every
- *    permission of a role that itself carries `roles.manage` — the highest administrative role still needs the full
- *    subset, so RBAC authority cannot mint a wider administrator.
+ *  - RBAC administration: an actor holding `roles.manage` may grant a role holding business permissions they do not
+ *    exercise themselves (e.g. SYSTEM_ADMIN grants MANAGER without holding compensation_planning.plan) — to OTHER
+ *    users only: `selfEscalation` refuses any assignment that widens the actor's own authority.
+ *  - Never bypassed: administration permissions the actor lacks (ADMINISTRATION_PERMISSIONS), and every permission of
+ *    a role that itself carries `roles.manage` — the highest administrative role still needs the full subset, so RBAC
+ *    authority cannot mint a wider administrator.
  *
  * `roles.manage` answers only this question; no business-domain check treats it as a grant of anything else.
  */
@@ -374,8 +396,34 @@ export function blockingGrantPermissions(actorPermissions: readonly string[], ro
   const mine = new Set(actorPermissions);
   const missing = rolePermissions.filter((p) => !mine.has(p));
   if (missing.length === 0 || !mine.has(PERMISSIONS.ROLES_MANAGE) || rolePermissions.includes(PERMISSIONS.ROLES_MANAGE)) return missing;
-  const administrative = new Set<string>(CRITICAL_PERMISSIONS);
+  const administrative = new Set<string>(ADMINISTRATION_PERMISSIONS);
   return missing.filter((p) => administrative.has(p));
+}
+
+/**
+ * Role-permission edit rule for a role the actor does NOT hold (roles the actor holds are covered by `selfEscalation`).
+ * Returns the permissions that block the edit. Business permissions may be added for other users' governance;
+ * administration permissions the actor lacks may not; and a role that would carry `roles.manage` after the edit must be
+ * entirely within the actor's own permissions (no crafted second super-administrator). Removing permissions is never
+ * blocked here.
+ */
+export function blockingRoleEditPermissions(actorPermissions: readonly string[], currentPermissions: readonly string[], nextPermissions: readonly string[]): string[] {
+  const mine = new Set(actorPermissions);
+  const added = nextPermissions.filter((p) => !currentPermissions.includes(p));
+  if (added.length === 0) return [];
+  if (nextPermissions.includes(PERMISSIONS.ROLES_MANAGE)) return nextPermissions.filter((p) => !mine.has(p));
+  const administrative = new Set<string>(ADMINISTRATION_PERMISSIONS);
+  return added.filter((p) => administrative.has(p) && !mine.has(p));
+}
+
+/**
+ * Self-escalation test for any change to the actor's own access (assigning roles to themselves, editing a role they
+ * hold): the permissions the actor would gain and whether their data scope widens. Anything non-empty is refused —
+ * `roles.manage` administers other people's access, never the holder's own.
+ */
+export function selfEscalation(before: { permissions: readonly string[]; dataScope: string }, after: { permissions: readonly string[]; dataScope: string }): { gained: string[]; scopeWidened: boolean } {
+  const had = new Set(before.permissions);
+  return { gained: [...new Set(after.permissions)].filter((p) => !had.has(p)).sort(), scopeWidened: scopeRank(after.dataScope) > scopeRank(before.dataScope) };
 }
 
 /** Human labels for the action part of a permission code, used by the Roles UI. */
@@ -388,6 +436,7 @@ export const PERMISSION_ACTION_LABELS: Record<string, string> = {
   clock: 'Clock in / out',
   request: 'Request',
   manage_policy: 'Manage policies',
+  manage_privileged: 'Manage privileged accounts',
   view_own: 'View own',
   run: 'Run',
   approve: 'Approve',

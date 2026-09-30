@@ -53,6 +53,8 @@ export interface UserDto {
   updatedAt: string;
   employee: { id: string; employeeCode: string; firstName: string; lastName: string } | null;
   roles: { id: string; code: string; name: string }[];
+  /** Holds RBAC or privileged-account administration (Task 45): only `users.manage_privileged` may administer it. */
+  privileged: boolean;
 }
 
 export interface EmployeeOption {

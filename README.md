@@ -173,6 +173,13 @@ Every response carries `x-request-id`; the same id appears in the API log line f
   carries `roles.manage` (so it cannot mint a wider administrator). Without `roles.manage` the full subset rule applies.
   `roles.manage` satisfies no business permission check. SYSTEM_ADMIN holds every permission **except**
   `compensation_planning.*` (removed from existing databases by migration `20260930120000_…`).
+- **Privileged accounts and self-escalation** (Task 45, [docs/account-security-rbac.md](docs/account-security-rbac.md)):
+  an account holding `roles.manage` or `users.manage_privileged` is *privileged*; resetting, signing out, editing,
+  (de)activating or re-roling it needs `users.manage_privileged` (`403 PRIVILEGED_ACCOUNT_PROTECTED` otherwise — HR_ADMIN
+  can no longer take over a System Admin). `roles.manage` administers other people's access only: assigning yourself a
+  role or adding a permission to a role you hold may never widen your own permissions or scope
+  (`403 SELF_PRIVILEGE_ESCALATION_NOT_ALLOWED`); editing another role cannot add administration permissions you lack or
+  build an RBAC administrator role beyond your own (`403 ROLE_EDIT_ESCALATION_NOT_ALLOWED`).
 - **Frontend** (`usePermission`, `<PermissionGuard>`, `<RequirePermission>` → 403 page, permission-aware sidebar) is UX only.
 
 | Users API | Permission |

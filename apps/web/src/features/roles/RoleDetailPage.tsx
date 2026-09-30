@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Lock } from 'lucide-react';
-import { CRITICAL_PERMISSIONS, PERMISSIONS, PERMISSION_ACTION_LABELS, ROLES } from '@hr/shared';
+import { CRITICAL_PERMISSIONS, PERMISSIONS, PERMISSION_ACTION_LABELS, ROLES, blockingRoleEditPermissions } from '@hr/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { LoadingBlock } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
+import { useAuth } from '@/hooks/useAuth';
 import { ApiClientError } from '@/lib/api-client';
 import { groupByModule, usePermissions, useRole, useUpdateRolePermissions } from './roles.api';
 
@@ -19,6 +20,7 @@ export function RoleDetailPage() {
   const permissions = usePermissions();
   const update = useUpdateRolePermissions();
   const canManage = usePermission(PERMISSIONS.ROLES_MANAGE);
+  const { user: me } = useAuth();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
@@ -31,6 +33,16 @@ export function RoleDetailPage() {
   const isSystemAdmin = role.data?.code === ROLES.SYSTEM_ADMIN;
   const locked = (code: string) => isSystemAdmin && (CRITICAL_PERMISSIONS as string[]).includes(code);
   const dirty = role.data ? [...selected].sort().join(',') !== [...role.data.permissionCodes].sort().join(',') : false;
+  // Mirrors the API (Task 45): a role you hold can only lose permissions you would not otherwise have — you cannot add
+  // one you lack; on any other role you cannot add administration permissions you lack or build an RBAC admin role
+  // beyond your own permissions. Removing is always possible (System Admin's locked permissions aside).
+  const heldByMe = !!role.data && !!me?.roles.some((x) => x.code === role.data!.code);
+  const addBlocked = (code: string): string | null => {
+    if (!role.data || role.data.permissionCodes.includes(code) || selected.has(code)) return null;
+    const mine = me?.permissions ?? [];
+    if (heldByMe) return mine.includes(code) ? null : 'You hold this role — you cannot add a permission you do not have yourself';
+    return blockingRoleEditPermissions(mine, role.data.permissionCodes, [...selected, code]).length > 0 ? 'Administration permission you do not hold, or an RBAC administrator role beyond your own permissions' : null;
+  };
 
   const toggle = (code: string, checked: boolean) => {
     setSelected((prev) => {
@@ -77,6 +89,9 @@ export function RoleDetailPage() {
       </div>
 
       {message && <Alert tone={message.tone} className="mb-4">{message.text}</Alert>}
+      {heldByMe && canManage && (
+        <Alert tone="info" className="mb-4">You hold this role. You can remove permissions, but adding one you do not already have needs another administrator.</Alert>
+      )}
       {isSystemAdmin && canManage && (
         <Alert tone="success" className="mb-4">
           Permissions marked with a lock are required for System Admin and cannot be removed.
@@ -97,9 +112,9 @@ export function RoleDetailPage() {
                       {locked(p.code) && <Lock className="h-3 w-3 text-slate-400" aria-label="Required" />}
                     </span>
                   }
-                  description={p.description ?? p.code}
+                  description={addBlocked(p.code) ? `${p.description ?? p.code} · ${addBlocked(p.code)}` : p.description ?? p.code}
                   checked={selected.has(p.code)}
-                  disabled={!canManage || locked(p.code)}
+                  disabled={!canManage || locked(p.code) || !!addBlocked(p.code)}
                   onChange={(e) => toggle(p.code, e.target.checked)}
                 />
               ))}

@@ -10,6 +10,16 @@ let admin: { cookie: string; csrf: string; user: { id: string } };
 
 const authed = (m: 'get' | 'post' | 'patch', url: string, a = admin) => request(app)[m](url).set('Cookie', a.cookie).set('x-csrf-token', a.csrf);
 
+/** A privileged-account administrator that is not a System Admin (Task 45), to exercise LAST_SYSTEM_ADMIN directly. */
+async function privilegedAdmin() {
+  if (!(await prisma.role.findUnique({ where: { code: 'PRIV_USER_ADMIN' } }))) {
+    const codes = ['users.view', 'users.create', 'users.update', 'users.activate', 'users.manage_privileged', 'roles.view', 'roles.manage', 'account.manage_recovery', 'dashboard.view'];
+    const perms = await prisma.permission.findMany({ where: { code: { in: codes } } });
+    await prisma.role.create({ data: { code: 'PRIV_USER_ADMIN', name: 'Privileged user admin', dataScope: 'ALL', rolePermissions: { create: perms.map((p) => ({ permissionId: p.id })) } } });
+    await createUser({ email: 'privadmin@users.local', password: PW, role: 'PRIV_USER_ADMIN' });
+  }
+  return loginAs(app, 'privadmin@users.local', PW);
+}
 beforeAll(async () => {
   await resetDatabase();
   await createUser({ email: ADMIN, password: PW, role: 'SYSTEM_ADMIN' });
@@ -178,9 +188,14 @@ describe('deactivate / activate', () => {
   });
 
   it('24. cannot deactivate the last active SYSTEM_ADMIN → 409 LAST_SYSTEM_ADMIN', async () => {
-    // second sysadmin deactivates the first one? No — the acting admin is the only one, so a HR_ADMIN tries.
+    // HR_ADMIN may not touch a privileged account at all (Task 45) …
     const hrAdmin = await loginAs(app, 'hradmin@users.local', PW);
-    const res = await authed('patch', `/api/v1/users/${admin.user.id}/deactivate`, hrAdmin);
+    const refused = await authed('patch', `/api/v1/users/${admin.user.id}/deactivate`, hrAdmin);
+    expect(refused.status).toBe(403);
+    expect(refused.body.error.code).toBe('PRIVILEGED_ACCOUNT_PROTECTED');
+    // … and even a privileged-account administrator cannot deactivate the last active System Admin.
+    const priv = await privilegedAdmin();
+    const res = await authed('patch', `/api/v1/users/${admin.user.id}/deactivate`, priv);
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('LAST_SYSTEM_ADMIN');
     expect((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).isActive).toBe(true);
@@ -192,7 +207,9 @@ describe('deactivate / activate', () => {
     expect(self.body.error.code).toBe('SELF_ROLE_REMOVAL_NOT_ALLOWED');
 
     const hrAdmin = await loginAs(app, 'hradmin@users.local', PW);
-    const other = await authed('patch', `/api/v1/users/${admin.user.id}/roles`, hrAdmin).send({ roleCodes: ['HR_ADMIN'] });
+    const refused = await authed('patch', `/api/v1/users/${admin.user.id}/roles`, hrAdmin).send({ roleCodes: ['HR_ADMIN'] });
+    expect(refused.body.error.code).toBe('PRIVILEGED_ACCOUNT_PROTECTED'); // Task 45: not HR_ADMIN's account to change
+    const other = await authed('patch', `/api/v1/users/${admin.user.id}/roles`, await privilegedAdmin()).send({ roleCodes: ['HR_ADMIN'] });
     expect(other.status).toBe(409);
     expect(other.body.error.code).toBe('LAST_SYSTEM_ADMIN');
 
@@ -225,10 +242,10 @@ describe('privilege escalation guard', () => {
     // roles within own permissions are fine
     const ok = await authed('post', '/api/v1/users', hrAdmin).send({ email: 'esc-ok@users.local', password: PW, roleCodes: ['HR', 'EMPLOYEE'] });
     expect(ok.status).toBe(201);
-    // editing a user who already holds SYSTEM_ADMIN (keeping it) is allowed for HR_ADMIN
+    // Task 45: a user who holds SYSTEM_ADMIN is a privileged account — HR_ADMIN cannot change its roles at all
     const keep = await authed('patch', `/api/v1/users/${admin.user.id}/roles`, hrAdmin).send({ roleCodes: ['SYSTEM_ADMIN', 'HR'] });
-    expect(keep.status).toBe(200);
-    await authed('patch', `/api/v1/users/${admin.user.id}/roles`).send({ roleCodes: ['SYSTEM_ADMIN'] }); // restore
+    expect(keep.status).toBe(403);
+    expect(keep.body.error.code).toBe('PRIVILEGED_ACCOUNT_PROTECTED');
   });
 });
 
@@ -371,8 +388,8 @@ describe('RBAC administration vs business authority (Task 43 separation of dutie
     const sys = await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['SYSTEM_ADMIN'] });
     expect(sys.body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
     expect((await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['PARTIAL_ADMIN'] })).status).toBe(200);
-    // HR_ADMIN carries users.* (held) and no roles.manage → grantable; a role with an administration permission the actor lacks is not
-    expect((await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['HR_ADMIN'] })).status).toBe(200);
+    // HR_ADMIN carries account.manage_recovery, an administration permission RBAC_ADMIN_LITE lacks (Task 45) → not grantable
+    expect((await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['HR_ADMIN'] })).body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
     await prisma.userRole.deleteMany({ where: { userId: rbacAdmin.user.id } });
     await prisma.userRole.create({ data: { userId: rbacAdmin.user.id, roleId: (await prisma.role.findUniqueOrThrow({ where: { code: 'PARTIAL_ADMIN' } })).id } });
     await prisma.role.update({ where: { code: 'PARTIAL_ADMIN' }, data: { rolePermissions: { create: [{ permissionId: (await prisma.permission.findUniqueOrThrow({ where: { code: 'users.update' } })).id }] } } });

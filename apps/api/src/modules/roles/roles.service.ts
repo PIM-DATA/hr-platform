@@ -1,9 +1,10 @@
 import type { Prisma } from '@prisma/client';
-import { AUDIT_ACTIONS, CRITICAL_PERMISSIONS, ROLES, type PermissionDto, type RoleDto, type UpdateRolePermissionsInput } from '@hr/shared';
+import { AUDIT_ACTIONS, CRITICAL_PERMISSIONS, ROLES, blockingRoleEditPermissions, type PermissionDto, type RoleDto, type UpdateRolePermissionsInput } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
 import type { AuthContext } from '../auth/auth.types';
+import { assertNoSelfEscalation } from '../users/account-guard';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 
@@ -44,7 +45,8 @@ export const rolesService = {
 
   /**
    * Replaces the role's permission set (deterministic: the result equals the deduplicated input).
-   * Rules: every code must exist; SYSTEM_ADMIN keeps CRITICAL_PERMISSIONS. Old/new audited in the same transaction.
+   * Rules: every code must exist; SYSTEM_ADMIN keeps CRITICAL_PERMISSIONS; no self-escalation through a held role and no
+   * administration permission beyond the actor's own (Task 45). Old/new audited in the same transaction.
    * Takes effect on the next request of every affected user because req.auth is rebuilt per request.
    */
   async setPermissions(id: string, input: UpdateRolePermissionsInput, actor: Actor): Promise<RoleDto> {
@@ -67,6 +69,18 @@ export const rolesService = {
       }
 
       const oldCodes = before.rolePermissions.map((rp) => rp.permission.code).sort();
+      // Task 45 separation of duties, decided before anything is written:
+      //  - a role the actor holds may lose permissions but never gain one the actor does not already have;
+      //  - any other role may gain business permissions (governance of other users), never administration permissions
+      //    the actor lacks, and a role carrying roles.manage must stay within the actor's own permissions.
+      if (actor.auth.roles.includes(before.code)) {
+        assertNoSelfEscalation(actor, { permissions: [...actor.auth.permissions, ...codes], dataScope: actor.auth.dataScope }, 'ROLE_EDIT_HELD_ROLE');
+      } else {
+        const blocking = blockingRoleEditPermissions(actor.auth.permissions, oldCodes, codes);
+        if (blocking.length > 0) {
+          throw new AppError(403, 'ROLE_EDIT_ESCALATION_NOT_ALLOWED', `You cannot add administration permissions you do not hold, or build an RBAC administrator role beyond your own permissions: ${blocking.slice(0, 5).join(', ')}${blocking.length > 5 ? ', …' : ''}`);
+        }
+      }
       await tx.rolePermission.deleteMany({ where: { roleId: id } });
       await tx.rolePermission.createMany({ data: permissions.map((p) => ({ roleId: id, permissionId: p.id })) });
 

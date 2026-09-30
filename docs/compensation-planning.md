@@ -125,7 +125,9 @@ EMPLOYEE has none. Services check permissions and scope, not role names. **SYSTE
 (separation of duties: administering RBAC is not salary authority). It still assigns MANAGER / HR / HR_ADMIN /
 EXECUTIVE through `roles.manage` — the role-grant guard lets a `roles.manage` holder grant business permissions it does
 not hold, never administration ones or a role that itself carries `roles.manage` (README, "Authorization"). Granting
-compensation permissions to an administrator is a deliberate, audited change on the Roles page. No `view_own`
+compensation permissions to an administrator is a deliberate, audited change made by **another** administrator: since
+Task 45 an administrator cannot give themselves these permissions, neither by assigning themselves a role nor by editing
+a role they hold (docs/account-security-rbac.md). No `view_own`
 permission exists: employees see nothing of planning in this release.
 
 ## 11. Confidentiality and visibility

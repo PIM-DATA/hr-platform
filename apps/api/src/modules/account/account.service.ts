@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from '../../lib/password';
 import { hashToken } from '../auth/session.service';
 import type { AuthContext } from '../auth/auth.types';
 import type { Actor } from '../leave/leave-types.service';
+import { assertCanAdministerAccount } from '../users/account-guard';
 
 /**
  * Account recovery and session administration.
@@ -73,6 +74,8 @@ export const accountService = {
     }
     const user = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true, email: true, isActive: true } });
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+    // A reset link is a way into the account: never for a privileged account without privileged-account authority.
+    await assertCanAdministerAccount(prisma, actor, user.id, 'PASSWORD_RESET');
     if (!user.isActive) throw new AppError(409, 'USER_INACTIVE', 'Reactivate the account before issuing a password reset link');
 
     const rawToken = generateResetToken();
@@ -147,6 +150,7 @@ export const accountService = {
   async revokeUserSessions(targetUserId: string, actor: Actor): Promise<{ revoked: number }> {
     const user = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+    await assertCanAdministerAccount(prisma, actor, user.id, 'REVOKE_SESSIONS');
     return prisma.$transaction(async (tx) => {
       const { count } = await tx.session.deleteMany({ where: { userId: targetUserId } });
       await auditService.log(

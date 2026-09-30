@@ -48,6 +48,16 @@ What stands between this system and real use:
 | PRODUCTION | **NO** — see §28 |
 | ENTERPRISE | **NO** — see §29 |
 
+### Remediation status (updated after the audit)
+
+| Finding | Status | Evidence |
+|---|---|---|
+| T44-P0-01 password-reset / PATCH / deactivate takeover of a privileged account | **RESOLVED — Task 45** | Exploit reproduced first (`tests/privileged-accounts.test.ts` failed: HR_ADMIN reset SYSTEM_ADMIN → `201`); after the fix `403 PRIVILEGED_ACCOUNT_PROTECTED`, no token, no audit row, sessions and password unchanged; same for PATCH, roles, activate, deactivate, sign-out and the offboarding path; browser walk confirmed. Semantics: docs/account-security-rbac.md |
+| T44-P1-01 RBAC separation of duties (`roles.manage` self-escalation) | **RESOLVED — Task 45** | Paths A (self-assign), C (edit held role), D (edit role then self-assign), data-scope widening and a crafted "RBAC admin + business" role → 403; compensation Apply and payroll administration stay 403 afterwards. Remaining governance limits (two colluding administrators, account creation, recovery links for ordinary accounts) are documented, not prevented |
+| All other findings | open | — |
+
+The classifications above are unchanged by these fixes; the remaining Pilot blockers are listed in §27.
+
 ## 2. Current architecture
 
 One customer = one deployment = one PostgreSQL database (docs/production-readiness.md §1; confirmed in code: no
@@ -486,7 +496,7 @@ copilot prompts, browser walk) were run from the session scratch area against th
 
 ## 23. P0 findings
 
-**T44-P0-01 — Password-reset link lets a lower-privileged admin take over a higher-privileged account**
+**T44-P0-01 — Password-reset link lets a lower-privileged admin take over a higher-privileged account** — ✅ RESOLVED in Task 45 (see Remediation status)
 - Area: authentication / RBAC · Evidence: live — HR_ADMIN issued a reset link for a SYSTEM_ADMIN (`201`), consumed it
   (`204`) and logged in with `roles.manage` (`200`); `account.service.ts:70-98` checks only "not yourself". Same class:
   `PATCH /users/:id` (email, employee re-link) and deactivate.
@@ -502,7 +512,7 @@ copilot prompts, browser walk) were run from the session scratch area against th
 
 | ID | Area | Evidence | Impact | Remediation | Blocks Pilot / Prod / Ent |
 |---|---|---|---|---|---|
-| T44-P1-01 | RBAC separation of duties | Live stress test §6.1: self-assign HR_ADMIN; edit own role; edit EMPLOYEE then self-assign — all 200 | `roles.manage` = unrestricted super-admin; Task 43 SoD claim is false; one call gives any business authority (audited only) | `setPermissions`: refuse adding permissions the actor lacks and editing roles the actor holds (or require a second approver); `resolveRoles`: no `roles.manage` bypass when target = actor; correct the Task 43 docs | Conditional (document "SYSTEM_ADMIN is super-admin" + audit review) / yes / yes |
+| T44-P1-01 ✅ resolved (Task 45) | RBAC separation of duties | Live stress test §6.1: self-assign HR_ADMIN; edit own role; edit EMPLOYEE then self-assign — all 200 | `roles.manage` = unrestricted super-admin; Task 43 SoD claim is false; one call gives any business authority (audited only) | `setPermissions`: refuse adding permissions the actor lacks and editing roles the actor holds (or require a second approver); `resolveRoles`: no `roles.manage` bypass when target = actor; correct the Task 43 docs | Conditional (document "SYSTEM_ADMIN is super-admin" + audit review) / yes / yes |
 | T44-P1-02 | Build / install | Live: clean clone `npm run build` fails; Prisma client not generated; docs omit the step | Documented install fails for every new customer | Run `prisma generate` in `build` (or `postinstall`); document it; CI fresh-clone build | yes / yes / yes |
 | T44-P1-03 | Config fail-open | `env.ts:17` default `development`; `npm start` sets no `NODE_ENV` | Forgetting one variable disables every production guard (error detail, Secure cookie, HSTS, URL/CORS/copilot checks, demo seed) | Fail closed: generic errors unless explicitly development; `NODE_ENV=production` in the start script or refuse non-local DB/https origin with non-production mode | yes / yes / yes |
 | T44-P1-04 | Rate limit behind proxy | `TRUST_PROXY` default 0, unvalidated; limiters per IP in memory | Behind the documented proxy, 10 bad logins lock out every user for 15 min | Make `TRUST_PROXY` mandatory in production; log the resolved client IP at startup; add per-account throttle | yes / yes / yes |
@@ -573,13 +583,12 @@ login Origin check · production 500 test · copilot audit id ≠ request id · 
 ## 27. Commercial pilot classification — **CONDITIONAL**
 
 Blockers (must be fixed or explicitly accepted before a real customer pilot):
-1. **T44-P0-01** reset/edit/deactivate target privilege check (fix).
+1. ~~**T44-P0-01** reset/edit/deactivate target privilege check (fix).~~ Resolved in Task 45.
 2. **T44-P1-02** build step (fix) and **T44-P1-03** `NODE_ENV` fail-closed (fix).
 3. **T44-P1-05** performance/competency reports open to every employee (fix); **T44-P1-06** engagement differencing (fix,
    or do not run anonymous surveys in the pilot); **T44-P1-20** salary letter redaction (fix); **T44-P1-18** audit free
    text (fix); **T44-P1-24** payroll export audit (fix); **T44-P1-09** global no-store (fix).
-4. **T44-P1-01** RBAC SoD: fix, or state in the pilot agreement that SYSTEM_ADMIN is an unrestricted super-admin and
-   review role-change audit events weekly.
+4. ~~**T44-P1-01** RBAC SoD.~~ Resolved in Task 45.
 5. Operator commitments written into the pilot checklist: correct `TRUST_PROXY` (**T44-P1-04**), proxy security headers
    (**T44-P1-08**), scheduled off-host backups of the database **and** document directory with a restore drill
    (**T44-P1-10/11**), an external uptime check and a process supervisor (**T44-P1-12**).

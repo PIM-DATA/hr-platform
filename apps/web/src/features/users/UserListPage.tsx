@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, KeyRound, LogOut, Pencil, UserCheck, UserX } from 'lucide-react';
+import { Plus, KeyRound, LogOut, Pencil, ShieldCheck, UserCheck, UserX } from 'lucide-react';
 import { PERMISSIONS, type UserDto } from '@hr/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -32,6 +32,8 @@ export function UserListPage() {
   const canUpdate = usePermission(PERMISSIONS.USERS_UPDATE);
   const canActivate = usePermission(PERMISSIONS.USERS_ACTIVATE);
   const canRecover = usePermission(PERMISSIONS.ACCOUNT_MANAGE_RECOVERY);
+  // Task 45: a privileged account (RBAC / privileged-account administration) is administered only with this permission.
+  const canManagePrivileged = usePermission(PERMISSIONS.USERS_MANAGE_PRIVILEGED);
   const toast = useToast();
 
   const [search, setSearch] = useState('');
@@ -74,6 +76,7 @@ export function UserListPage() {
         <div>
           <div className="font-medium text-slate-900">{u.email}</div>
           {u.id === me?.id && <span className="text-xs text-brand-600">You</span>}
+          {u.privileged && <span className={`${u.id === me?.id ? 'ml-2 ' : ''}inline-flex items-center gap-1 text-xs text-slate-500`}><ShieldCheck className="h-3 w-3" aria-hidden="true" />Privileged administrator</span>}
         </div>
       ),
     },
@@ -101,7 +104,11 @@ export function UserListPage() {
       key: 'actions',
       header: <span className="sr-only">Actions</span>,
       className: 'text-right',
-      render: (u) => (
+      render: (u) => (u.privileged && !canManagePrivileged && u.id !== me?.id ? (
+        <span className="inline-flex items-center gap-1 text-xs text-slate-500" title="Only a privileged-account administrator can change this account">
+          <ShieldCheck className="h-4 w-4" aria-hidden="true" />Protected
+        </span>
+      ) : (
         <div className="flex justify-end gap-1">
           {canUpdate && <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, user: u })} aria-label="Edit"><Pencil className="h-4 w-4" /></Button>}
           {canRecover && u.id !== me?.id && (
@@ -118,7 +125,7 @@ export function UserListPage() {
             )
           )}
         </div>
-      ),
+      )),
     },
   ];
 

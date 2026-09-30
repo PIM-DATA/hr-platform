@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { PASSWORD_MIN_LENGTH, blockingGrantPermissions, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
+import { PASSWORD_MIN_LENGTH, blockingGrantPermissions, selfEscalation, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -30,11 +30,22 @@ export function UserFormModal({ open, onClose, roles, user }: UserFormModalProps
   const isEdit = !!user;
   const { user: me } = useAuth();
   const { create, update, setRoles } = useUserMutations();
-  // Mirrors the API rule (blockingGrantPermissions + data scope); roles the user already has stay editable.
+  // Mirrors the API rules (blockingGrantPermissions + data scope, and no self-escalation); roles the user already has
+  // stay editable.
   const SCOPE_RANK: Record<string, number> = { SELF: 0, TEAM: 1, ALL: 2 };
-  const canGrant = (r: RoleDto) =>
-    (user?.roles.some((ur) => ur.code === r.code) ?? false) ||
-    (blockingGrantPermissions(me?.permissions ?? [], r.permissionCodes).length === 0 && (SCOPE_RANK[r.dataScope] ?? 0) <= (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0));
+  const isSelf = !!user && user.id === me?.id;
+  const widensSelf = (r: RoleDto) => {
+    const e = selfEscalation({ permissions: me?.permissions ?? [], dataScope: me?.dataScope ?? 'SELF' }, { permissions: [...(me?.permissions ?? []), ...r.permissionCodes], dataScope: (SCOPE_RANK[r.dataScope] ?? 0) > (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0) ? r.dataScope : me?.dataScope ?? 'SELF' });
+    return e.gained.length > 0 || e.scopeWidened;
+  };
+  const held = (r: RoleDto) => user?.roles.some((ur) => ur.code === r.code) ?? false;
+  const blockReason = (r: RoleDto): string | null => {
+    if (held(r)) return null;
+    if (isSelf && widensSelf(r)) return 'would widen your own access — another administrator must assign it';
+    if (blockingGrantPermissions(me?.permissions ?? [], r.permissionCodes).length > 0 || (SCOPE_RANK[r.dataScope] ?? 0) > (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0)) return 'requires higher privileges';
+    return null;
+  };
+  const canGrant = (r: RoleDto) => blockReason(r) === null;
   const [serverError, setServerError] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const debouncedSearch = useDebounce(employeeSearch);
@@ -139,7 +150,7 @@ export function UserFormModal({ open, onClose, roles, user }: UserFormModalProps
               <Checkbox
                 key={r.code}
                 label={r.name}
-                description={`${r.description ?? ''} · scope ${r.dataScope}${canGrant(r) ? '' : ' · requires higher privileges'}`}
+                description={`${r.description ?? ''} · scope ${r.dataScope}${canGrant(r) ? '' : ` · ${blockReason(r)}`}`}
                 checked={selectedRoles.includes(r.code)}
                 disabled={!canGrant(r)}
                 onChange={(e) => toggleRole(r.code, e.target.checked)}

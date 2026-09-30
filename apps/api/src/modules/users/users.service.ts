@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import {
-  blockingGrantPermissions,
+  blockingGrantPermissions, isPrivilegedAccount,
   AUDIT_ACTIONS, ROLES,
   type CreateUserInput, type EmployeeOption, type UpdateUserInput, type UpdateUserRolesInput,
   type UserDto, type UserListQuery,
@@ -9,7 +9,8 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { hashPassword } from '../../lib/password';
 import { auditService, diffFields } from '../../services/audit/audit.service';
-import { isScopeWithin } from '../../services/authorization/authorization.service';
+import { computeEffectivePermissions, isScopeWithin, resolveDataScope } from '../../services/authorization/authorization.service';
+import { assertCanAdministerAccount, assertNoSelfEscalation } from './account-guard';
 import type { AuthContext } from '../auth/auth.types';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
@@ -17,7 +18,7 @@ type Tx = Prisma.TransactionClient;
 
 const userInclude = {
   employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
-  userRoles: { include: { role: { select: { id: true, code: true, name: true } } } },
+  userRoles: { include: { role: { select: { id: true, code: true, name: true, rolePermissions: { select: { permission: { select: { code: true } } } } } } } },
 } satisfies Prisma.UserInclude;
 type UserRecord = Prisma.UserGetPayload<{ include: typeof userInclude }>;
 
@@ -31,7 +32,9 @@ function toDto(u: UserRecord): UserDto {
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
     employee: u.employee,
-    roles: u.userRoles.map((ur) => ur.role).sort((a, b) => a.code.localeCompare(b.code)),
+    roles: u.userRoles.map(({ role }) => ({ id: role.id, code: role.code, name: role.name })).sort((a, b) => a.code.localeCompare(b.code)),
+    // Privileged = can administer RBAC or privileged accounts (Task 45); decided by permissions, never a role name.
+    privileged: isPrivilegedAccount(u.userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.code))),
   };
 }
 
@@ -109,6 +112,7 @@ async function countActiveSystemAdmins(tx: Tx | typeof prisma, excludeUserId?: s
 export async function deactivateUserWithTx(tx: Tx, id: string, actor: Actor, reason: string): Promise<{ disabled: boolean; sessionsRevoked: number }> {
   if (id === actor.auth.userId) throw new AppError(409, 'SELF_DEACTIVATION_NOT_ALLOWED', 'You cannot deactivate your own account');
   const before = await findOrThrow(tx, id);
+  await assertCanAdministerAccount(tx, actor, id, 'DEACTIVATE');
   if (!before.isActive) return { disabled: false, sessionsRevoked: 0 };
   const isSystemAdmin = before.userRoles.some((ur) => ur.role.code === ROLES.SYSTEM_ADMIN);
   if (isSystemAdmin && (await countActiveSystemAdmins(tx, id)) === 0) throw new AppError(409, 'LAST_SYSTEM_ADMIN', 'This is the last active System Admin and cannot be deactivated');
@@ -183,6 +187,8 @@ export const usersService = {
   async update(id: string, input: UpdateUserInput, actor: Actor): Promise<UserDto> {
     const user = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
+      // Every PATCH field is identity-relevant (login e-mail, the employee record behind SELF-scope data).
+      await assertCanAdministerAccount(tx, actor, id, 'UPDATE');
       if (input.email !== undefined) await assertEmailAvailable(tx, input.email, id);
       if (input.employeeId) await assertEmployeeLinkable(tx, input.employeeId, id);
 
@@ -209,6 +215,7 @@ export const usersService = {
   async setRoles(id: string, input: UpdateUserRolesInput, actor: Actor): Promise<UserDto> {
     const user = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
+      await assertCanAdministerAccount(tx, actor, id, 'SET_ROLES');
       const oldCodes = before.userRoles.map((ur) => ur.role.code).sort();
       const roles = await resolveRoles(tx, input.roleCodes, actor, oldCodes);
       const newCodes = roles.map((r) => r.code).sort();
@@ -221,6 +228,10 @@ export const usersService = {
         if (before.isActive && (await countActiveSystemAdmins(tx, id)) === 0) {
           throw new AppError(409, 'LAST_SYSTEM_ADMIN', 'This is the last active System Admin; assign the role to another user first');
         }
+      }
+      // roles.manage administers OTHER people's access: an assignment to yourself may never add a permission or widen scope.
+      if (id === actor.auth.userId) {
+        assertNoSelfEscalation(actor, { permissions: computeEffectivePermissions(roles), dataScope: resolveDataScope(roles) }, 'SELF_ROLE_ASSIGNMENT');
       }
 
       await tx.userRole.deleteMany({ where: { userId: id } });
@@ -241,6 +252,7 @@ export const usersService = {
     if (id === actor.auth.userId) throw new AppError(409, 'SELF_DEACTIVATION_NOT_ALLOWED', 'You cannot deactivate your own account');
     const user = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
+      await assertCanAdministerAccount(tx, actor, id, 'DEACTIVATE');
       if (!before.isActive) return before;
       const isSystemAdmin = before.userRoles.some((ur) => ur.role.code === ROLES.SYSTEM_ADMIN);
       if (isSystemAdmin && (await countActiveSystemAdmins(tx, id)) === 0) {
@@ -261,6 +273,7 @@ export const usersService = {
   async activate(id: string, actor: Actor): Promise<UserDto> {
     const user = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
+      await assertCanAdministerAccount(tx, actor, id, 'ACTIVATE');
       if (before.isActive) return before;
       const after = await tx.user.update({ where: { id }, data: { isActive: true }, include: userInclude });
       await auditService.log(
