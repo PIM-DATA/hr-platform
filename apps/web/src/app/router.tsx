@@ -125,6 +125,10 @@ import { ExpenseIndex, ExpenseLayout } from '@/features/expense/expense-ui';
 import { ServicesIndex, ServicesLayout } from '@/features/employee-services/services-ui';
 import { MyLettersPage, MyServicesPage } from '@/features/employee-services/MyServicesPage';
 import { CatalogPage, LettersPage, RequestQueuePage, ServicesDashboardPage, ServicesReportsPage, TemplatesPage } from '@/features/employee-services/AdminPages';
+import { CompensationIndex, CompensationLayout } from '@/features/compensation-planning/comp-ui';
+import { MyPlanningPage } from '@/features/compensation-planning/MyPlanningPage';
+import { CycleDetailPage, CyclesPage as CompCyclesPage } from '@/features/compensation-planning/CyclesPage';
+import { CompReportsPage } from '@/features/compensation-planning/ReportsPage';
 import { MyExpensesPage } from '@/features/expense/MyExpensesPage';
 import { CategoriesPage as ExpenseCategoriesPage, ExpenseAnalyticsPage, ExpenseDashboardPage, ExpenseReportsPage, PoliciesPage as ExpensePoliciesPage, TravelRequestsPage } from '@/features/expense/AdminPages';
 import { MyBenefitsPage } from '@/features/benefits/MyBenefitsPage';
@@ -497,6 +501,20 @@ export const router = createBrowserRouter([
                 { element: <RequirePermission permission={PERMISSIONS.SERVICE_REQUEST_MANAGE} />, children: [{ path: 'catalog', element: <CatalogPage /> }] },
                 { element: <RequirePermission permission={[PERMISSIONS.HR_LETTER_ISSUE, PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES]} />, children: [{ path: 'letters', element: <LettersPage /> }] },
                 { element: <RequirePermission permission={PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES} />, children: [{ path: 'templates', element: <TemplatesPage /> }] },
+              ],
+            }],
+          },
+          {
+            // Compensation planning (Task 43). HR pages need a compensation HR permission and an organization-wide scope;
+            // planners see only rows assigned to them; report readers see aggregates. The API enforces all of it.
+            element: <RequirePermission permission={[PERMISSIONS.COMP_PLAN_VIEW_TEAM, PERMISSIONS.COMP_PLAN_PLAN, PERMISSIONS.COMP_PLAN_REVIEW, PERMISSIONS.COMP_PLAN_MANAGE_CYCLES, PERMISSIONS.COMP_PLAN_MANAGE_BUDGET, PERMISSIONS.COMP_PLAN_FINALIZE, PERMISSIONS.COMP_PLAN_APPLY, PERMISSIONS.COMP_PLAN_VIEW_REPORTS]} />,
+            children: [{
+              path: 'hrm/compensation', element: <CompensationLayout />,
+              children: [
+                { index: true, element: <CompensationIndex /> },
+                { element: <RequirePermission permission={[PERMISSIONS.COMP_PLAN_VIEW_TEAM, PERMISSIONS.COMP_PLAN_PLAN]} />, children: [{ path: 'my', element: <MyPlanningPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.COMP_PLAN_REVIEW, PERMISSIONS.COMP_PLAN_MANAGE_CYCLES, PERMISSIONS.COMP_PLAN_MANAGE_BUDGET, PERMISSIONS.COMP_PLAN_FINALIZE, PERMISSIONS.COMP_PLAN_APPLY]} />, children: [{ path: 'cycles', element: <CompCyclesPage /> }, { path: 'cycles/:id', element: <CycleDetailPage /> }] },
+                { element: <RequirePermission permission={[PERMISSIONS.COMP_PLAN_VIEW_REPORTS, PERMISSIONS.COMP_PLAN_REVIEW, PERMISSIONS.COMP_PLAN_MANAGE_CYCLES]} />, children: [{ path: 'reports', element: <CompReportsPage /> }] },
               ],
             }],
           },

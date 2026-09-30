@@ -315,3 +315,14 @@ Still open: compensation planning decision, timesheets decision, own-data copilo
 requests (deferred), and the enterprise-readiness items (MFA, SSO, monitoring, retention automation, secret
 management) listed in `docs/production-readiness.md`.
 
+---
+
+## 19. Task 43 addendum — compensation planning (2026-09-30)
+
+| ID | Status | What changed |
+|---|---|---|
+| G-13 | RESOLVED (decision: in scope, base salary only) | Salary review cycles with frozen population snapshots, planner proposals, organization budget ceiling, HR review with append-only history, finalization that changes no salary, and an explicit Apply through the payroll compensation source (payroll authority required, stale-source and departed-employee blockers, idempotent). No recommendation, ranking or merit matrix; performance shown as labelled context only; talent data not used. See `docs/compensation-planning.md`. |
+
+Still open: timesheets (G-17, a product choice), own-data copilot tools for benefits / expenses / requests (deferred),
+and Final Enterprise Readiness (MFA, SSO, monitoring, retention automation, secret management).
+

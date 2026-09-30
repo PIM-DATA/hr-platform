@@ -8,14 +8,14 @@ One employee data · One organization structure · One permission system · One 
 |---|---|---|
 | Foundation | Authentication and sessions, RBAC with data scopes, users / roles / permission matrix, organization structure, employee master with history, audit log, dashboard, notifications, account security, workflow engine, work calendars | ✅ |
 | Administration | Users, roles and permissions, audit log, privacy, data import, leave settings, workflow definitions, workflow monitor (41), settings hub (41), payroll configuration UI (41) | ✅ |
-| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39), Employee services and HR letters (40) | ✅ MVPs with documented limitations |
+| HRM | Attendance and shifts (20), Leave (9–14), Overtime (21), Payroll (22), Employee relations (26), Performance (23), Recruitment (27), Document center and Report center (30), Employee lifecycle: onboarding / probation / offboarding (34), Benefits and claims (36), Expenses and travel (39), Employee services and HR letters (40), Compensation planning / salary review cycles (43) | ✅ MVPs with documented limitations |
 | HRD | Competency and skill gaps (24), Training / TNA / IDP (25), OJT / learning paths / certifications (35), Career / talent / 9-box / succession (28) | ✅ |
 | HROD | Workforce planning and organization design (32), Engagement / eNPS surveys (33) | ✅ |
 | Analytics and AI | Employee 360 and executive analytics (29), grounded HR Copilot (31); executive roll-ups and copilot aggregate summaries for benefits, expenses/travel, employee services, lifecycle, learning, workforce planning and engagement (42) | ✅ |
 | Operations | Production configuration, backups and runbook (15–16), customer data import (17), account recovery and privacy operations (18), pilot review (19) | ✅ |
 
-Not yet available (tracked in [docs/product-gap-audit.md](docs/product-gap-audit.md)): compensation planning,
-timesheets, and the enterprise items under "Known limitations".
+Not yet available (tracked in [docs/product-gap-audit.md](docs/product-gap-audit.md)): timesheets, and the
+enterprise items under "Known limitations".
 
 ### Phase 2 — HRM Operations (complete)
 
@@ -1087,6 +1087,26 @@ follow it; HR works a queue; document requests end in an issued letter.
   Nothing is inferred from a payslip.
 - **Print-ready, not PDF** — letters print from the browser. There is no server-generated PDF, no electronic
   signature and no statutory certification claim.
+
+## Compensation planning and salary review (Task 43)
+
+Guide: [docs/compensation-planning.md](docs/compensation-planning.md). HRM → Compensation planning.
+
+- **Salary review cycles** — DRAFT → ACTIVE → REVIEW → FINALIZED → ARCHIVED for one organization, one currency and
+  one effective date. The population and each person's current salary record, department, job and manager are
+  frozen at activation; nobody is included or left out for performance, potential or any personal attribute.
+- **People decide** — planners (the manager at activation, reassignable by HR) enter a proposed base salary for the
+  rows assigned to them; the increase and percentage are derived in Decimal. No recommendation, ranking, merit matrix
+  or default increase exists. Finalized performance results may be shown as labelled context only.
+- **Budget ceiling** — Σ increase checked exactly against the cycle budget at submit, HR change and finalize.
+- **HR review** — return, change (with a reason, append-only history) and approve; finalize freezes the plan and
+  changes no salary.
+- **Explicit Apply** — needs `compensation_planning.apply` and `payroll.manage`; goes through the payroll source
+  service; blocks the whole cycle if a salary changed at the source or an employee left; idempotent under concurrency.
+- **Confidential** — planners see only their rows; executives see aggregate reports; nothing reaches employees,
+  notifications, audit or the privacy export as a salary figure or note.
+- Not included: bonus / equity / total rewards, market data, pay-equity analysis, salary ranges, tax modelling, FX,
+  promotion workflow, compensation letters, AI recommendations.
 
 ## Administration, settings and workflow operations (Task 41)
 

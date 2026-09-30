@@ -162,6 +162,15 @@ export const PERMISSIONS = {
   HR_LETTER_ISSUE: 'hr_letter.issue',
   HR_LETTER_MANAGE_TEMPLATES: 'hr_letter.manage_templates',
   HR_LETTER_VIEW_REPORTS: 'hr_letter.view_reports',
+  // Compensation planning (Task 43) — a high-impact domain: humans decide, the system only calculates budget impact.
+  COMP_PLAN_VIEW_TEAM: 'compensation_planning.view_team',
+  COMP_PLAN_PLAN: 'compensation_planning.plan',
+  COMP_PLAN_REVIEW: 'compensation_planning.review',
+  COMP_PLAN_MANAGE_CYCLES: 'compensation_planning.manage_cycles',
+  COMP_PLAN_MANAGE_BUDGET: 'compensation_planning.manage_budget',
+  COMP_PLAN_FINALIZE: 'compensation_planning.finalize',
+  COMP_PLAN_APPLY: 'compensation_planning.apply',
+  COMP_PLAN_VIEW_REPORTS: 'compensation_planning.view_reports',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -324,6 +333,14 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.HR_LETTER_ISSUE, module: 'employee_services', description: 'Issue and void HR letters (a salary letter also needs the payroll authority)' },
   { code: PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES, module: 'employee_services', description: 'Manage HR letter templates' },
   { code: PERMISSIONS.HR_LETTER_VIEW_REPORTS, module: 'employee_services', description: 'Aggregate service request and HR letter reporting; no person' },
+  { code: PERMISSIONS.COMP_PLAN_VIEW_TEAM, module: 'compensation_planning', description: 'See the salary-review rows assigned to me as planner in an open cycle — never anyone else\'s' },
+  { code: PERMISSIONS.COMP_PLAN_PLAN, module: 'compensation_planning', description: 'Enter and submit proposed base salaries for the rows assigned to me as planner' },
+  { code: PERMISSIONS.COMP_PLAN_REVIEW, module: 'compensation_planning', description: 'HR review of every proposal in a cycle (organization-wide scope): return, change with a reason, approve' },
+  { code: PERMISSIONS.COMP_PLAN_MANAGE_CYCLES, module: 'compensation_planning', description: 'Create salary-review cycles, set the population, activate, reassign planners, start review, archive' },
+  { code: PERMISSIONS.COMP_PLAN_MANAGE_BUDGET, module: 'compensation_planning', description: 'Set the base-salary increase budget of a cycle' },
+  { code: PERMISSIONS.COMP_PLAN_FINALIZE, module: 'compensation_planning', description: 'Finalize a reviewed cycle (freezes the approved plan; changes no salary)' },
+  { code: PERMISSIONS.COMP_PLAN_APPLY, module: 'compensation_planning', description: 'Apply a finalized cycle to salary history (also needs payroll.manage, the authority over compensation itself)' },
+  { code: PERMISSIONS.COMP_PLAN_VIEW_REPORTS, module: 'compensation_planning', description: 'Aggregate salary-review reporting: population, completion, budget and increase totals — never a person' },
 ];
 
 /**

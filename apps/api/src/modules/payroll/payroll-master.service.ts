@@ -1,5 +1,5 @@
 import {
-  AUDIT_ACTIONS, SYSTEM_PAY_COMPONENTS, compareBusinessDate,
+  AUDIT_ACTIONS, SYSTEM_PAY_COMPONENTS, addCalendarDays, compareBusinessDate,
   type CompensationDto, type CompensationListQuery, type CreateCompensationInput, type CreatePayComponentInput,
   type CreatePayItemInput, type CreatePayrollPolicyInput, type PayComponentDto, type PayComponentListQuery,
   type PayItemDto, type PayItemListQuery, type PayrollPolicyDto, type UpdateCompensationInput,
@@ -10,8 +10,8 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
 import { workflowDefinitionsService } from '../../services/workflow';
-import { dec, toMoneyString, toQuantityString } from './money';
-import { employeeRef, payrollAudit, type Actor, type Db } from './payroll.types';
+import { dec, money, toMoneyString, toQuantityString, type DecimalLike } from './money';
+import { employeeRef, payrollAudit, type Actor, type Db, type Tx } from './payroll.types';
 
 /**
  * Payroll master data: salary history, the components a payslip can contain, recurring items, and the policy that
@@ -142,6 +142,65 @@ export const compensationService = {
     });
   },
 };
+
+/**
+ * For another module that hands approved salary changes to this source (compensation planning, Task 43).
+ *
+ * Each change was planned against one specific salary record (its baseline). Before anything changes, that record
+ * must still be the employee's latest record, still open, same amount, same currency, and starting before the new
+ * salary — otherwise the plan is stale (someone changed salary in the meantime) and applying it could silently undo
+ * that change. It must also be closable the day before the new salary starts without cutting into a payroll period
+ * that has already paid it (the same rule as `update`). Checked for a whole batch in two queries.
+ */
+export type CompensationBaseline = { employeeId: string; expectedCompensationId: string; expectedBaseSalary: DecimalLike; currencyCode: string; effectiveFrom: string };
+export type CompensationBaselineProblem = 'SOURCE_COMPENSATION_CHANGED' | 'COMPENSATION_IN_USE';
+export async function checkCompensationBaselinesWithTx(db: Db, baselines: CompensationBaseline[]): Promise<Map<string, CompensationBaselineProblem | null>> {
+  const out = new Map<string, CompensationBaselineProblem | null>();
+  if (!baselines.length) return out;
+  const rows = await db.employeeCompensation.findMany({ where: { employeeId: { in: baselines.map((b) => b.employeeId) } }, orderBy: [{ employeeId: 'asc' }, { effectiveFrom: 'desc' }] });
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) if (!latest.has(r.employeeId)) latest.set(r.employeeId, r);
+  const paid = await db.payrollResult.findMany({ where: { compensationId: { in: [...latest.values()].map((r) => r.id) } }, select: { compensationId: true, run: { select: { period: { select: { periodEnd: true } } } } } });
+  const paidTo = new Map<string, string>();
+  for (const p of paid) { if (!p.compensationId) continue; const end = p.run.period.periodEnd; const cur = paidTo.get(p.compensationId); if (!cur || compareBusinessDate(end, cur) > 0) paidTo.set(p.compensationId, end); }
+  for (const b of baselines) {
+    const l = latest.get(b.employeeId);
+    if (!l || l.id !== b.expectedCompensationId || !dec(l.baseSalary).equals(dec(b.expectedBaseSalary)) || l.currencyCode !== b.currencyCode
+      || l.effectiveTo !== null || compareBusinessDate(l.effectiveFrom, b.effectiveFrom) >= 0) { out.set(b.employeeId, 'SOURCE_COMPENSATION_CHANGED'); continue; }
+    const end = paidTo.get(l.id);
+    out.set(b.employeeId, end && compareBusinessDate(addCalendarDays(b.effectiveFrom, -1), end) < 0 ? 'COMPENSATION_IN_USE' : null);
+  }
+  return out;
+}
+
+/**
+ * Applies salary changes inside the caller's transaction: row-locks the employees' salary records, re-checks every
+ * baseline, then for each closes the baseline the day before `effectiveFrom` and opens the new record. History is
+ * never rewritten — the old record keeps its amount and gains an end date. All or nothing: one stale baseline and
+ * nothing is written. Audited here, in the payroll module, like any salary change.
+ */
+export async function applyCompensationChangesWithTx(tx: Tx, changes: (CompensationBaseline & { newBaseSalary: DecimalLike; note: string })[], actor: Actor): Promise<Map<string, string>> {
+  const created = new Map<string, string>();
+  if (!changes.length) return created;
+  const ids = changes.map((c) => c.employeeId);
+  await tx.$executeRaw`SELECT "id" FROM "employee_compensations" WHERE "employee_id" = ANY(${ids}) FOR UPDATE`;
+  const problems = await checkCompensationBaselinesWithTx(tx, changes);
+  const bad = changes.find((c) => problems.get(c.employeeId));
+  if (bad) throw new AppError(409, problems.get(bad.employeeId)!, 'A salary record this change was planned against has changed or is already paid past the new start date; reconcile it first', [{ field: 'employeeId', message: bad.employeeId }]);
+  for (const c of changes) {
+    const closeOn = addCalendarDays(c.effectiveFrom, -1);
+    const before = await tx.employeeCompensation.update({ where: { id: c.expectedCompensationId }, data: { effectiveTo: closeOn } });
+    await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.UPDATE_COMPENSATION, 'EmployeeCompensation', before.id, { effectiveTo: closeOn, source: c.note }, { effectiveTo: null }), tx);
+    const row = await tx.employeeCompensation.create({
+      data: { employeeId: c.employeeId, effectiveFrom: c.effectiveFrom, effectiveTo: null, salaryType: before.salaryType, baseSalary: money(c.newBaseSalary), currencyCode: c.currencyCode, note: c.note, createdByUserId: actor.auth.userId },
+    });
+    await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.CREATE_COMPENSATION, 'EmployeeCompensation', row.id, {
+      employeeId: row.employeeId, effectiveFrom: row.effectiveFrom, effectiveTo: null, baseSalary: toMoneyString(row.baseSalary), currencyCode: row.currencyCode, source: c.note,
+    }), tx);
+    created.set(c.employeeId, row.id);
+  }
+  return created;
+}
 
 // ---------------------------------------------------------------------------
 // pay components

@@ -176,6 +176,12 @@ const templates: Record<NotificationType, (v: TemplateVars) => { title: string; 
   [NOTIFICATION_TYPES.SERVICE_REQUEST_REJECTED]: (v) => ({ title: 'Request declined', body: `Service request ${v.referenceNumber ?? ''} was declined. Open it for the explanation.` }),
   [NOTIFICATION_TYPES.HR_LETTER_ISSUED]: (v) => ({ title: 'A letter was issued for you', body: `Letter ${v.referenceNumber ?? ''} is available in your employee services page.` }),
   [NOTIFICATION_TYPES.HR_LETTER_VOIDED]: (v) => ({ title: 'A letter was voided', body: `Letter ${v.referenceNumber ?? ''} has been voided. HR will issue a replacement if one is needed.` }),
+  [NOTIFICATION_TYPES.COMP_PLAN_CYCLE_OPENED]: (v) => ({ title: 'Salary review open for planning', body: `Salary review "${v.cycleName ?? ''}" is open. Employees are assigned to you for planning.` }),
+  [NOTIFICATION_TYPES.COMP_PLAN_MANAGER_SUBMITTED]: (v) => ({ title: 'Salary review plan submitted', body: `A planner submitted their plan in salary review "${v.cycleName ?? ''}".` }),
+  [NOTIFICATION_TYPES.COMP_PLAN_RETURNED]: (v) => ({ title: 'Salary review proposal returned', body: `HR returned a proposal to you in salary review "${v.cycleName ?? ''}". Open your planning sheet.` }),
+  [NOTIFICATION_TYPES.COMP_PLAN_READY_FOR_REVIEW]: (v) => ({ title: 'Salary review ready for HR review', body: `Every plannable row in salary review "${v.cycleName ?? ''}" has been submitted.` }),
+  [NOTIFICATION_TYPES.COMP_PLAN_FINALIZED]: (v) => ({ title: 'Salary review finalized', body: `Salary review "${v.cycleName ?? ''}" is finalized. No salary has changed until HR applies it.` }),
+  [NOTIFICATION_TYPES.COMP_PLAN_APPLIED]: (v) => ({ title: 'Salary review applied', body: `Salary review "${v.cycleName ?? ''}" was applied to salary history.` }),
   // Benefits (Task 36): claim number, plan name, status. Never an amount, a description, a receipt or a reviewer's words.
   [NOTIFICATION_TYPES.BENEFIT_ENROLLMENT_CONFIRMED]: (v) => ({ title: 'Benefit enrolment confirmed', body: `You are enrolled in ${v.planName ?? 'a benefit plan'}.` }),
   [NOTIFICATION_TYPES.BENEFIT_CLAIM_SUBMITTED]: (v) => ({ title: 'Claim submitted', body: `Claim ${v.claimNumber ?? ''} for ${v.planName ?? 'your benefit'} was submitted and is waiting for approval.` }),

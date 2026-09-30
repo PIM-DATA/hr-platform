@@ -37,3 +37,4 @@ export * from './benefits';
 export * from './expense';
 export * from './employee-services';
 export * from './admin';
+export * from './compensation-planning';

@@ -396,6 +396,12 @@ export const NOTIFICATION_TYPES = {
   SERVICE_REQUEST_REJECTED: 'SERVICE_REQUEST_REJECTED',
   HR_LETTER_ISSUED: 'HR_LETTER_ISSUED',
   HR_LETTER_VOIDED: 'HR_LETTER_VOIDED',
+  COMP_PLAN_CYCLE_OPENED: 'COMP_PLAN_CYCLE_OPENED',
+  COMP_PLAN_MANAGER_SUBMITTED: 'COMP_PLAN_MANAGER_SUBMITTED',
+  COMP_PLAN_RETURNED: 'COMP_PLAN_RETURNED',
+  COMP_PLAN_READY_FOR_REVIEW: 'COMP_PLAN_READY_FOR_REVIEW',
+  COMP_PLAN_FINALIZED: 'COMP_PLAN_FINALIZED',
+  COMP_PLAN_APPLIED: 'COMP_PLAN_APPLIED',
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -413,7 +419,7 @@ export const EMPLOYMENT_STATUSES = ['ACTIVE', 'INACTIVE', 'TERMINATED'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
 
 /** Known audit modules (audit_logs.module). Used to validate the module filter. */
-export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'expense', 'employee_services', 'onboarding', 'account', 'privacy'] as const;
+export const AUDIT_MODULES = ['auth', 'users', 'roles', 'organization', 'employees', 'workflow', 'calendar', 'leave', 'attendance', 'ot', 'payroll', 'performance', 'competency', 'training', 'employee_relations', 'recruitment', 'talent', 'documents', 'reports', 'copilot', 'workforce', 'engagement', 'lifecycle', 'learning', 'benefits', 'expense', 'employee_services', 'compensation_planning', 'onboarding', 'account', 'privacy'] as const;
 export type AuditModule = (typeof AUDIT_MODULES)[number];
 
 /** Audit action codes. Convention: <VERB>_<ENTITY>. */
@@ -786,6 +792,22 @@ export const AUDIT_ACTIONS = {
   UPDATE_HR_LETTER_TEMPLATE: 'UPDATE_HR_LETTER_TEMPLATE',
   ISSUE_HR_LETTER: 'ISSUE_HR_LETTER',
   VOID_HR_LETTER: 'VOID_HR_LETTER',
+  CREATE_COMPENSATION_CYCLE: 'CREATE_COMPENSATION_CYCLE',
+  UPDATE_COMPENSATION_CYCLE: 'UPDATE_COMPENSATION_CYCLE',
+  SET_COMPENSATION_CYCLE_EXCLUSION: 'SET_COMPENSATION_CYCLE_EXCLUSION',
+  ACTIVATE_COMPENSATION_CYCLE: 'ACTIVATE_COMPENSATION_CYCLE',
+  START_COMPENSATION_REVIEW: 'START_COMPENSATION_REVIEW',
+  ARCHIVE_COMPENSATION_CYCLE: 'ARCHIVE_COMPENSATION_CYCLE',
+  CREATE_COMPENSATION_BUDGET: 'CREATE_COMPENSATION_BUDGET',
+  UPDATE_COMPENSATION_BUDGET: 'UPDATE_COMPENSATION_BUDGET',
+  ASSIGN_COMPENSATION_PLANNER: 'ASSIGN_COMPENSATION_PLANNER',
+  UPDATE_COMPENSATION_PROPOSAL: 'UPDATE_COMPENSATION_PROPOSAL',
+  SUBMIT_COMPENSATION_PLAN: 'SUBMIT_COMPENSATION_PLAN',
+  RETURN_COMPENSATION_PROPOSAL: 'RETURN_COMPENSATION_PROPOSAL',
+  OVERRIDE_COMPENSATION_PROPOSAL: 'OVERRIDE_COMPENSATION_PROPOSAL',
+  APPROVE_COMPENSATION_PROPOSAL: 'APPROVE_COMPENSATION_PROPOSAL',
+  FINALIZE_COMPENSATION_CYCLE: 'FINALIZE_COMPENSATION_CYCLE',
+  APPLY_COMPENSATION_CYCLE: 'APPLY_COMPENSATION_CYCLE',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -842,6 +864,7 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   benefits: 'Benefits, welfare and claims',
   expense: 'Expenses and travel',
   employee_services: 'Employee services',
+  compensation_planning: 'Compensation planning',
   onboarding: 'Onboarding',
   account: 'Account security',
   privacy: 'Privacy',

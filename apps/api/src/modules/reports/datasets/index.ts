@@ -17,6 +17,7 @@ import { CERTIFICATION_EXPIRY_WINDOW_DAYS, certificationStatus } from '@hr/share
 import { scopedEmployeeIds } from '../../learning/learning.types';
 import { availableOf, sumsOf } from '../../benefits/benefit-ledger';
 import { toMoneyString } from '../../payroll/money';
+import { cycleReport } from '../../compensation-planning/report.service';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
 
@@ -588,5 +589,33 @@ registerDataset(memoryDataset({
     need(auth, ...SERVICE_REPORTS);
     const rows = await prisma.hrLetter.findMany({ select: { letterTypeSnapshot: true, templateNameSnapshot: true, organizationSnapshot: true, issuedDate: true, status: true, serviceRequestId: true } });
     return rows.map((r): Row => ({ letterType: r.letterTypeSnapshot, template: r.templateNameSnapshot, organization: r.organizationSnapshot, issuedMonth: r.issuedDate.slice(0, 7), status: r.status, fromRequest: !!r.serviceRequestId }));
+  },
+}));
+
+// ---------- compensation planning (Task 43): one row per salary-review cycle, organization level — never an employee, an individual salary or increase, or a comment ----------
+const COMP_REPORTS = [PERMISSIONS.COMP_PLAN_VIEW_REPORTS];
+registerDataset(memoryDataset({
+  id: 'compensation_planning_summary', name: 'Compensation planning summary', description: 'One row per salary-review cycle (not drafts): status, currency, population, completion, and exact organization-level current base, increase and budget. No person, no individual salary, no comment.',
+  requiredPermissions: COMP_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  fields: [
+    f({ id: 'cycle', label: 'Cycle', type: 'STRING', column: 'cycle', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'REVIEW', 'FINALIZED', 'ARCHIVED']) }),
+    f({ id: 'effectiveDate', label: 'Effective date', type: 'DATE', column: 'effectiveDate' }), f({ id: 'applied', label: 'Applied', type: 'BOOLEAN', column: 'applied', groupable: true }),
+    f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
+    f({ id: 'population', label: 'Population', type: 'NUMBER', column: 'population', aggregatable: true }), f({ id: 'plannable', label: 'Plannable', type: 'NUMBER', column: 'plannable', aggregatable: true }),
+    f({ id: 'addressed', label: 'With a proposal', type: 'NUMBER', column: 'addressed', aggregatable: true }), f({ id: 'approved', label: 'Approved', type: 'NUMBER', column: 'approved', aggregatable: true }),
+    f({ id: 'currentBase', label: 'Current base total', type: 'DECIMAL', column: 'currentBase', aggregatable: true, currencyField: 'currency' }),
+    f({ id: 'increase', label: 'Proposed increase total', type: 'DECIMAL', column: 'increase', aggregatable: true, currencyField: 'currency' }),
+    f({ id: 'budget', label: 'Budget', type: 'DECIMAL', column: 'budget', aggregatable: true, currencyField: 'currency' }),
+    f({ id: 'budgetRemaining', label: 'Budget remaining', type: 'DECIMAL', column: 'budgetRemaining', aggregatable: true, currencyField: 'currency' }),
+  ],
+  async load(auth) {
+    need(auth, ...COMP_REPORTS);
+    const cycles = await prisma.compensationReviewCycle.findMany({ where: { status: { not: 'DRAFT' } }, select: { id: true }, orderBy: { effectiveDate: 'desc' }, take: 500 });
+    const reports = await Promise.all(cycles.map((c) => cycleReport(prisma, c.id, false)));
+    return reports.map((r): Row => ({
+      cycle: r.cycle.name, status: r.cycle.status, effectiveDate: r.cycle.effectiveDate, applied: r.cycle.applied, currency: r.cycle.currency,
+      population: r.population.total, plannable: r.population.eligible, addressed: r.population.eligible - r.completion.notStarted, approved: r.completion.approved,
+      currentBase: r.totals.currentBase, increase: r.totals.increase, budget: r.budget?.amount ?? null, budgetRemaining: r.budget?.remaining ?? null,
+    }));
   },
 }));

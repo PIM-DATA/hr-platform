@@ -30,6 +30,7 @@ import { lifecycleRouter } from './modules/lifecycle/lifecycle.routes';
 import { learningRouter } from './modules/learning/learning.routes';
 import { benefitsRouter } from './modules/benefits/benefits.routes';
 import { expenseRouter, registerExpenseWorkflowHandlers } from './modules/expense/expense.routes';
+import { compensationPlanningRouter } from './modules/compensation-planning/comp.routes';
 import { employeeServicesRouter, registerServiceWorkflowHandlers } from './modules/employee-services/employee-services.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { registerBenefitsWorkflowHandlers } from './modules/benefits/claim.service';
@@ -82,6 +83,7 @@ apiRouter.use('/learning', learningRouter);
 apiRouter.use('/benefits', benefitsRouter);
 apiRouter.use('/expense', expenseRouter);
 apiRouter.use('/employee-services', employeeServicesRouter);
+apiRouter.use('/compensation-planning', compensationPlanningRouter);
 apiRouter.use('/admin', adminRouter);
 registerLeaveWorkflowHandlers(); // leave ↔ workflow terminal callbacks (approve / reject / cancel)
 registerBenefitsWorkflowHandlers(); // benefit claims ↔ workflow (reserve → consume / release)
