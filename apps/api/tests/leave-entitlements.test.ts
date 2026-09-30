@@ -130,7 +130,11 @@ describe('entitlements', () => {
       expect(rows.map((r) => r.units).sort()).toEqual([-2, 1.5]);
       await expectReconciled(ent);
       const audit = await prisma.auditLog.findFirst({ where: { action: 'ADJUST_LEAVE_ENTITLEMENT', recordId: ent }, orderBy: { createdAt: 'desc' } });
-      expect(JSON.parse(audit!.newValue!)).toMatchObject({ units: -2, note: 'correction', available: 9.5 });
+      // Task 47 (T44-P1-18) — BEFORE: { units: -2, note: 'correction', available: 9.5 } (free text stored in the audit log).
+      // AFTER: the note stays on the ledger entry; the audit keeps its length only.
+      const logged = JSON.parse(audit!.newValue!);
+      expect(logged).toMatchObject({ units: -2, noteLength: 'correction'.length, available: 9.5 });
+      expect(logged).not.toHaveProperty('note');
     });
     it('19. zero rejected; 20. .25 rejected; 21. note required', async () => {
       for (const [units, note] of [[0, 'x'], [0.25, 'x'], [1, null], [1, '']] as const) {

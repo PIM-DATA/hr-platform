@@ -1,3 +1,4 @@
+import type { AggregateSuppression } from '../privacy-aggregates';
 import { z } from 'zod';
 import { COMPETENCY_ASSESSMENT_STATUSES, COMPETENCY_CYCLE_STATUSES, GAP_STATUSES } from '../enums';
 import { isBusinessDate } from '../business-date';
@@ -349,12 +350,14 @@ export const gapReportQuerySchema = z.object({
 });
 export type GapReportQuery = z.infer<typeof gapReportQuerySchema>;
 
+/** Task 47: gap figures of a group of fewer than MIN_AGGREGATE_GROUP_SIZE people are withheld (null + `suppression`). */
 export interface GapReportDto {
   coverage: { assigned: number; selfSubmitted: number; finalized: number; coveragePercent: number };
-  totals: { employeesAssessed: number; competenciesAssessed: number; employeesWithGap: number; gapItems: number; averageGapNeeded: string | null };
-  topGaps: { competencyId: string; competencyCode: string; competencyName: string; assessed: number; belowRequirement: number; averageGap: string | null; maxGap: number | null }[];
-  byDepartment: { departmentName: string; assessed: number; withGap: number; gapItems: number }[];
-  byJob: { jobTitle: string; assessed: number; withGap: number; gapItems: number }[];
+  suppression: AggregateSuppression | null;
+  totals: { employeesAssessed: number; competenciesAssessed: number; employeesWithGap: number | null; gapItems: number | null; averageGapNeeded: string | null };
+  topGaps: { competencyId: string; competencyCode: string; competencyName: string; assessed: number; belowRequirement: number | null; averageGap: string | null; maxGap: number | null; suppression: AggregateSuppression | null }[];
+  byDepartment: { departmentName: string; assessed: number; withGap: number | null; gapItems: number | null; suppression: AggregateSuppression | null }[];
+  byJob: { jobTitle: string; assessed: number; withGap: number | null; gapItems: number | null; suppression: AggregateSuppression | null }[];
 }
 
 /** The minimal shape development planning (Task 25) consumes. It never recalculates a gap of its own. */

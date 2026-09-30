@@ -100,3 +100,20 @@ No arbitrary SQL, SQL editor or custom joins (one dataset per report); no calcul
 tables, charts or dashboard designer; no scheduled or emailed reports; no warehouse or external BI connector; no
 PDF report designer; no background export job (the 50,000-row cap is the ceiling); no report versioning beyond
 updated-by/at; no individual payroll dataset.
+
+## Task 47 — privacy contract for aggregate datasets (T44-P1-07)
+
+Every `aggregateOnly` dataset declares how its rows relate to people (`privacy` in the registry; a test fails otherwise):
+
+| Kind | Datasets | Rule |
+|---|---|---|
+| `PERSON_ROWS` | ER aggregate, onboarding / probation / offboarding, OJT, learning paths, certifications, benefit enrolments / entitlements / claims, travel, expense reports / categories, service requests, HR letters | Must be aggregated (a row listing is `422 REPORT_AGGREGATION_REQUIRED`); a group of fewer than 5 distinct people is withheld; withheld groups are complemented until they describe none or ≥ 5 people; a filter that leaves out fewer than 5 people withholds the whole result |
+| `PRE_AGGREGATED` | payroll period summary (`employeeCount`), compensation planning summary (`population`) | A row describing fewer than 5 people is withheld |
+| `SOURCE_SUPPRESSED` | engagement survey / question / department summaries | The engagement module's threshold + differencing rule |
+| `NON_PERSONAL` | headcount, workforce plan, organization design | No outcome about a person |
+
+Withheld groups are never returned as 0 or null values: they are left out and counted in `suppression`
+(`suppressedGroups`, `minimumGroupSize`, `reason`), stated in the CSV (`SUPPRESSED …` line) and passed to the copilot as
+`withheldGroups` with an instruction not to estimate them. Limitation: arbitrary filter combinations can in theory still
+be differenced across many queries (a general "tracker" attack); the residual rule and per-person grouping close the
+simple cases the audit found, and all exports are audited.

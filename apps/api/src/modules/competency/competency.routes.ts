@@ -91,8 +91,15 @@ competencyRouter.get('/profile/:employeeId', view, async (req, res) => {
   res.json({ data: await skillGapService.profileFor(employeeId) });
 });
 
-/** Aggregate only, which is what makes it safe for everybody with `competency.view`. */
-competencyRouter.get('/reports/gaps', view, validate(gapReportQuerySchema, 'query'), async (_req, res: Response) => res.json({ data: await skillGapService.gapReport(res.locals.query) }));
+/**
+ * Organization gap report (Task 47, T44-P1-05): a reporting authority with an organization-wide scope — an aggregate over a
+ * small department is somebody's assessment, so `competency.view` (every employee) no longer opens it. Small groups are
+ * suppressed in the service.
+ */
+competencyRouter.get('/reports/gaps', requirePermission(PERMISSIONS.COMPETENCY_VIEW_REPORTS), validate(gapReportQuerySchema, 'query'), async (req, res: Response) => {
+  if (req.auth!.dataScope !== 'ALL') throw AppError.forbidden('Organization competency reports need an organization-wide scope');
+  res.json({ data: await skillGapService.gapReport(res.locals.query) });
+});
 
 /**
  * The development hand-off. Task 25 reads gaps from here rather than recalculating them, so there is one definition

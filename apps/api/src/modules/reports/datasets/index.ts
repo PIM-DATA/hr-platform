@@ -55,7 +55,7 @@ registerDataset(prismaDataset({
 // ---------- headcount_summary (aggregate-safe) ----------
 registerDataset(prismaDataset({
   id: 'headcount_summary', name: 'Headcount summary', description: 'Counts of employees by organization, department, position, status and type. Aggregate only — every row is a count.',
-  requiredPermissions: [PERMISSIONS.EMPLOYEES_VIEW], aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: [PERMISSIONS.EMPLOYEES_VIEW], aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'NON_PERSONAL', note: 'Headcounts per unit; the employee directory itself is visible to employees.view' },
   delegate: prisma.employee, scope: (auth) => employeeScopeWhere(auth), defaultOrder: { employeeCode: 'asc' },
   fields: [
     f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization.name', selectable: false, sortable: false, groupable: true, groupKey: { column: 'organizationId', labels: orgLabels } }),
@@ -213,7 +213,7 @@ registerDataset(prismaDataset({
 // ---------- employee_relations_aggregate (counts only) ----------
 registerDataset(memoryDataset({
   id: 'employee_relations_aggregate', name: 'Employee relations (aggregate)', description: 'Counts of disciplinary actions by department, action type, month and status. No employee, no case, no narrative.',
-  requiredPermissions: [PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE], aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: [PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE], aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'department', label: 'Department', type: 'STRING', column: '', groupable: true }),
     f({ id: 'actionType', label: 'Action type', type: 'STRING', column: '', groupable: true }),
@@ -223,15 +223,15 @@ registerDataset(memoryDataset({
   ],
   load: async (auth) => {
     need(auth, PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE);
-    const rows = await prisma.disciplinaryAction.findMany({ select: { status: true, actionTypeNameSnapshot: true, createdAt: true, case: { select: { departmentName: true } } }, take: 50_000 });
-    return rows.map((r): Row => ({ department: r.case.departmentName ?? 'Unassigned', actionType: r.actionTypeNameSnapshot, month: r.createdAt.toISOString().slice(0, 7), status: r.status, actions: 1 }));
+    const rows = await prisma.disciplinaryAction.findMany({ select: { status: true, actionTypeNameSnapshot: true, createdAt: true, case: { select: { departmentName: true, employeeId: true } } }, take: 50_000 });
+    return rows.map((r): Row => ({ __subject: r.case.employeeId, department: r.case.departmentName ?? 'Unassigned', actionType: r.actionTypeNameSnapshot, month: r.createdAt.toISOString().slice(0, 7), status: r.status, actions: 1 }));
   },
 }));
 
 // ---------- payroll_period_summary (organization-level, closed runs) ----------
 registerDataset(prismaDataset({
   id: 'payroll_period_summary', name: 'Payroll period summary', description: 'One row per closed payroll run: organization, period, employees paid and gross / deduction / net totals. Organization-level only — no individual pay anywhere in the report center.',
-  requiredPermissions: [PERMISSIONS.PAYROLL_MANAGE], aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: [PERMISSIONS.PAYROLL_MANAGE], aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PRE_AGGREGATED', populationField: 'employeeCount' },
   delegate: prisma.payrollRun, scope: () => ({ status: 'CLOSED' }), defaultOrder: { closedAt: 'desc' },
   fields: [
     f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'period.organization.name', sortable: false }),
@@ -249,7 +249,7 @@ registerDataset(prismaDataset({
 // ---------- workforce_plan_summary (aggregate-safe, Task 32) ----------
 registerDataset(memoryDataset({
   id: 'workforce_plan_summary', name: 'Workforce plan summary', description: 'One row per planning cycle, department and job: current headcount snapshot, planned headcount and the delta. Counts only — no notes, no person.',
-  requiredPermissions: [PERMISSIONS.WORKFORCE_VIEW], aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: [PERMISSIONS.WORKFORCE_VIEW], aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'NON_PERSONAL', note: 'Planned headcount per department and job; no outcome about a person' },
   fields: [
     f({ id: 'cycle', label: 'Planning cycle', type: 'STRING', column: 'cycle', groupable: true }),
     f({ id: 'cycleStatus', label: 'Cycle status', type: 'ENUM', column: 'cycleStatus', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'FINALIZED', 'ARCHIVED']) }),
@@ -274,7 +274,7 @@ registerDataset(memoryDataset({
 // ---------- organization_design_summary (aggregate-safe, Task 32) ----------
 registerDataset(memoryDataset({
   id: 'organization_design_summary', name: 'Organization design summary', description: 'One row per scenario and planned unit: planned headcount and whether the unit exists today. No notes.',
-  requiredPermissions: [PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE], aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: [PERMISSIONS.ORG_DESIGN_VIEW, PERMISSIONS.ORG_DESIGN_MANAGE], aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'NON_PERSONAL', note: 'Design scenarios and planned units' },
   fields: [
     f({ id: 'scenario', label: 'Scenario', type: 'STRING', column: 'scenario', groupable: true }),
     f({ id: 'scenarioStatus', label: 'Scenario status', type: 'ENUM', column: 'scenarioStatus', groupable: true, options: opts(['DRAFT', 'FINALIZED', 'ARCHIVED']) }),
@@ -320,7 +320,7 @@ async function engagementRows(auth: AuthContext, grain: 'survey' | 'question' | 
 }
 registerDataset(memoryDataset({
   id: 'engagement_survey_summary', name: 'Engagement survey summary', description: 'One row per survey: participation, response rate and eNPS. Groups below the survey\'s anonymity threshold are suppressed, exactly as on the results screens. No answer, no comment.',
-  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'SOURCE_SUPPRESSED', note: 'Survey threshold and differencing rule applied by the engagement module' },
   fields: [
     f({ id: 'survey', label: 'Survey', type: 'STRING', column: 'survey', groupable: true }), f({ id: 'code', label: 'Code', type: 'STRING', column: 'code' }),
     f({ id: 'surveyType', label: 'Type', type: 'ENUM', column: 'surveyType', groupable: true, options: opts(['ENGAGEMENT', 'ENPS', 'PULSE', 'CUSTOM']) }),
@@ -333,7 +333,7 @@ registerDataset(memoryDataset({
 }));
 registerDataset(memoryDataset({
   id: 'engagement_question_summary', name: 'Engagement question summary', description: 'One row per survey and question: response count and average for scaled questions. Suppressed surveys carry no figures. No answer text.',
-  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'SOURCE_SUPPRESSED', note: 'Survey threshold and differencing rule applied by the engagement module' },
   fields: [
     f({ id: 'survey', label: 'Survey', type: 'STRING', column: 'survey', groupable: true }), f({ id: 'surveyStatus', label: 'Status', type: 'ENUM', column: 'surveyStatus', groupable: true, options: opts(['OPEN', 'CLOSED', 'ARCHIVED']) }),
     f({ id: 'question', label: 'Question', type: 'STRING', column: 'question' }), f({ id: 'theme', label: 'Theme', type: 'STRING', column: 'theme', groupable: true }),
@@ -344,7 +344,7 @@ registerDataset(memoryDataset({
 }));
 registerDataset(memoryDataset({
   id: 'engagement_department_summary', name: 'Engagement department summary', description: 'One row per survey and department (snapshot at opening): participation, response rate and eNPS, suppressed below the anonymity threshold.',
-  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: ENGAGEMENT_PERMS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'SOURCE_SUPPRESSED', note: 'Survey threshold and differencing rule applied by the engagement module' },
   fields: [
     f({ id: 'survey', label: 'Survey', type: 'STRING', column: 'survey', groupable: true }), f({ id: 'surveyStatus', label: 'Status', type: 'ENUM', column: 'surveyStatus', groupable: true, options: opts(['OPEN', 'CLOSED', 'ARCHIVED']) }),
     f({ id: 'responseMode', label: 'Mode', type: 'ENUM', column: 'responseMode', groupable: true, options: opts(['ANONYMOUS', 'IDENTIFIED']) }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
@@ -359,7 +359,7 @@ const LIFECYCLE_VIEW = [PERMISSIONS.LIFECYCLE_VIEW_REPORTS, PERMISSIONS.ONBOARDI
 const monthOf = (d: Date | string | null) => (d ? (typeof d === 'string' ? d : d.toISOString()).slice(0, 7) : null);
 registerDataset(memoryDataset({
   id: 'onboarding_summary', name: 'Onboarding summary', description: 'One row per onboarding plan: department and job at creation, start month, status, task counts and progress. No names, no task notes.',
-  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
     f({ id: 'startMonth', label: 'Start month', type: 'STRING', column: 'startMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED']) }),
@@ -368,13 +368,13 @@ registerDataset(memoryDataset({
   async load(auth) {
     need(auth, ...LIFECYCLE_VIEW);
     const t = new Date().toISOString().slice(0, 10);
-    const rows = await prisma.onboardingPlan.findMany({ where: await lifecycleEmployeeWhere(auth), select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, status: true, tasks: { select: { status: true, required: true, dueDate: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, tasks: p.total, done: p.done, overdue: r.status === 'ACTIVE' ? r.tasks.filter((x) => (x.status === 'PENDING' || x.status === 'IN_PROGRESS') && x.dueDate < t).length : 0, progressPct: p.pct }; });
+    const rows = await prisma.onboardingPlan.findMany({ where: await lifecycleEmployeeWhere(auth), select: { employeeId: true, departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, status: true, tasks: { select: { status: true, required: true, dueDate: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, tasks: p.total, done: p.done, overdue: r.status === 'ACTIVE' ? r.tasks.filter((x) => (x.status === 'PENDING' || x.status === 'IN_PROGRESS') && x.dueDate < t).length : 0, progressPct: p.pct }; });
   },
 }));
 registerDataset(memoryDataset({
   id: 'probation_summary', name: 'Probation summary', description: 'One row per probation case: department and job at creation, start and end months, status, outcome and extension count. No names, no review comments.',
-  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
     f({ id: 'startMonth', label: 'Start month', type: 'STRING', column: 'startMonth', groupable: true }), f({ id: 'endMonth', label: 'Current end month', type: 'STRING', column: 'endMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'PENDING_REVIEW', 'PASSED', 'EXTENDED', 'NOT_PASSED', 'CANCELLED']) }),
@@ -382,13 +382,13 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...LIFECYCLE_VIEW);
-    const rows = await prisma.probationCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, currentEndDate: true, status: true, finalOutcome: true, reviews: { select: { outcome: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), endMonth: r.currentEndDate.slice(0, 7), status: r.status, outcome: r.finalOutcome, extensions: r.reviews.filter((x) => x.outcome === 'EXTEND').length, durationDays: Math.round((Date.parse(`${r.currentEndDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) }));
+    const rows = await prisma.probationCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { employeeId: true, departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, currentEndDate: true, status: true, finalOutcome: true, reviews: { select: { outcome: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), endMonth: r.currentEndDate.slice(0, 7), status: r.status, outcome: r.finalOutcome, extensions: r.reviews.filter((x) => x.outcome === 'EXTEND').length, durationDays: Math.round((Date.parse(`${r.currentEndDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) }));
   },
 }));
 registerDataset(memoryDataset({
   id: 'offboarding_summary', name: 'Offboarding summary', description: 'One row per offboarding case: department and job at creation, reason category, planned and actual last-day months, status and task counts. No names, no reason notes, no exit-interview notes.',
-  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
     f({ id: 'reason', label: 'Reason', type: 'ENUM', column: 'reason', groupable: true, options: opts(['RESIGNATION', 'END_OF_CONTRACT', 'RETIREMENT', 'TERMINATION', 'REDUNDANCY', 'TRANSFER_OUT', 'OTHER']) }),
@@ -397,8 +397,8 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...LIFECYCLE_VIEW);
-    const rows = await prisma.offboardingCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, reasonCode: true, plannedLastWorkingDate: true, completedAt: true, status: true, tasks: { select: { status: true, required: true } } }, orderBy: { plannedLastWorkingDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, reason: r.reasonCode, plannedMonth: r.plannedLastWorkingDate.slice(0, 7), completedMonth: monthOf(r.completedAt), status: r.status, tasks: p.total, done: p.done }; });
+    const rows = await prisma.offboardingCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { employeeId: true, departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, reasonCode: true, plannedLastWorkingDate: true, completedAt: true, status: true, tasks: { select: { status: true, required: true } } }, orderBy: { plannedLastWorkingDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, reason: r.reasonCode, plannedMonth: r.plannedLastWorkingDate.slice(0, 7), completedMonth: monthOf(r.completedAt), status: r.status, tasks: p.total, done: p.done }; });
   },
 }));
 
@@ -407,7 +407,7 @@ const LEARNING_VIEW = [PERMISSIONS.LEARNING_VIEW_REPORTS, PERMISSIONS.OJT_MANAGE
 const learningScope = async (auth: AuthContext) => { const ids = await scopedEmployeeIds(auth); return ids === null ? {} : { employeeId: { in: ids } }; };
 registerDataset(memoryDataset({
   id: 'ojt_summary', name: 'OJT summary', description: 'One row per OJT plan: program, department and job at creation, start month, status, activity counts and completion days. No names, trainer comments or evidence.',
-  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'program', label: 'Program', type: 'STRING', column: 'program', groupable: true }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }),
     f({ id: 'startMonth', label: 'Start month', type: 'STRING', column: 'startMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED']) }),
@@ -415,13 +415,13 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...LEARNING_VIEW);
-    const rows = await prisma.ojtPlan.findMany({ where: await learningScope(auth), select: { programNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, startDate: true, status: true, completedAt: true, activities: { select: { status: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ program: r.programNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, activities: r.activities.length, activitiesCompleted: r.activities.filter((a) => a.status === 'COMPLETED').length, completionDays: r.completedAt ? Math.round((r.completedAt.getTime() - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) : null }));
+    const rows = await prisma.ojtPlan.findMany({ where: await learningScope(auth), select: { employeeId: true, programNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, startDate: true, status: true, completedAt: true, activities: { select: { status: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, program: r.programNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, activities: r.activities.length, activitiesCompleted: r.activities.filter((a) => a.status === 'COMPLETED').length, completionDays: r.completedAt ? Math.round((r.completedAt.getTime() - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) : null }));
   },
 }));
 registerDataset(memoryDataset({
   id: 'learning_path_summary', name: 'Learning path summary', description: 'One row per learning path assignment: path, department and job at assignment, status, steps and fulfilled steps. No names.',
-  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'path', label: 'Learning path', type: 'STRING', column: 'path', groupable: true }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }), f({ id: 'job', label: 'Job', type: 'STRING', column: 'job', groupable: true }),
     f({ id: 'assignedMonth', label: 'Assigned month', type: 'STRING', column: 'assignedMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'COMPLETED', 'CANCELLED']) }),
@@ -429,13 +429,13 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...LEARNING_VIEW);
-    const rows = await prisma.learningPathAssignment.findMany({ where: await learningScope(auth), select: { pathNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, assignedAt: true, status: true, steps: { select: { fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => { const done = r.steps.filter((x) => x.fulfilledAt).length; return { path: r.pathNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, assignedMonth: r.assignedAt.toISOString().slice(0, 7), status: r.status, steps: r.steps.length, fulfilled: done, progressPct: r.steps.length ? Math.round((done / r.steps.length) * 1000) / 10 : 0 }; });
+    const rows = await prisma.learningPathAssignment.findMany({ where: await learningScope(auth), select: { employeeId: true, pathNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, assignedAt: true, status: true, steps: { select: { fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => { const done = r.steps.filter((x) => x.fulfilledAt).length; return { __subject: r.employeeId, path: r.pathNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, assignedMonth: r.assignedAt.toISOString().slice(0, 7), status: r.status, steps: r.steps.length, fulfilled: done, progressPct: r.steps.length ? Math.round((done / r.steps.length) * 1000) / 10 : 0 }; });
   },
 }));
 registerDataset(memoryDataset({
   id: 'certification_summary', name: 'Certification summary', description: 'One row per certification issuance: certification, issuer type, the employee\'s current organization and department (a certification has no snapshot; same rule as the learning report), issue and expiry months, derived status. No names, no certificate numbers.',
-  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: LEARNING_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'certification', label: 'Certification', type: 'STRING', column: 'certification', groupable: true }), f({ id: 'issuerType', label: 'Issuer type', type: 'ENUM', column: 'issuerType', groupable: true, options: opts(['INTERNAL', 'EXTERNAL']) }), f({ id: 'organization', label: 'Organization (current)', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'department', label: 'Department', type: 'STRING', column: 'department', groupable: true }),
     f({ id: 'issuedMonth', label: 'Issued month', type: 'STRING', column: 'issuedMonth', groupable: true }), f({ id: 'expiryMonth', label: 'Expiry month', type: 'STRING', column: 'expiryMonth', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'REVOKED']) }), f({ id: 'renewal', label: 'Is renewal', type: 'BOOLEAN', column: 'renewal', groupable: true }),
@@ -445,7 +445,7 @@ registerDataset(memoryDataset({
     const t = new Date().toISOString().slice(0, 10);
     const rows = await prisma.employeeCertification.findMany({ where: await learningScope(auth), select: { employeeId: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, renewedFromId: true, definition: { select: { issuerType: true, expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 50000 });
     const depts = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, department: { select: { name: true } }, organization: { select: { name: true } } } })).map((e) => [e.id, e]));
-    return rows.map((r): Row => ({ certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, organization: depts.get(r.employeeId)?.organization.name ?? null, department: depts.get(r.employeeId)?.department.name ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
+    return rows.map((r): Row => ({ __subject: r.employeeId, certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, organization: depts.get(r.employeeId)?.organization.name ?? null, department: depts.get(r.employeeId)?.department.name ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
   },
 }));
 
@@ -453,20 +453,20 @@ registerDataset(memoryDataset({
 const BENEFITS_REPORTS = [PERMISSIONS.BENEFITS_VIEW_REPORTS, PERMISSIONS.BENEFITS_MANAGE];
 registerDataset(memoryDataset({
   id: 'benefit_enrollment_summary', name: 'Benefit enrolment summary', description: 'One row per enrolment: plan, category, plan type, organization at enrolment and status. No names.',
-  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'planType', label: 'Plan type', type: 'ENUM', column: 'planType', groupable: true, options: opts(['REIMBURSEMENT', 'ALLOWANCE', 'COVERAGE_ONLY']) }),
     f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ELIGIBLE', 'ENROLLED', 'WAIVED', 'ENDED']) }), f({ id: 'enrolledMonth', label: 'Enrolled month', type: 'STRING', column: 'enrolledMonth', groupable: true }),
   ],
   async load(auth) {
     need(auth, ...BENEFITS_REPORTS);
-    const rows = await prisma.benefitEnrollment.findMany({ select: { status: true, organizationSnapshot: true, enrolledAt: true, plan: { select: { name: true, planType: true, category: { select: { name: true } } } } }, take: 50000 });
-    return rows.map((r): Row => ({ plan: r.plan.name, category: r.plan.category.name, planType: r.plan.planType, organization: r.organizationSnapshot, status: r.status, enrolledMonth: r.enrolledAt ? r.enrolledAt.toISOString().slice(0, 7) : null }));
+    const rows = await prisma.benefitEnrollment.findMany({ select: { employeeId: true, status: true, organizationSnapshot: true, enrolledAt: true, plan: { select: { name: true, planType: true, category: { select: { name: true } } } } }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, plan: r.plan.name, category: r.plan.category.name, planType: r.plan.planType, organization: r.organizationSnapshot, status: r.status, enrolledMonth: r.enrolledAt ? r.enrolledAt.toISOString().slice(0, 7) : null }));
   },
 }));
 registerDataset(memoryDataset({
   id: 'benefit_entitlement_summary', name: 'Benefit entitlement summary', description: 'One row per entitlement account: plan, category, period, currency, organization, granted / adjustment / reserved / consumed / available as exact decimals. No names.',
-  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'period', label: 'Period', type: 'STRING', column: 'period', groupable: true }), f({ id: 'periodStatus', label: 'Period status', type: 'ENUM', column: 'periodStatus', groupable: true, options: opts(['DRAFT', 'OPEN', 'CLOSED']) }),
     f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
@@ -474,13 +474,13 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...BENEFITS_REPORTS);
-    const rows = await prisma.benefitEntitlement.findMany({ select: { currency: true, organizationSnapshot: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true, plan: { select: { name: true, category: { select: { name: true } } } }, period: { select: { name: true, status: true } } }, take: 50000 });
-    return rows.map((r): Row => ({ plan: r.plan.name, category: r.plan.category.name, period: r.period.name, periodStatus: r.period.status, organization: r.organizationSnapshot, currency: r.currency, granted: toMoneyString(r.grantedAmount), adjustment: toMoneyString(r.adjustmentAmount), reserved: toMoneyString(r.reservedAmount), consumed: toMoneyString(r.consumedAmount), available: toMoneyString(availableOf(sumsOf(r))) }));
+    const rows = await prisma.benefitEntitlement.findMany({ select: { employeeId: true, currency: true, organizationSnapshot: true, grantedAmount: true, adjustmentAmount: true, reservedAmount: true, consumedAmount: true, plan: { select: { name: true, category: { select: { name: true } } } }, period: { select: { name: true, status: true } } }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, plan: r.plan.name, category: r.plan.category.name, period: r.period.name, periodStatus: r.period.status, organization: r.organizationSnapshot, currency: r.currency, granted: toMoneyString(r.grantedAmount), adjustment: toMoneyString(r.adjustmentAmount), reserved: toMoneyString(r.reservedAmount), consumed: toMoneyString(r.consumedAmount), available: toMoneyString(availableOf(sumsOf(r))) }));
   },
 }));
 registerDataset(memoryDataset({
   id: 'benefit_claim_summary', name: 'Benefit claim summary', description: 'One row per claim: plan, category, period, organization, status, currency, submitted / paid month, claimed and approved amounts. No names, claim numbers, descriptions, documents or payment references.',
-  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: BENEFITS_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'plan', label: 'Plan', type: 'STRING', column: 'plan', groupable: true }), f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'period', label: 'Period', type: 'STRING', column: 'period', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }),
     f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['DRAFT', 'PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }),
@@ -489,8 +489,8 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...BENEFITS_REPORTS);
-    const rows = await prisma.benefitClaim.findMany({ select: { status: true, currency: true, organizationSnapshot: true, submittedDate: true, paidDate: true, paymentMethod: true, claimedAmount: true, approvedAmount: true, planNameSnapshot: true, categorySnapshot: true, period: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ plan: r.planNameSnapshot, category: r.categorySnapshot, period: r.period.name, organization: r.organizationSnapshot, status: r.status, currency: r.currency, submittedMonth: r.submittedDate ? r.submittedDate.slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, paymentMethod: r.paymentMethod, claimedAmount: toMoneyString(r.claimedAmount), approvedAmount: r.approvedAmount ? toMoneyString(r.approvedAmount) : null }));
+    const rows = await prisma.benefitClaim.findMany({ select: { employeeId: true, status: true, currency: true, organizationSnapshot: true, submittedDate: true, paidDate: true, paymentMethod: true, claimedAmount: true, approvedAmount: true, planNameSnapshot: true, categorySnapshot: true, period: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, plan: r.planNameSnapshot, category: r.categorySnapshot, period: r.period.name, organization: r.organizationSnapshot, status: r.status, currency: r.currency, submittedMonth: r.submittedDate ? r.submittedDate.slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, paymentMethod: r.paymentMethod, claimedAmount: toMoneyString(r.claimedAmount), approvedAmount: r.approvedAmount ? toMoneyString(r.approvedAmount) : null }));
   },
 }));
 
@@ -498,20 +498,20 @@ registerDataset(memoryDataset({
 const EXPENSE_REPORTS = [PERMISSIONS.EXPENSE_VIEW_REPORTS, PERMISSIONS.EXPENSE_MANAGE];
 registerDataset(memoryDataset({
   id: 'travel_request_summary', name: 'Travel request summary', description: 'One row per submitted travel request: travel policy, organization, submitted month, trip month, status, currency and the requested estimate. No names, purposes or destinations.',
-  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'travelPolicy', label: 'Travel policy', type: 'STRING', column: 'travelPolicy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'tripMonth', label: 'Trip month', type: 'STRING', column: 'tripMonth', groupable: true }),
     f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'tripDays', label: 'Trip days', type: 'NUMBER', column: 'tripDays', aggregatable: true }), f({ id: 'estimatedAmount', label: 'Estimated', type: 'DECIMAL', column: 'estimatedAmount', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
-    const rows = await prisma.travelRequest.findMany({ where: { status: { not: 'DRAFT' } }, select: { travelPolicyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, startDate: true, endDate: true, status: true, currency: true, estimatedAmount: true }, orderBy: { createdAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ travelPolicy: r.travelPolicyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, tripMonth: r.startDate.slice(0, 7), status: r.status, currency: r.currency, tripDays: Math.round((Date.parse(`${r.endDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) + 1, estimatedAmount: toMoneyString(r.estimatedAmount) }));
+    const rows = await prisma.travelRequest.findMany({ where: { status: { not: 'DRAFT' } }, select: { employeeId: true, travelPolicyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, startDate: true, endDate: true, status: true, currency: true, estimatedAmount: true }, orderBy: { createdAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, travelPolicy: r.travelPolicyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, tripMonth: r.startDate.slice(0, 7), status: r.status, currency: r.currency, tripDays: Math.round((Date.parse(`${r.endDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) + 1, estimatedAmount: toMoneyString(r.estimatedAmount) }));
   },
 }));
 registerDataset(memoryDataset({
   id: 'expense_report_summary', name: 'Expense report summary', description: 'One row per submitted expense report: policy, organization, submitted and paid months, status, currency, item count and exact total. No names, report numbers, merchants, descriptions or references.',
-  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'policy', label: 'Policy', type: 'STRING', column: 'policy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'submittedMonth', label: 'Submitted month', type: 'STRING', column: 'submittedMonth', groupable: true }), f({ id: 'paidMonth', label: 'Paid month', type: 'STRING', column: 'paidMonth', groupable: true }),
     f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'paymentMethod', label: 'Payment method', type: 'STRING', column: 'paymentMethod', groupable: true }), f({ id: 'linkedToTravel', label: 'Linked to travel', type: 'BOOLEAN', column: 'linkedToTravel', groupable: true }),
@@ -519,21 +519,21 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
-    const rows = await prisma.expenseReport.findMany({ where: { status: { not: 'DRAFT' } }, select: { policyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, paidDate: true, status: true, currency: true, paymentMethod: true, travelRequestId: true, totalAmount: true, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ policy: r.policyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, status: r.status, currency: r.currency, paymentMethod: r.paymentMethod, linkedToTravel: !!r.travelRequestId, items: r._count.items, total: toMoneyString(r.totalAmount) }));
+    const rows = await prisma.expenseReport.findMany({ where: { status: { not: 'DRAFT' } }, select: { employeeId: true, policyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, paidDate: true, status: true, currency: true, paymentMethod: true, travelRequestId: true, totalAmount: true, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.employeeId, policy: r.policyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, status: r.status, currency: r.currency, paymentMethod: r.paymentMethod, linkedToTravel: !!r.travelRequestId, items: r._count.items, total: toMoneyString(r.totalAmount) }));
   },
 }));
 registerDataset(memoryDataset({
   id: 'expense_category_summary', name: 'Expense category summary', description: 'One row per item of a submitted expense report: category, policy, organization, expense month, report status, currency and exact amount. No names, merchants, descriptions or receipts.',
-  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: EXPENSE_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'category', label: 'Category', type: 'STRING', column: 'category', groupable: true }), f({ id: 'policy', label: 'Policy', type: 'STRING', column: 'policy', groupable: true }), f({ id: 'organization', label: 'Organization', type: 'STRING', column: 'organization', groupable: true }), f({ id: 'expenseMonth', label: 'Expense month', type: 'STRING', column: 'expenseMonth', groupable: true }),
     f({ id: 'reportStatus', label: 'Report status', type: 'ENUM', column: 'reportStatus', groupable: true, options: opts(['PENDING_APPROVAL', 'READY_FOR_PAYMENT', 'SENT_TO_PAYROLL', 'PAID', 'REJECTED', 'CANCELLED']) }), f({ id: 'currency', label: 'Currency', type: 'STRING', column: 'currency', groupable: true }), f({ id: 'receiptRequired', label: 'Receipt required', type: 'BOOLEAN', column: 'receiptRequired', groupable: true }), f({ id: 'amount', label: 'Amount', type: 'DECIMAL', column: 'amount', aggregatable: true , currencyField: 'currency' }),
   ],
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
-    const rows = await prisma.expenseItem.findMany({ where: { report: { status: { not: 'DRAFT' } } }, select: { categoryNameSnapshot: true, expenseDate: true, amount: true, receiptRequiredSnapshot: true, report: { select: { policyNameSnapshot: true, organizationSnapshot: true, status: true, currency: true } } }, orderBy: { expenseDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ category: r.categoryNameSnapshot, policy: r.report.policyNameSnapshot, organization: r.report.organizationSnapshot, expenseMonth: r.expenseDate.slice(0, 7), reportStatus: r.report.status, currency: r.report.currency, receiptRequired: r.receiptRequiredSnapshot, amount: toMoneyString(r.amount) }));
+    const rows = await prisma.expenseItem.findMany({ where: { report: { status: { not: 'DRAFT' } } }, select: { categoryNameSnapshot: true, expenseDate: true, amount: true, receiptRequiredSnapshot: true, report: { select: { employeeId: true, policyNameSnapshot: true, organizationSnapshot: true, status: true, currency: true } } }, orderBy: { expenseDate: 'desc' }, take: 50000 });
+    return rows.map((r): Row => ({ __subject: r.report.employeeId, category: r.categoryNameSnapshot, policy: r.report.policyNameSnapshot, organization: r.report.organizationSnapshot, expenseMonth: r.expenseDate.slice(0, 7), reportStatus: r.report.status, currency: r.report.currency, receiptRequired: r.receiptRequiredSnapshot, amount: toMoneyString(r.amount) }));
   },
 }));
 
@@ -545,7 +545,7 @@ const SERVICE_REPORTS = [PERMISSIONS.HR_LETTER_VIEW_REPORTS, PERMISSIONS.SERVICE
 registerDataset(memoryDataset({
   id: 'service_request_summary', name: 'Service request summary',
   description: 'One row per submitted service request: type, category, organization, submitted and fulfilled months, status, whether it went past its target, and days to fulfil. No employee, request number, subject, answers or messages.',
-  requiredPermissions: SERVICE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: SERVICE_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'requestType', label: 'Request type', type: 'STRING', column: 'requestType', groupable: true }),
     f({ id: 'category', label: 'Category', type: 'ENUM', column: 'category', groupable: true, options: opts([...SERVICE_CATEGORIES]) }),
@@ -561,10 +561,10 @@ registerDataset(memoryDataset({
     need(auth, ...SERVICE_REPORTS);
     const rows = await prisma.serviceRequest.findMany({
       where: { status: { not: 'DRAFT' } },
-      select: { requestTypeNameSnapshot: true, categorySnapshot: true, organizationSnapshot: true, submittedAt: true, fulfilledAt: true, dueDate: true, status: true, fulfillmentTypeSnapshot: true },
+      select: { employeeId: true, requestTypeNameSnapshot: true, categorySnapshot: true, organizationSnapshot: true, submittedAt: true, fulfilledAt: true, dueDate: true, status: true, fulfillmentTypeSnapshot: true },
     });
     const today = new Date().toISOString().slice(0, 10);
-    return rows.map((r): Row => ({
+    return rows.map((r): Row => ({ __subject: r.employeeId,
       requestType: r.requestTypeNameSnapshot, category: r.categorySnapshot, organization: r.organizationSnapshot,
       submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, fulfilledMonth: r.fulfilledAt ? r.fulfilledAt.toISOString().slice(0, 7) : null,
       status: r.status, fulfillmentType: r.fulfillmentTypeSnapshot,
@@ -576,7 +576,7 @@ registerDataset(memoryDataset({
 registerDataset(memoryDataset({
   id: 'hr_letter_summary', name: 'HR letter summary',
   description: 'One row per issued HR letter: letter type, template, organization, issue month and status. No employee, letter number, subject, body or salary.',
-  requiredPermissions: SERVICE_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: SERVICE_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
   fields: [
     f({ id: 'letterType', label: 'Letter type', type: 'ENUM', column: 'letterType', groupable: true, options: opts([...HR_LETTER_TYPES]) }),
     f({ id: 'template', label: 'Template', type: 'STRING', column: 'template', groupable: true }),
@@ -587,8 +587,8 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...SERVICE_REPORTS);
-    const rows = await prisma.hrLetter.findMany({ select: { letterTypeSnapshot: true, templateNameSnapshot: true, organizationSnapshot: true, issuedDate: true, status: true, serviceRequestId: true } });
-    return rows.map((r): Row => ({ letterType: r.letterTypeSnapshot, template: r.templateNameSnapshot, organization: r.organizationSnapshot, issuedMonth: r.issuedDate.slice(0, 7), status: r.status, fromRequest: !!r.serviceRequestId }));
+    const rows = await prisma.hrLetter.findMany({ select: { employeeId: true, letterTypeSnapshot: true, templateNameSnapshot: true, organizationSnapshot: true, issuedDate: true, status: true, serviceRequestId: true } });
+    return rows.map((r): Row => ({ __subject: r.employeeId, letterType: r.letterTypeSnapshot, template: r.templateNameSnapshot, organization: r.organizationSnapshot, issuedMonth: r.issuedDate.slice(0, 7), status: r.status, fromRequest: !!r.serviceRequestId }));
   },
 }));
 
@@ -596,7 +596,7 @@ registerDataset(memoryDataset({
 const COMP_REPORTS = [PERMISSIONS.COMP_PLAN_VIEW_REPORTS];
 registerDataset(memoryDataset({
   id: 'compensation_planning_summary', name: 'Compensation planning summary', description: 'One row per salary-review cycle (not drafts): status, currency, population, completion, and exact organization-level current base, increase and budget. No person, no individual salary, no comment.',
-  requiredPermissions: COMP_REPORTS, aggregateOnly: true, requiredDateRange: null,
+  requiredPermissions: COMP_REPORTS, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PRE_AGGREGATED', populationField: 'population' },
   fields: [
     f({ id: 'cycle', label: 'Cycle', type: 'STRING', column: 'cycle', groupable: true }), f({ id: 'status', label: 'Status', type: 'ENUM', column: 'status', groupable: true, options: opts(['ACTIVE', 'REVIEW', 'FINALIZED', 'ARCHIVED']) }),
     f({ id: 'effectiveDate', label: 'Effective date', type: 'DATE', column: 'effectiveDate' }), f({ id: 'applied', label: 'Applied', type: 'BOOLEAN', column: 'applied', groupable: true }),

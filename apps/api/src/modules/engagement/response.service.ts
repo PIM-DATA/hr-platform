@@ -1,4 +1,4 @@
-import { AUDIT_ACTIONS, validateAnswer, type MySurveyDto, type ParticipationRowDto, type SubmitResponseInput, type SurveyFormDto } from '@hr/shared';
+import { AUDIT_ACTIONS, partitionSuppression, validateAnswer, type MySurveyDto, type ParticipationRowDto, type SubmitResponseInput, type SurveyFormDto } from '@hr/shared';
 import type { Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
@@ -81,8 +81,20 @@ export const responseService = {
 
   /** Participation for HR: who was invited and whether they completed. No path to an answer for anonymous surveys. */
   async participation(surveyId: string, q: { page: number; pageSize: number; completed?: 'true' | 'false'; departmentId?: string }): Promise<{ data: ParticipationRowDto[]; meta: { page: number; pageSize: number; total: number } }> {
-    await loadSurvey(prisma, surveyId);
-    const where: Prisma.EngagementSurveyAssignmentWhereInput = { surveyId, departmentIdSnapshot: q.departmentId, ...(q.completed === 'true' ? { completedAt: { not: null } } : q.completed === 'false' ? { completedAt: null } : {}) };
+    const survey = await loadSurvey(prisma, surveyId);
+    const anonymous = survey.responseMode === 'ANONYMOUS';
+    // Departments whose results are suppressed (threshold + complement over the survey's department partition):
+    // completion is not shown for their people, and a completion filter leaves them out altogether.
+    let hiddenCohorts: string[] = [];
+    if (anonymous) {
+      const cells = await prisma.engagementResponse.groupBy({ by: ['deptCohortId'], where: { surveyId }, _count: { _all: true } });
+      hiddenCohorts = [...partitionSuppression(cells.map((c) => ({ key: c.deptCohortId ?? '', count: c._count._all })), survey.minimumAnonymousGroupSize).keys()];
+    }
+    const completionFilter = q.completed === 'true' ? { completedAt: { not: null } } : q.completed === 'false' ? { completedAt: null } : {};
+    const where: Prisma.EngagementSurveyAssignmentWhereInput = {
+      surveyId, departmentIdSnapshot: q.departmentId, ...completionFilter,
+      ...(q.completed && hiddenCohorts.length ? { NOT: { deptCohortId: { in: hiddenCohorts } } } : {}),
+    };
     const [total, rows] = await prisma.$transaction([prisma.engagementSurveyAssignment.count({ where }), prisma.engagementSurveyAssignment.findMany({ where, orderBy: { invitedAt: 'asc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     const ids = rows.map((r) => r.employeeId);
     const [emps, depts, jobs] = await Promise.all([
@@ -91,6 +103,6 @@ export const responseService = {
       prisma.job.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.jobIdSnapshot).filter((x): x is string => !!x))] } }, select: { id: true, title: true } }),
     ]);
     const e = new Map(emps.map((x) => [x.id, x])); const d = new Map(depts.map((x) => [x.id, x.name])); const j = new Map(jobs.map((x) => [x.id, x.title]));
-    return { data: rows.map((r) => ({ assignmentId: r.id, employee: e.get(r.employeeId) ?? { id: r.employeeId, employeeCode: '?', firstName: '?', lastName: '' }, departmentName: d.get(r.departmentIdSnapshot) ?? null, jobTitle: r.jobIdSnapshot ? (j.get(r.jobIdSnapshot) ?? null) : null, invitedAt: r.invitedAt.toISOString(), completed: !!r.completedAt, completedAt: r.completedAt?.toISOString() ?? null })), meta: { page: q.page, pageSize: q.pageSize, total } };
+    return { data: rows.map((r) => ({ assignmentId: r.id, employee: e.get(r.employeeId) ?? { id: r.employeeId, employeeCode: '?', firstName: '?', lastName: '' }, departmentName: d.get(r.departmentIdSnapshot) ?? null, jobTitle: r.jobIdSnapshot ? (j.get(r.jobIdSnapshot) ?? null) : null, invitedAt: r.invitedAt.toISOString(), ...(() => { const hide = anonymous && hiddenCohorts.includes(r.deptCohortId ?? ''); return { completed: hide ? null : !!r.completedAt, completionHidden: hide, completedAt: anonymous ? null : (r.completedAt?.toISOString() ?? null) }; })() })), meta: { page: q.page, pageSize: q.pageSize, total } };
   },
 };

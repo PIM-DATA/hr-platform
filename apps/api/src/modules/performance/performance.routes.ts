@@ -5,6 +5,7 @@ import {
   planListQuerySchema, selfAssessmentSchema, updateKpiSchema, updatePerformanceCycleSchema, updatePlanItemSchema,
   updatePlanSchema, updateProgressSchema,
 } from '@hr/shared';
+import { AppError } from '../../lib/errors';
 import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
@@ -71,5 +72,10 @@ performanceRouter.patch('/items/:id/manager', review, validate(managerAssessment
 performanceRouter.post('/plans/:id/submit-manager', review, async (req, res) => res.json({ data: await performancePlanService.submitManager(req.auth!, id(req), actor(req)) }));
 
 // ---------- reporting (aggregate only) ----------
-performanceRouter.get('/cycles/:id/report', view, validate(cycleReportQuerySchema, 'query'), async (req, res: Response) =>
-  res.json({ data: await performanceReportService.cycleReport(id(req), res.locals.query.departmentId) }));
+// Task 47 (T44-P1-05): an organization report needs the reporting authority and an organization-wide scope — viewing
+// your own plan (performance.view) is not a licence to read everyone's results.
+const reports = requirePermission(PERMISSIONS.PERFORMANCE_VIEW_REPORTS);
+performanceRouter.get('/cycles/:id/report', reports, validate(cycleReportQuerySchema, 'query'), async (req, res: Response) => {
+  if (req.auth!.dataScope !== 'ALL') throw AppError.forbidden('Organization performance reports need an organization-wide scope');
+  res.json({ data: await performanceReportService.cycleReport(id(req), res.locals.query.departmentId) });
+});

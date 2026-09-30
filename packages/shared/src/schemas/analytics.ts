@@ -134,7 +134,7 @@ export interface ExecutiveOverviewDto {
     leave: LeaveReportOverviewDto | null;
     attendance: { totals: AttendanceReportDto['totals']; employees: number; byDepartment: { departmentName: string; scheduledDays: number; presentDays: number; lateDays: number; absentDays: number; leaveDays: number; incompleteDays: number }[] } | null;
     overtime: { totals: OvertimeReportDto['totals']; byDepartment: { departmentName: string; requests: number; approvedMinutes: number }[]; note: string } | null;
-    performance: { cycles: { cycle: CycleReportDto['cycle']; completion: CycleReportDto['completion']; averageFinalScore: string | null; ratingDistribution: CycleReportDto['ratingDistribution']; byDepartment: CycleReportDto['byDepartment'] }[] } | null;
+    performance: { cycles: { cycle: CycleReportDto['cycle']; completion: CycleReportDto['completion']; averageFinalScore: string | null; suppression: CycleReportDto['suppression']; ratingDistribution: CycleReportDto['ratingDistribution']; byDepartment: CycleReportDto['byDepartment'] }[] } | null;
     competency: GapReportDto | null;
     training: TrainingReportDto | null;
     recruitment: RecruitmentReportDto | null;

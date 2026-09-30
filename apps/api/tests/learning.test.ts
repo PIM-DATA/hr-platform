@@ -479,15 +479,18 @@ describe('who sees what', () => {
     expect(err(await as(exec, 'get', `${L}/certifications`))).toBe('403 FORBIDDEN');
     expect(err(await as(mgrA, 'get', `${L}/reports`))).toBe('403 FORBIDDEN');
     expect((await as(hr, 'get', `${L}/dashboard`)).status).toBe(200);
+    // Task 47 (T44-P1-07): per-person datasets are aggregate-only in fact — a row listing is refused, and a group of fewer
+    // than 5 people is withheld and counted (never shown). BEFORE: one row per record, with its amounts / outcome.
     const run = (s: Session, datasetId: string, columns: string[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns, filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50 }, page: 1 });
-    const o = await run(exec, 'ojt_summary', ['program', 'department', 'status', 'activities', 'activitiesCompleted', 'completionDays']);
-    expect(err(o)).toBe('200');
-    expect(o.body.data.rows.find((x: { status: string }) => x.status === 'COMPLETED')).toMatchObject({ program: 'Senior Data Analyst OJT', department: 'Analytics', activities: 3, activitiesCompleted: 3 });
-    const p = await run(exec, 'learning_path_summary', ['path', 'department', 'status', 'steps', 'fulfilled', 'progressPct']);
-    expect(p.body.data.rows.find((x: { status: string }) => x.status === 'COMPLETED')).toMatchObject({ department: 'Analytics', steps: 4, fulfilled: 4, progressPct: 100 });
-    const c = await run(hr, 'certification_summary', ['certification', 'issuerType', 'department', 'status', 'renewal']);
-    expect(c.body.data.rows.map((x: { status: string }) => x.status).sort()).toEqual(['ACTIVE', 'EXPIRED', 'REVOKED']);
-    expect(c.body.data.rows.find((x: { status: string }) => x.status === 'ACTIVE')).toMatchObject({ certification: 'Internal Data Quality Certification', issuerType: 'INTERNAL', renewal: true });
+    const agg = (s: Session, datasetId: string, groupBy: string[], aggregations: { fieldId: string; function: string }[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns: groupBy, filters: [], sort: [], groupBy, aggregations, pageSize: 50 }, page: 1 });
+    const smallGroupsWithheld = (r: request.Response) => { expect(r.status).toBe(200); const rows = r.body.data.rows as Record<string, unknown>[]; expect(rows.length === 0 || r.body.data.suppression === null || r.body.data.suppression.suppressedGroups >= 1).toBe(true); if (rows.length === 0) expect(r.body.data.suppression).toMatchObject({ minimumGroupSize: 5 }); };
+    for (const d of ['ojt_summary', 'learning_path_summary', 'certification_summary']) expect(err(await run(exec, d, ['status']))).toBe('422 REPORT_AGGREGATION_REQUIRED');
+    const o = await agg(exec, 'ojt_summary', ['program', 'department', 'status'], [{ fieldId: 'activitiesCompleted', function: 'SUM' }]);
+    smallGroupsWithheld(o);
+    const p = await agg(exec, 'learning_path_summary', ['path', 'status'], [{ fieldId: 'fulfilled', function: 'SUM' }]);
+    smallGroupsWithheld(p);
+    const c = await agg(hr, 'certification_summary', ['certification', 'status'], [{ fieldId: 'certification', function: 'COUNT' }]);
+    smallGroupsWithheld(c);
     for (const r of [o, p, c]) expect(text(r.body)).not.toMatch(/Emma|EMP003|IDQ-000|Quality report|reconciliation|row counts|Alice/);
     expect(err(await run(emp, 'ojt_summary', ['program']))).toMatch(/^40[134]/);
     expect(err(await run(mgrA, 'certification_summary', ['certification']))).toMatch(/^40[134]/);

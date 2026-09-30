@@ -147,7 +147,7 @@ async function overtimeAggregate(auth: AuthContext, f: AnalyticsFilter): Promise
 async function performanceAggregate(f: AnalyticsFilter): Promise<Sections['performance']> {
   const cycles = (await performanceCycleService.list({ organizationId: f.organizationId, page: 1, pageSize: 100 })).data.filter((c) => c.periodStart <= f.to && c.periodEnd >= f.from);
   const reports = await Promise.all(cycles.map((c) => performanceReportService.cycleReport(c.id, f.departmentId)));
-  return { cycles: reports.map((r) => ({ cycle: r.cycle, completion: r.completion, averageFinalScore: r.averageFinalScore, ratingDistribution: r.ratingDistribution, byDepartment: r.byDepartment })) };
+  return { cycles: reports.map((r) => ({ cycle: r.cycle, completion: r.completion, averageFinalScore: r.averageFinalScore, suppression: r.suppression, ratingDistribution: r.ratingDistribution, byDepartment: r.byDepartment })) };
 }
 
 async function payrollAggregate(f: AnalyticsFilter): Promise<PayrollAggregateDto> {

@@ -168,3 +168,11 @@ not historical snapshots. There is no FX conversion: amounts in different curren
 never added. (Task 42 correction: the learning roll-up's certification counts now follow the organization filter —
 by the employee's current organization — and the benefits report itself keys every amount by currency, so the
 executive view reuses it instead of regrouping.)
+
+## Task 47 — small groups in the executive dashboard (T44-P1-07)
+
+The performance, competency and employee-relations sections are read from their source reports, which now withhold
+small groups (performance / competency: fewer than 5 scored / assessed people; ER: departments of fewer than 5 people),
+with complementary suppression. A department or job filter onto such a group shows the section as withheld (explicit
+`suppression`, UI "withheld", CSV `SUPPRESSED`), never a number. Workforce counts (headcount, hires, terminations) are
+not suppressed: executives can already see the employee directory, so they reveal nothing beyond it.

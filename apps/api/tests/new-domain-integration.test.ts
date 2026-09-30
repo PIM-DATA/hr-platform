@@ -349,7 +349,11 @@ describe('copilot — aggregate tools for the newer domains', () => {
   it('report tool money stays an exact decimal string through the copilot adapter', async () => {
     scriptFakeProvider([call('report_query', { datasetId: 'expense_report_summary', definition: { columns: ['currency'], groupBy: ['currency'], aggregations: [{ fieldId: 'total', function: 'SUM' }] } }), answer()]);
     expect(err(await chat(hrAdmin, 'Total expense by currency'))).toBe('200');
-    expect(text(toolResults()[0])).toContain('"2834.81"');
+    // Task 47: the copilot receives the already-suppressed source result. BEFORE: "2834.81" (the reports of fewer than
+    // 5 people); AFTER: no figure, and an explicit "withheld" note — the model never sees the hidden value.
+    const shown = text(toolResults()[0]);
+    expect(shown).not.toContain('2834.81');
+    expect(shown).toMatch(/"withheldGroups":1/);
   });
 
   it('high-impact welfare / spend questions get the boundary notice', async () => {
@@ -468,8 +472,10 @@ describe('correction — organization-filtered certifications and currency-keyed
     expect((toolResults()[0] as { data: { learning: { certifications: { active: number } } } }).data.learning.certifications.active).toBe(7);
     const run = await as(exec, 'post', '/api/v1/reports/run').send({ datasetId: 'certification_summary', definition: { columns: ['organization'], filters: [], sort: [], groupBy: ['organization'], aggregations: [{ fieldId: 'certification', function: 'COUNT' }], pageSize: 50 }, page: 1 });
     expect(err(run)).toBe('200');
-    const counts = Object.fromEntries(run.body.data.rows.map((r: Record<string, unknown>) => [r.organization, Object.values(r).find((v) => typeof v === 'number')]));
-    expect(counts).toEqual({ 'Rollup Co': 10, 'Other Co': 7 });
+    // Task 47: the Report Center applies the small-group rule to people, not rows — these certifications belong to fewer
+    // than 5 people per organization, so the per-organization counts are withheld there (BEFORE: 10 and 7).
+    expect(run.body.data.rows).toEqual([]);
+    expect(run.body.data.suppression).toMatchObject({ minimumGroupSize: 5 });
   });
 
   it('benefits report: one category, amounts per currency, exact — THB 1333.47 and USD 12.34, never 1345.81', async () => {
@@ -503,10 +509,14 @@ describe('correction — organization-filtered certifications and currency-keyed
     for (const fn of ['SUM', 'AVG', 'MIN', 'MAX']) expect(err(await run({ columns: ['category'], groupBy: ['category'], aggregations: [{ fieldId: 'approvedAmount', function: fn }] }))).toBe('422 REPORT_CURRENCY_GROUP_REQUIRED');
     const g = await run({ columns: ['category', 'currency'], groupBy: ['category', 'currency'], filters: [{ fieldId: 'category', operator: 'EQ', value: 'Dental' }], aggregations: [{ fieldId: 'approvedAmount', function: 'SUM', alias: 'approved' }] });
     expect(err(g)).toBe('200');
-    expect(g.body.data.rows.map((r: Record<string, unknown>) => [r.currency, r.approved])).toEqual(expect.arrayContaining([['THB', '1333.47'], ['USD', '12.34']]));
+    // Task 47: a currency grouping is accepted — and then each group's claims come from fewer than 5 people, so the
+    // amounts are withheld (BEFORE: THB 1333.47 / USD 12.34 per claimant group). Exactness is covered by the benefits
+    // report and the executive / copilot tests above.
+    expect(g.body.data.rows).toEqual([]);
+    expect(text(g.body)).not.toMatch(/1333\.47|12\.34/);
     const one = await run({ columns: ['category'], groupBy: ['category'], filters: [{ fieldId: 'currency', operator: 'EQ', value: 'USD' }, { fieldId: 'category', operator: 'EQ', value: 'Dental' }], aggregations: [{ fieldId: 'approvedAmount', function: 'SUM', alias: 'approved' }] });
     expect(err(one)).toBe('200');
-    expect(one.body.data.rows[0].approved).toBe('12.34');
+    expect(one.body.data.rows).toEqual([]);
     // COUNT is not money and stays allowed without a currency key.
     expect(err(await run({ columns: ['category'], groupBy: ['category'], aggregations: [{ fieldId: 'approvedAmount', function: 'COUNT' }] }))).toBe('200');
     // The copilot report tool goes through the same registry.

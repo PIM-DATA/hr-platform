@@ -95,10 +95,15 @@ export interface HrLetterTemplateDto {
   id: string; code: string; name: string; organizationId: string | null; organizationName: string | null; letterType: HrLetterType; subjectTemplate: string | null; bodyTemplate: string;
   requiresSalaryAccess: boolean; tokens: string[]; isActive: boolean; letterCount: number; createdAt: string; updatedAt: string;
 }
-export interface HrLetterSummaryDto { id: string; letterNumber: string; letterType: HrLetterType; status: (typeof HR_LETTER_STATUSES)[number]; issuedDate: string; subject: string | null }
+/**
+ * `contentRestricted` (Task 47, T44-P1-20): a salary-bearing letter's subject, body and salary are shown only to the employee
+ * it is about and to holders of the payroll authority. Anyone else in scope (an organization-wide service desk, a template
+ * author) sees that the letter exists — number, type, date, status — with subject, body and salary null.
+ */
+export interface HrLetterSummaryDto { id: string; letterNumber: string; letterType: HrLetterType; status: (typeof HR_LETTER_STATUSES)[number]; issuedDate: string; subject: string | null; contentRestricted: boolean }
 export interface HrLetterDto extends HrLetterSummaryDto {
   employeeId: string; serviceRequestId: string | null; serviceRequestNumber: string | null; templateId: string; templateCode: string; templateName: string; snapshot: ServiceSnapshotDto;
-  body: string; salaryAmount: string | null; salaryCurrency: string | null; issuedByName: string | null; voidedAt: string | null; voidReasonCode: string | null; documents: ServiceDocumentDto[];
+  body: string | null; salaryAmount: string | null; salaryCurrency: string | null; issuedByName: string | null; voidedAt: string | null; voidReasonCode: string | null; documents: ServiceDocumentDto[];
   organizationName: string | null; createdAt: string; can: { void: boolean };
 }
 export interface MyServicesDto {

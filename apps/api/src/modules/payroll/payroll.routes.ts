@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import {
-  PERMISSIONS, addPayrollAdjustmentSchema, compensationListQuerySchema, createCompensationSchema,
+  AUDIT_ACTIONS, PERMISSIONS, addPayrollAdjustmentSchema, compensationListQuerySchema, createCompensationSchema,
   createPayComponentSchema, createPayItemSchema, createPayrollPeriodSchema, createPayrollPolicySchema,
   payComponentListQuerySchema, payItemListQuerySchema, payrollPeriodListQuerySchema, payrollResultListQuerySchema,
   updateCompensationSchema, updatePayComponentSchema, updatePayItemSchema, updatePayrollPeriodSchema,
@@ -10,7 +10,8 @@ import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
-import { requestMeta } from '../../services/audit/audit.service';
+import { auditService, requestMeta } from '../../services/audit/audit.service';
+import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { compensationService, payComponentService, payItemService, payrollEmployeeOptions, payrollPolicyService } from './payroll-master.service';
 import { payrollRunService } from './payroll-run.service';
@@ -82,13 +83,22 @@ payrollRouter.post('/runs/:id/submit', run, async (req, res) => res.json({ data:
 payrollRouter.post('/runs/:id/close', run, async (req, res) => res.json({ data: await payrollRunService.close(id(req), actor(req)) }));
 // Approving and rejecting go through the generic workflow endpoint, which checks the snapshot approver.
 
+// Task 47 (T44-P1-24): every salary in a run leaves the system here, so each export is audited — who, which run and
+// period, how many rows, which format. Never the file, a salary or a name. Recorded after the file is built, so a failed
+// or refused export leaves no success event; an unknown run is a 404, not an empty file.
 payrollRouter.get('/runs/:id/export', manage, async (req, res) => {
+  const run = await prisma.payrollRun.findUnique({ where: { id: id(req) }, select: { id: true, status: true, period: { select: { id: true, year: true, month: true, organizationId: true } } } });
+  if (!run) throw new AppError(404, 'PAYROLL_RUN_NOT_FOUND', 'Payroll run not found');
   const results = await prisma.payrollResult.findMany({
-    where: { runId: id(req) },
+    where: { runId: run.id },
     select: { employeeCode: true, employeeName: true, departmentName: true, baseSalary: true, grossPay: true, totalDeductions: true, netPay: true, currencyCode: true },
     orderBy: { employeeCode: 'asc' },
   });
   const csv = payrollResultsCsv(results);
+  await auditService.log({
+    ...requestMeta(req), userId: req.auth!.userId, action: AUDIT_ACTIONS.EXPORT_PAYROLL_RUN, module: 'payroll', recordType: 'PayrollRun', recordId: run.id,
+    newValue: { format: 'CSV', runStatus: run.status, periodId: run.period.id, period: `${run.period.year}-${String(run.period.month).padStart(2, '0')}`, organizationId: run.period.organizationId, rowCount: results.length },
+  });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="payroll-${id(req).slice(0, 8)}.csv"`);
   res.setHeader('Cache-Control', 'no-store');

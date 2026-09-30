@@ -1,3 +1,4 @@
+import type { AggregateSuppression } from '../privacy-aggregates';
 import { z } from 'zod';
 import { DISCIPLINARY_ACTION_STATUSES, DISCIPLINARY_VALIDITY_STATES, EMPLOYEE_RELATION_CASE_STATUSES } from '../enums';
 import { isBusinessDate } from '../business-date';
@@ -318,10 +319,16 @@ export const erReportQuerySchema = z.object({
 });
 export type ErReportQuery = z.infer<typeof erReportQuerySchema>;
 
+/**
+ * Task 47 (T44-P1-07): counts about a department of fewer than MIN_AGGREGATE_GROUP_SIZE people identify somebody's
+ * disciplinary record. Such departments (and their complement) are withheld: counts null, `suppression` set. A
+ * department filter onto a withheld department withholds the whole report (`suppression` at the top, lists empty).
+ */
 export interface EmployeeRelationsReportDto {
+  suppression: AggregateSuppression | null;
   casesByStatus: { status: string; count: number }[];
-  actions: { issued: number; active: number; expired: number; awaitingAcknowledgement: number; overdueAcknowledgement: number };
-  byDepartment: { departmentName: string; cases: number; issued: number; active: number }[];
+  actions: { issued: number; active: number; expired: number; awaitingAcknowledgement: number; overdueAcknowledgement: number } | null;
+  byDepartment: { departmentName: string; cases: number | null; issued: number | null; active: number | null; suppression: AggregateSuppression | null }[];
   byActionType: { actionTypeName: string; issued: number; active: number }[];
   byMonth: { month: string; cases: number; issued: number }[];
 }

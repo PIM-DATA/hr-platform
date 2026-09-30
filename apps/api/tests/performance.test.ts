@@ -436,12 +436,15 @@ describe('reporting', () => {
     expect(report.completion.assigned).toBe(4);
     expect(report.completion.selfSubmitted).toBe(1);
     expect(report.completion.finalized).toBe(1);
-    expect(report.averageFinalScore).toBe('3.95');
+    // Task 47 (T44-P1-05): one scored plan is one person's score — BEFORE the report showed average 3.95 and an
+    // EXCEEDS count of 1; AFTER the scores of a group under 5 are withheld while coverage counts stay.
+    expect(report.averageFinalScore).toBeNull();
+    expect(report.suppression).toMatchObject({ suppressed: true, reason: 'SMALL_GROUP', minimumGroupSize: 5 });
     expect(report.ratingDistribution).toHaveLength(4);
-    expect(report.ratingDistribution.find((r: { code: string }) => r.code === 'EXCEEDS').count).toBe(1);
-    expect(report.ratingDistribution.find((r: { code: string }) => r.code === 'MEETS').count).toBe(0);
-    expect(report.byDepartment[0].assigned).toBe(4);
-    expect(report.byKpi.find((k: { kpiCode: string }) => k.kpiCode === 'SALES_RESULT').averageManagerScore).toBe('4.00');
+    expect(report.ratingDistribution.every((r: { count: number | null }) => r.count === null)).toBe(true);
+    expect(report.byDepartment[0]).toMatchObject({ assigned: 4, averageScore: null, suppression: { suppressed: true } });
+    expect(report.byKpi.find((k: { kpiCode: string }) => k.kpiCode === 'SALES_RESULT')).toMatchObject({ averageManagerScore: null, suppression: { suppressed: true } });
+    expect(JSON.stringify(report)).not.toMatch(/3\.95/);
   });
 
   it('a department filter narrows the report to the snapshot department', async () => {

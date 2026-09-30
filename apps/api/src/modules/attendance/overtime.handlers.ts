@@ -61,7 +61,7 @@ export const overtimeWorkflowHandlers = {
       select: { id: true, employeeId: true, attendanceDate: true, approvedMinutes: true, dayType: true, rateMultiplierSnapshot: true },
     });
     await auditService.log(attendanceAudit(ctx.actor, AUDIT_ACTIONS.APPROVE_OVERTIME_REQUEST, 'OvertimeRequest', request.id,
-      { status: 'APPROVED', approvedMinutes: approved.approvedMinutes, dayType: approved.dayType, multiplier: approved.rateMultiplierSnapshot, workflowInstanceId: ctx.instanceId, comment: ctx.comment },
+      { status: 'APPROVED', approvedMinutes: approved.approvedMinutes, dayType: approved.dayType, multiplier: approved.rateMultiplierSnapshot, workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0 },
       { status: 'PENDING', claimedMinutes: request.claimedMinutes }), tx);
     await notifyRequester(tx, approved, NOTIFICATION_TYPES.OVERTIME_APPROVED, 'approved');
   },
@@ -75,7 +75,7 @@ export const overtimeWorkflowHandlers = {
       select: { id: true, employeeId: true, attendanceDate: true, approvedMinutes: true },
     });
     await auditService.log(attendanceAudit(ctx.actor, AUDIT_ACTIONS.REJECT_OVERTIME_REQUEST, 'OvertimeRequest', request.id,
-      { status: 'REJECTED', workflowInstanceId: ctx.instanceId, comment: ctx.comment }, { status: 'PENDING' }), tx);
+      { status: 'REJECTED', workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0 }, { status: 'PENDING' }), tx);
     // The approver's comment stays in the workflow timeline; the notification only says it was rejected.
     await notifyRequester(tx, rejected, NOTIFICATION_TYPES.OVERTIME_REJECTED, 'rejected');
   },

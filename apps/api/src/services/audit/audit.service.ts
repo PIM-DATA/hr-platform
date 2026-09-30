@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import type { AuditAction } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
-import { redact } from './redact';
+import { redact, redactFreeText } from './redact';
 
 export interface AuditEntry {
   /** Actor user id; null for anonymous / system actions. */
@@ -61,8 +61,8 @@ function toRow(entry: AuditEntry) {
     module: entry.module,
     recordType: entry.recordType,
     recordId: entry.recordId ?? null,
-    oldValue: serialize(entry.oldValue),
-    newValue: serialize(entry.newValue),
+    oldValue: serialize(redactFreeText(entry.module, entry.oldValue)),
+    newValue: serialize(redactFreeText(entry.module, entry.newValue)),
     ipAddress: entry.ipAddress ?? null,
     userAgent: entry.userAgent ?? null,
   };

@@ -255,7 +255,10 @@ describe('jobs', () => {
 describe('positions', () => {
   let dept: string, jobSE: string, jobDA: string;
   beforeAll(async () => {
-    dept = (await prisma.department.findFirstOrThrow({ where: { code: 'SALES' } })).id;
+    // Flake fix (Task 47, the recurring "position 409"): BEFORE `where: { code: 'SALES' }` — ZED also has a SALES
+    // department, deactivated in test 18, and without ORDER BY PostgreSQL may return either → 409 DEPARTMENT_INACTIVE.
+    // AFTER: the active (ACME) one, as test 27 expects and as the tree block below already selects.
+    dept = (await prisma.department.findFirstOrThrow({ where: { code: 'SALES', isActive: true } })).id;
     jobSE = (await prisma.job.findUniqueOrThrow({ where: { code: 'SE' } })).id;
     jobDA = (await prisma.job.findUniqueOrThrow({ where: { code: 'DA' } })).id; // inactive
   });

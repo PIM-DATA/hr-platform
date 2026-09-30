@@ -91,7 +91,12 @@ export interface SurveyDetailDto extends SurveyDto { questions: SurveyQuestionDt
 /** What an employee sees before answering. Never another person's answer. */
 export interface MySurveyDto { surveyId: string; code: string; name: string; description: string | null; surveyType: (typeof SURVEY_TYPES)[number]; responseMode: (typeof RESPONSE_MODES)[number]; periodEnd: string | null; status: (typeof SURVEY_STATUSES)[number]; completed: boolean; completedAt: string | null; questionCount: number }
 export interface SurveyFormDto { survey: MySurveyDto; questions: SurveyQuestionDto[]; notice: string }
-export interface ParticipationRowDto { assignmentId: string; employee: { id: string; employeeCode: string; firstName: string; lastName: string }; departmentName: string | null; jobTitle: string | null; invitedAt: string; completed: boolean; completedAt: string | null }
+/**
+ * `completed` is null (with `completionHidden`) for an anonymous survey when the person's department is a suppressed
+ * group: knowing exactly who answered in a group whose results are hidden is the other half of a differencing attack
+ * (Task 47). Anonymous surveys never show an exact completion time.
+ */
+export interface ParticipationRowDto { assignmentId: string; employee: { id: string; employeeCode: string; firstName: string; lastName: string }; departmentName: string | null; jobTitle: string | null; invitedAt: string; completed: boolean | null; completionHidden: boolean; completedAt: string | null }
 
 export interface QuestionResultDto {
   questionId: string; text: string; theme: string | null; questionType: (typeof QUESTION_TYPES)[number]; scaleMin: number | null; scaleMax: number | null; isEnpsPrimary: boolean;

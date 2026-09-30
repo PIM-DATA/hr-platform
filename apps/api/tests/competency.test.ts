@@ -461,12 +461,12 @@ describe('reporting and the development hand-off', () => {
     expect(report.coverage.finalized).toBe(1);
     expect(report.coverage.coveragePercent).toBe(20);
     expect(report.totals.employeesAssessed).toBe(1);
-    expect(report.totals.employeesWithGap).toBe(1);
-    expect(report.totals.gapItems).toBe(1);
-    expect(report.totals.averageGapNeeded).toBe('1.00');
+    // Task 47 (T44-P1-05): one assessed person's gaps are that person's assessment — BEFORE 1 with a gap, avg 1.00;
+    // AFTER withheld (null + suppression) until at least 5 people are assessed.
+    expect(report.suppression).toMatchObject({ suppressed: true, minimumGroupSize: 5 });
+    expect(report.totals).toMatchObject({ employeesWithGap: null, gapItems: null, averageGapNeeded: null });
     const sql = report.topGaps.find((g: { competencyCode: string }) => g.competencyCode === 'SQL');
-    expect(sql.belowRequirement).toBe(1);
-    expect(sql.maxGap).toBe(1);
+    expect(sql).toMatchObject({ belowRequirement: null, maxGap: null, suppression: { suppressed: true } });
     expect(report.byDepartment[0].departmentName).toBe('Data');
     expect(report.byJob[0].jobTitle).toBe('Data Analyst');
   });

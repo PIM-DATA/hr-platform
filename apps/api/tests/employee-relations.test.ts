@@ -423,7 +423,9 @@ describe('privacy, logging and reporting', () => {
     expect(report.actions.issued).toBe(2);
     expect(report.actions.active).toBe(2);
     expect(report.byActionType.map((t: { actionTypeName: string }) => t.actionTypeName).sort()).toEqual(['Verbal warning', 'Written warning']);
-    expect(report.byDepartment.find((d: { departmentName: string }) => d.departmentName === 'Sales').issued).toBe(2);
+    // Task 47 (T44-P1-07): Sales has fewer than 5 people, so its per-department counts would point at someone — BEFORE
+    // "Sales: 2 issued"; AFTER withheld. The organization totals above stay.
+    expect(report.byDepartment.find((d: { departmentName: string }) => d.departmentName === 'Sales')).toMatchObject({ issued: null, cases: null, suppression: { suppressed: true } });
     expect(report.byMonth.length).toBeGreaterThan(0);
     expect(JSON.stringify(report)).not.toMatch(/EMP003|EMP004|Person/);
   });

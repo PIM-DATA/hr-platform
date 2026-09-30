@@ -42,7 +42,9 @@ export function LetterSheet({ letter }: { letter: HrLetterDto }) {
         <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>Reference {letter.letterNumber}</span><span>Issued {letter.issuedDate}</span></div>
       </header>
       {letter.subject && <h1 className="mb-4 text-center text-base font-semibold">{letter.subject}</h1>}
-      <div className="whitespace-pre-wrap text-sm leading-7">{letter.body}</div>
+      {letter.contentRestricted
+        ? <p className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">This letter contains salary information. Its content is shown only to the employee and to payroll-authorized staff.</p>
+        : <div className="whitespace-pre-wrap text-sm leading-7">{letter.body}</div>}
       {letter.status === 'VOID' && <p className="mt-6 rounded border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">VOID — this letter was withdrawn{letter.voidReasonCode ? ` (${titleCase(letter.voidReasonCode)})` : ''} and must not be relied upon.</p>}
       <footer className="mt-10 text-xs text-slate-500">Issued by {letter.issuedByName ?? 'HR'}. This is a printed record produced by the HR system; it carries no electronic signature and makes no statutory certification.</footer>
     </article>

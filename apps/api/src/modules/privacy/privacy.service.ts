@@ -297,12 +297,72 @@ export const privacyService = {
         // The subject's own letter, including a salary figure on their own salary certificate: it is their personal data.
         hrLetters: hrLetters.map((l) => ({ ...l, salaryAmountSnapshot: l.salaryAmountSnapshot?.toFixed(2) ?? null })),
       };
+      // ---- Task 47 (T44-P1-17): the remaining major domains of the subject's own data ----
+      const dec2 = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? null : new Prisma.Decimal(String(v)).toFixed(2));
+      const [compHistory, payItems, payrollResults, attendanceRecords, clockEvents, corrections, overtime, perfPlans, compAssessments, enrollments, trainingNeeds, idps, ownedDocuments, hiredCandidates] = await Promise.all([
+        // Actual salary history from the payroll source (HR's notes on a record are theirs and are not exported).
+        tx.employeeCompensation.findMany({ where: { employeeId }, select: { effectiveFrom: true, effectiveTo: true, salaryType: true, baseSalary: true, currencyCode: true, createdAt: true }, orderBy: { effectiveFrom: 'asc' }, take: MAX_ROWS }),
+        tx.employeePayItem.findMany({ where: { employeeId }, select: { amount: true, effectiveFrom: true, effectiveTo: true, component: { select: { code: true, name: true, type: true } } }, orderBy: { effectiveFrom: 'asc' }, take: MAX_ROWS }),
+        // Closed runs only — what the subject's payslips show. Runs still being calculated are not a result yet.
+        tx.payrollResult.findMany({ where: { employeeId, run: { status: 'CLOSED' } }, select: { currencyCode: true, baseSalary: true, grossPay: true, totalDeductions: true, netPay: true, absentDays: true, lateMinutes: true, unpaidLeaveUnits: true, approvedOtMinutes: true, proratedDays: true, run: { select: { closedAt: true, period: { select: { year: true, month: true } } } }, items: { select: { componentCodeSnapshot: true, componentNameSnapshot: true, type: true, source: true, quantity: true, rate: true, multiplier: true, amount: true } } }, take: MAX_ROWS }),
+        tx.attendanceRecord.findMany({ where: { employeeId }, select: { attendanceDate: true, dayType: true, status: true, scheduledStart: true, scheduledEnd: true, firstClockIn: true, lastClockOut: true, workMinutes: true, lateMinutes: true, earlyLeaveMinutes: true, extraMinutes: true, leaveUnits: true }, orderBy: { attendanceDate: 'asc' }, take: MAX_ROWS }),
+        tx.attendanceClockEvent.findMany({ where: { employeeId }, select: { eventType: true, occurredAt: true, attendanceDate: true, source: true }, orderBy: { occurredAt: 'asc' }, take: MAX_ROWS }),
+        tx.attendanceCorrection.findMany({ where: { employeeId }, select: { attendanceDate: true, requestedClockIn: true, requestedClockOut: true, reason: true, status: true, submittedAt: true, decidedAt: true }, orderBy: { attendanceDate: 'asc' }, take: MAX_ROWS }),
+        tx.overtimeRequest.findMany({ where: { employeeId }, select: { attendanceDate: true, claimedMinutes: true, approvedMinutes: true, dayType: true, reason: true, status: true, submittedAt: true, approvedAt: true, rejectedAt: true, cancelledAt: true }, orderBy: { attendanceDate: 'asc' }, take: MAX_ROWS }),
+        tx.performancePlan.findMany({ where: { employeeId }, select: { status: true, selfSubmittedAt: true, managerSubmittedAt: true, finalizedAt: true, weightedScore: true, ratingLabelSnapshot: true, reviewerNameSnapshot: true, departmentName: true, jobTitle: true, cycle: { select: { name: true, periodStart: true, periodEnd: true } }, items: { select: { kpiNameSnapshot: true, descriptionSnapshot: true, measurementType: true, weight: true, targetValue: true, targetText: true, actualValue: true, actualText: true, progressPercent: true, employeeComment: true, selfScore: true, managerScore: true, managerComment: true, finalScore: true } } }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS }),
+        tx.competencyAssessment.findMany({ where: { employeeId }, select: { status: true, selfSubmittedAt: true, managerSubmittedAt: true, finalizedAt: true, reviewerNameSnapshot: true, cycle: { select: { name: true } }, items: { select: { competencyNameSnapshot: true, requiredLevelSnapshot: true, selfLevel: true, selfComment: true, managerLevel: true, managerComment: true, finalLevel: true } } }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS }),
+        tx.trainingEnrollment.findMany({ where: { employeeId }, select: { status: true, source: true, enrolledAt: true, completionAt: true, score: true, session: { select: { courseTitleSnapshot: true, startAt: true, endAt: true } } }, orderBy: { enrolledAt: 'asc' }, take: MAX_ROWS }),
+        tx.trainingNeed.findMany({ where: { employeeId }, select: { title: true, source: true, competencyNameSnapshot: true, currentLevelSnapshot: true, requiredLevelSnapshot: true, priority: true, status: true, fulfilledAt: true, createdAt: true }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS }),
+        tx.individualDevelopmentPlan.findMany({ where: { employeeId }, select: { title: true, periodStart: true, periodEnd: true, status: true, managerNameSnapshot: true, activatedAt: true, completedAt: true, items: { select: { title: true, developmentType: true, competencyNameSnapshot: true, targetDate: true, status: true, progressPercent: true, employeeComment: true, completedAt: true } } }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS }),
+        // Metadata of documents about the subject. The files themselves are delivered through the Document Center.
+        tx.document.findMany({ where: { ownerEmployeeId: employeeId }, select: { documentNumber: true, title: true, classification: true, status: true, issuedDate: true, expiryDate: true, archivedAt: true, createdAt: true, category: { select: { name: true } }, currentVersion: { select: { originalFilename: true } }, versions: { select: { versionNumber: true, originalFilename: true, mimeType: true, fileSize: true, sha256: true, uploadedAt: true }, orderBy: { versionNumber: 'asc' } } }, orderBy: { createdAt: 'asc' }, take: MAX_ROWS }),
+        // How the subject was recruited: the candidate record that became this employee, its applications and offers.
+        tx.recruitmentCandidate.findMany({ where: { hiredEmployeeId: employeeId }, select: { candidateNumber: true, firstName: true, lastName: true, email: true, phone: true, currentCompany: true, currentTitle: true, locationText: true, source: true, createdAt: true, applications: { select: { applicationNumber: true, jobTitleSnapshot: true, departmentNameSnapshot: true, appliedAt: true, stage: true, hiredAt: true, stageHistory: { select: { fromStage: true, toStage: true, changedAt: true }, orderBy: { changedAt: 'asc' } }, offers: { select: { offerNumber: true, status: true, proposedStartDate: true, positionTitleSnapshot: true, employmentTypeSnapshot: true, baseSalaryProposal: true, currencyCode: true, otherTermsText: true, sentAt: true, acceptedAt: true, declinedAt: true } } } } } }),
+      ]);
+      const finalized = (status: string) => status === 'FINALIZED';
+      const compensation = {
+        history: compHistory.map((c) => ({ ...c, baseSalary: dec2(c.baseSalary) })),
+        recurringPayItems: payItems.map((i) => ({ component: i.component, amount: dec2(i.amount), effectiveFrom: i.effectiveFrom, effectiveTo: i.effectiveTo })),
+      };
+      const payroll = {
+        results: payrollResults.map((r) => ({
+          periodLabel: `${r.run.period.year}-${String(r.run.period.month).padStart(2, '0')}`, closedAt: r.run.closedAt, currencyCode: r.currencyCode,
+          baseSalary: dec2(r.baseSalary), grossPay: dec2(r.grossPay), totalDeductions: dec2(r.totalDeductions), netPay: dec2(r.netPay),
+          absentDays: r.absentDays, lateMinutes: r.lateMinutes, unpaidLeaveUnits: r.unpaidLeaveUnits, approvedOtMinutes: r.approvedOtMinutes, proratedDays: r.proratedDays,
+          items: r.items.map((i) => ({ ...i, quantity: i.quantity === null ? null : String(i.quantity), rate: i.rate === null ? null : String(i.rate), multiplier: i.multiplier === null ? null : String(i.multiplier), amount: dec2(i.amount) })),
+        })).sort((a, b) => a.periodLabel.localeCompare(b.periodLabel)),
+      };
+      const attendance = { records: attendanceRecords, clockEvents, corrections, overtimeRequests: overtime };
+      // Before finalization a plan's manager scores and comments are the reviewer's draft; the subject sees them once final.
+      const performance = {
+        plans: perfPlans.map((p) => ({
+          cycleName: p.cycle.name, periodStart: p.cycle.periodStart, periodEnd: p.cycle.periodEnd, status: p.status, reviewerName: p.reviewerNameSnapshot, departmentAtPlan: p.departmentName, jobAtPlan: p.jobTitle,
+          selfSubmittedAt: p.selfSubmittedAt, managerSubmittedAt: p.managerSubmittedAt, finalizedAt: p.finalizedAt,
+          weightedScore: finalized(p.status) ? dec2(p.weightedScore) : null, ratingLabel: finalized(p.status) ? p.ratingLabelSnapshot : null,
+          items: p.items.map((i) => ({ kpi: i.kpiNameSnapshot, description: i.descriptionSnapshot, measurementType: i.measurementType, weight: dec2(i.weight), targetValue: i.targetValue === null ? null : String(i.targetValue), targetText: i.targetText, actualValue: i.actualValue === null ? null : String(i.actualValue), actualText: i.actualText, progressPercent: i.progressPercent === null ? null : String(i.progressPercent), employeeComment: i.employeeComment, selfScore: dec2(i.selfScore), ...(finalized(p.status) ? { managerScore: dec2(i.managerScore), managerComment: i.managerComment, finalScore: dec2(i.finalScore) } : {}) })),
+        })),
+      };
+      const competency = {
+        assessments: compAssessments.map((a) => ({ cycleName: a.cycle.name, status: a.status, reviewerName: a.reviewerNameSnapshot, selfSubmittedAt: a.selfSubmittedAt, managerSubmittedAt: a.managerSubmittedAt, finalizedAt: a.finalizedAt,
+          items: a.items.map((i) => ({ competency: i.competencyNameSnapshot, requiredLevel: i.requiredLevelSnapshot, selfLevel: i.selfLevel, selfComment: i.selfComment, ...(finalized(a.status) ? { managerLevel: i.managerLevel, managerComment: i.managerComment, finalLevel: i.finalLevel } : {}) })) })),
+      };
+      const training = {
+        enrollments: enrollments.map((e) => ({ courseTitle: e.session.courseTitleSnapshot, sessionStart: e.session.startAt, sessionEnd: e.session.endAt, status: e.status, source: e.source, enrolledAt: e.enrolledAt, completionAt: e.completionAt, score: e.score === null ? null : String(e.score) })),
+        needs: trainingNeeds,
+        developmentPlans: idps,
+      };
+      const documents = {
+        owned: ownedDocuments.map((d) => ({ documentNumber: d.documentNumber, title: d.title, category: d.category.name, classification: d.classification, status: d.status, issuedDate: d.issuedDate, expiryDate: d.expiryDate, archivedAt: d.archivedAt, createdAt: d.createdAt, fileName: d.currentVersion?.originalFilename ?? null, versions: d.versions })),
+      };
+      const recruitment = {
+        candidateRecords: hiredCandidates.map((c) => ({ ...c, applications: c.applications.map((a) => ({ ...a, offers: a.offers.map((o) => ({ ...o, baseSalaryProposal: dec2(o.baseSalaryProposal) })) })) })),
+      };
       const benefits = {
         enrollments: benefitEnrollments,
         entitlements: benefitEntitlements.map((e) => ({ plan: e.plan, period: e.period, currency: e.currency, granted: e.grantedAmount.toFixed(2), adjustment: e.adjustmentAmount.toFixed(2), reserved: e.reservedAmount.toFixed(2), consumed: e.consumedAmount.toFixed(2), ledger: e.ledger.map((l) => ({ ...l, amount: l.amount.toFixed(2) })) })),
         claims: benefitClaims.map((c) => ({ ...c, claimedAmount: c.claimedAmount.toFixed(2), approvedAmount: c.approvedAmount?.toFixed(2) ?? null })),
       };
-      return { positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning, benefits, expenses, employeeServices };
+      return { compensation, payroll, attendance, performance, competency, training, documents, recruitment, positionHistory, managerHistory, leaveRequests, entitlements, ledger, workflows, notifications, privacyRequests, auditEvents, employeeRelations, talentReviews, talentPools, successionNominations, engagement, lifecycle, learning, benefits, expenses, employeeServices };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 
     const result: PersonalDataExportDto = {
@@ -333,7 +393,14 @@ export const privacyService = {
         { category: 'OJT trainer comments and observation comments', reason: 'These are the trainer\'s and HR\'s words about the subject\'s work; the export carries the observation results, the subject\'s own reflections, activity completion and the assessment outcomes.' },
         { category: 'probation review comments, offboarding reason notes and exit-interview notes', reason: 'These are internal HR and reviewer records about the subject; the export carries the dates, statuses and outcomes of each process and the subject\'s own task list.' },
         { category: 'anonymous survey answers', reason: 'Answers to anonymous surveys are stored with survey-local cohort tokens only — no employee, user, assignment, organization, department, job or position identifier — so they cannot be attributed to the subject and are not reconstructed. The participation record (invited, completed) is exported.' },
-        { category: 'salary-review planning records (proposals, planner comments, budgets, review history)', reason: 'Compensation planning is an internal, unpublished HR planning process: proposals and planner comments are working records until a change is applied. Once applied, the resulting salary appears in the employee\'s compensation history, which follows the payroll export rules.' },
+        { category: 'salary-review planning records (proposals, planner comments, budgets, review history)', reason: 'Compensation planning is an internal, unpublished HR planning process: proposals and planner comments are working records until a change is applied. Once applied, the resulting salary is part of this export under compensation.history.' },
+        { category: 'document file contents', reason: 'The export lists every document about the subject with its metadata and version history (documents.owned). The files themselves are released through the Document Center, where each download is authorized and audited.' },
+        { category: 'payroll calculations of runs that are not closed', reason: 'Until a run is closed its figures are an in-progress calculation that may still change; closed results are exported under payroll.results, as on the payslips.' },
+        { category: 'HR notes on salary records, pay items and payroll adjustments', reason: 'These are HR\'s working notes; the export carries the amounts, dates, components and currencies themselves.' },
+        { category: 'performance and competency reviewer scores and comments before finalization', reason: 'Until a review is finalized the reviewer\'s scores and comments are a draft; finalized plans and assessments are exported with the manager scores, comments and final result.' },
+        { category: 'trainer result notes, training-need descriptions and IDP manager / HR comments', reason: 'These are the trainer\'s, manager\'s and HR\'s words; the export carries enrolments, completion, scores, needs, plan items and the subject\'s own comments.' },
+        { category: 'recruitment interview feedback, evaluations and rejection or withdrawal notes', reason: 'Interviewers\' evaluations and recruiters\' notes are the organization\'s assessment records and may concern other candidates; the export carries the subject\'s candidate record, applications, stage history and offers.' },
+        { category: 'clock-event notes', reason: 'Notes on individual clock events are administrative annotations; the events, attendance records, corrections and overtime claims are exported.' },
         { category: 'employee relations case narratives and internal notes', reason: 'The case description and HR investigation notes are HR working records that may concern other people; the export carries the documents issued to the subject and their acknowledgements.' },
       ],
     };

@@ -156,7 +156,7 @@ const tools: CopilotTool[] = [
       const { who, d } = await section(ctx, args as { employeeId?: string; employeeCode?: string });
       const c = d.sections.competency;
       if (!c) return { data: null, sources: [], consulted: 'สมรรถนะ' };
-      return { data: { employeeCode: who.employeeCode, job: c.job?.title ?? null, summary: c.summary, competencies: c.entries.slice(0, 30).map((e) => ({ competency: e.competencyName, currentLevel: e.currentLevel, requiredLevel: e.requiredLevel, gapNeeded: e.gapNeeded, status: e.gapStatus })) }, sources: [src('Competency profile (current job)', 'competency', asOfNow(), link(ctx.auth, PERMISSIONS.COMPETENCY_VIEW, '/hrd/competency'))], consulted: 'สมรรถนะ' };
+      return { data: { employeeCode: who.employeeCode, job: c.job?.title ?? null, summary: c.summary, competencies: c.entries.slice(0, 30).map((e) => ({ competency: e.competencyName, currentLevel: e.currentLevel, requiredLevel: e.requiredLevel, gapNeeded: e.gapNeeded, status: e.gapStatus })) }, sources: [src('Competency profile (current job)', 'competency', asOfNow(), link(ctx.auth, PERMISSIONS.COMPETENCY_VIEW_REPORTS, '/hrd/competency'))], consulted: 'สมรรถนะ' };
     },
   },
   {
@@ -304,8 +304,10 @@ const tools: CopilotTool[] = [
   },
   {
     id: 'skill_gap_report', description: 'Organization-wide competency coverage and top gaps (counts per competency, department and job) from the competency module\'s report. Optional organizationId / departmentId / jobId filters. No individual.',
-    statusLabel: 'กำลังดูรายงาน skill gap…', inputSchema: z.object({ organizationId: z.string().min(1).optional(), departmentId: z.string().min(1).optional(), jobId: z.string().min(1).optional() }).strict(), requiredPermissions: [PERMISSIONS.COMPETENCY_VIEW], sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Competency report',
+    statusLabel: 'กำลังดูรายงาน skill gap…', inputSchema: z.object({ organizationId: z.string().min(1).optional(), departmentId: z.string().min(1).optional(), jobId: z.string().min(1).optional() }).strict(), requiredPermissions: [PERMISSIONS.COMPETENCY_VIEW_REPORTS], sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Competency report',
     async handler(args, ctx) {
+      // Task 47: same authority as the REST report (reporting permission + organization-wide scope); small groups arrive suppressed.
+      if (ctx.auth.dataScope !== 'ALL') throw AppError.forbidden();
       const r = await skillGapService.gapReport(args as { organizationId?: string; departmentId?: string; jobId?: string });
       return { data: { coverage: r.coverage, totals: r.totals, topGaps: r.topGaps.slice(0, 10), byDepartment: r.byDepartment.slice(0, 15) }, sources: [src('Skill gap report', 'competency', asOfNow(), link(ctx.auth, PERMISSIONS.COMPETENCY_VIEW, '/hrd/competency/reports'))], consulted: 'รายงาน skill gap' };
     },
@@ -343,7 +345,7 @@ const tools: CopilotTool[] = [
       const truncated = result.meta.total > result.rows.length;
       const name = getDataset(a.datasetId)?.name ?? a.datasetId;
       return {
-        data: { dataset: name, columns: result.columns.map((c) => c.label), rows: result.rows, total: result.meta.total, truncated, note: truncated ? `Only the first ${result.rows.length} of ${result.meta.total} rows are included; open the Report Center for the full report.` : undefined },
+        data: { dataset: name, columns: result.columns.map((c) => c.label), rows: result.rows, total: result.meta.total, truncated, ...(result.suppression ? { withheldGroups: result.suppression.suppressedGroups, withheldReason: `${result.suppression.reason}. Say that these figures are withheld; do not estimate them.` } : {}), note: truncated ? `Only the first ${result.rows.length} of ${result.meta.total} rows are included; open the Report Center for the full report.` : undefined },
         sources: [src(`Report · ${name}`, 'reports', asOfNow(), '/hrm/reports/builder')], consulted: 'รายงาน',
         reportDraft: { datasetId: a.datasetId, datasetName: name, definition, rowCount: result.meta.total, truncated },
       };

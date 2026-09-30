@@ -53,6 +53,7 @@ export function PerformanceReportsPage() {
       {!cycleId && <Card><EmptyState title="Choose a cycle" description="Reports are per cycle." /></Card>}
       {report.isLoading && cycleId && <LoadingBlock />}
       {report.isError && <Alert>Could not load this report.</Alert>}
+      {report.data?.suppression && <Alert tone="info">Scores withheld: fewer than {report.data.suppression.minimumGroupSize} people in this selection, or showing it would reveal a smaller group by subtraction.</Alert>}
 
       {r && (
         <>
@@ -66,7 +67,7 @@ export function PerformanceReportsPage() {
           <Card>
             <CardHeader title="Average final score" description="Across the plans that have been completed." />
             <div className="px-5 py-4 text-2xl font-semibold text-slate-900">
-              {r.averageFinalScore ? <Score value={r.averageFinalScore} /> : <span className="text-base font-normal text-slate-400">No completed reviews yet</span>}
+              {r.suppression ? <span className="text-base font-normal text-slate-500">Withheld — fewer than {r.suppression.minimumGroupSize} people</span> : r.averageFinalScore ? <Score value={r.averageFinalScore} /> : <span className="text-base font-normal text-slate-400">No completed reviews yet</span>}
             </div>
           </Card>
 
@@ -78,9 +79,9 @@ export function PerformanceReportsPage() {
                   <span className="text-slate-700">{band.label}</span>
                   <span className="flex items-center gap-3">
                     <span className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-200" aria-hidden>
-                      <span className="block h-full rounded-full bg-brand-500" style={{ width: `${r.completion.finalized ? (band.count / r.completion.finalized) * 100 : 0}%` }} />
+                      <span className="block h-full rounded-full bg-brand-500" style={{ width: `${r.completion.finalized && band.count !== null ? (band.count / r.completion.finalized) * 100 : 0}%` }} />
                     </span>
-                    <span className="w-8 text-right tabular-nums text-slate-900">{band.count}</span>
+                    <span className="w-8 text-right tabular-nums text-slate-900">{band.count ?? '—'}</span>
                   </span>
                 </li>
               ))}
@@ -95,7 +96,7 @@ export function PerformanceReportsPage() {
                   <span className="text-slate-700">{row.departmentName}</span>
                   <span className="flex items-center gap-4 text-slate-600">
                     <span className="tabular-nums">{row.finalized}/{row.assigned} complete</span>
-                    <Score value={row.averageScore} className="w-12 text-right font-medium text-slate-900" />
+                    {row.suppression ? <span className="text-xs text-slate-400" title="Fewer than 5 people, or it would reveal a smaller group">withheld</span> : <Score value={row.averageScore} className="w-12 text-right font-medium text-slate-900" />}
                   </span>
                 </li>
               ))}
@@ -109,7 +110,7 @@ export function PerformanceReportsPage() {
               {r.byKpi.map((row) => (
                 <li key={row.kpiCode} className="flex items-center justify-between py-2 text-sm">
                   <span className="text-slate-700">{row.kpiName} <span className="text-xs text-slate-400">· {row.plans} plan{row.plans === 1 ? '' : 's'}</span></span>
-                  <Score value={row.averageManagerScore} className="font-medium text-slate-900" />
+                  {row.suppression ? <span className="text-xs text-slate-400">withheld</span> : <Score value={row.averageManagerScore} className="font-medium text-slate-900" />}
                 </li>
               ))}
             </ul>

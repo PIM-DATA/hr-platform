@@ -450,14 +450,20 @@ describe('who sees what', () => {
     expect(rep.body.data.travel).toMatchObject({ requests: 2, approved: 2, estimatedTotal: '12600.00' });
     for (const payload of [dash.body.data, rep.body.data]) expect(forbiddenKeys(payload, /^(employeeId|employeeCode|employeeName|firstName|lastName|name|email|reportNumber|requestNumber|merchant|description|purpose|destination|documentId|paymentReference)$/)).toEqual([]);
     expect(text(rep.body.data)).not.toMatch(/Emma|EMP003|EXP-|TRV-|Hotel|Chiang|northern|TRF-/);
+    // Task 47 (T44-P1-07): per-person datasets are aggregate-only in fact — a row listing is refused, and a group of fewer
+    // than 5 people is withheld and counted (never shown). BEFORE: one row per record, with its amounts / outcome.
     const run = (s: Session, datasetId: string, columns: string[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns, filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50 }, page: 1 });
-    const r1 = await run(exec, 'expense_report_summary', ['policy', 'status', 'currency', 'items', 'total']);
-    expect(err(r1)).toBe('200');
-    expect(r1.body.data.rows.filter((x: { status: string }) => x.status === 'PAID').map((x: { total: string }) => x.total).sort()).toEqual([paidTotal, '2000.00'].sort());
-    const r2 = await run(exec, 'expense_category_summary', ['category', 'amount', 'reportStatus']);
-    expect(r2.body.data.rows.filter((x: { category: string }) => x.category === 'Office Supplies').map((x: { amount: string }) => x.amount).sort()).toEqual(['1.00', '10.00', '120.00', '333.37', '666.73'].sort());
-    const r3 = await run(hrAdmin, 'travel_request_summary', ['travelPolicy', 'status', 'tripDays', 'estimatedAmount']);
-    expect(r3.body.data.rows.find((x: { estimatedAmount: string }) => x.estimatedAmount === '12500.00')).toMatchObject({ tripDays: 3, status: 'COMPLETED' });
+    const agg = (s: Session, datasetId: string, groupBy: string[], aggregations: { fieldId: string; function: string }[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns: groupBy, filters: [], sort: [], groupBy, aggregations, pageSize: 50 }, page: 1 });
+    const smallGroupsWithheld = (r: request.Response) => { expect(r.status).toBe(200); const rows = r.body.data.rows as Record<string, unknown>[]; expect(rows.length === 0 || r.body.data.suppression === null || r.body.data.suppression.suppressedGroups >= 1).toBe(true); if (rows.length === 0) expect(r.body.data.suppression).toMatchObject({ minimumGroupSize: 5 }); };
+    for (const d of ['expense_report_summary', 'expense_category_summary', 'travel_request_summary']) expect(err(await run(exec, d, ['currency']))).toBe('422 REPORT_AGGREGATION_REQUIRED');
+    const r1 = await agg(exec, 'expense_report_summary', ['policy', 'currency'], [{ fieldId: 'total', function: 'SUM' }]);
+    smallGroupsWithheld(r1);
+    expect(text(r1.body)).not.toContain(paidTotal);
+    const r2 = await agg(exec, 'expense_category_summary', ['category', 'currency'], [{ fieldId: 'amount', function: 'SUM' }]);
+    smallGroupsWithheld(r2);
+    expect(text(r2.body)).not.toMatch(/333\.37|666\.73/);
+    const r3 = await agg(hrAdmin, 'travel_request_summary', ['travelPolicy', 'currency'], [{ fieldId: 'estimatedAmount', function: 'SUM' }]);
+    smallGroupsWithheld(r3);
     for (const r of [r1, r2, r3]) expect(text(r.body)).not.toMatch(/Emma|EMP003|EXP-|TRV-|Hotel|Chiang|northern|TRF-/);
     expect(err(await run(mgrA, 'expense_report_summary', ['policy']))).toMatch(/^40[134]/);
     expect(err(await run(emp, 'travel_request_summary', ['travelPolicy']))).toMatch(/^40[134]/);

@@ -296,7 +296,9 @@ describe('claims — reservation, documents, workflow, ledger', () => {
   it('two concurrent submissions of 6,000 each against 10,000 never over-reserve (§84); a double submit of one claim yields one reservation and one workflow (§46)', async () => {
     const bal = await balance(ent4); // 10,500 available (10,000 + 500 adjustment)
     expect(bal.available).toBe('10500.00');
-    const mk = async (amount: string) => { const c = await as(emp4, 'post', `${B}/claims`).send({ planId, periodId, claimedAmount: amount, serviceDate: '2026-09-01' }); const own = await prisma.document.create({ data: { documentNumber: `DOC-2026-0009${Math.floor(Math.random() * 90 + 10)}`, title: 'Receipt', categoryId: docCatId, classification: 'EMPLOYEE_PRIVATE', ownerEmployeeId: employees.EMP004, status: 'ACTIVE', createdByUserId: hrAdmin.user.id } }); await as(emp4, 'post', `${B}/claims/${c.body.data.id}/documents`).send({ documentId: own.id }); return c.body.data.id as string; };
+    // Test-harness fix (Task 47): the number was Math.random() over 90 values and collided under concurrency; a counter is unique.
+    let receiptSeq = 10;
+    const mk = async (amount: string) => { const c = await as(emp4, 'post', `${B}/claims`).send({ planId, periodId, claimedAmount: amount, serviceDate: '2026-09-01' }); const own = await prisma.document.create({ data: { documentNumber: `DOC-2026-0009${String(++receiptSeq).padStart(2, '0')}`, title: 'Receipt', categoryId: docCatId, classification: 'EMPLOYEE_PRIVATE', ownerEmployeeId: employees.EMP004, status: 'ACTIVE', createdByUserId: hrAdmin.user.id } }); await as(emp4, 'post', `${B}/claims/${c.body.data.id}/documents`).send({ documentId: own.id }); return c.body.data.id as string; };
     const [x, y] = await Promise.all([mk('5000.00'), mk('5000.00')]);
     const z = await mk('4000.00');
     const results = await Promise.all([as(emp4, 'post', `${B}/claims/${x}/submit`), as(emp4, 'post', `${B}/claims/${y}/submit`), as(emp4, 'post', `${B}/claims/${z}/submit`)]);
@@ -460,14 +462,19 @@ describe('who sees what', () => {
     expect(text(rep.body.data)).not.toMatch(/Emma|EMP003|BCL-|check-up|TRF-|Clinic/);
     expect(err(await as(exec, 'get', `${B}/claims`))).toBe('403 FORBIDDEN');
     expect(err(await as(exec, 'get', `${B}/my`)).startsWith('200')).toBe(true);
+    // Task 47 (T44-P1-07): per-person datasets are aggregate-only in fact — a row listing is refused, and a group of fewer
+    // than 5 people is withheld and counted (never shown). BEFORE: one row per record, with its amounts / outcome.
     const run = (s: Session, datasetId: string, columns: string[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns, filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50 }, page: 1 });
-    const c = await run(exec, 'benefit_claim_summary', ['plan', 'status', 'currency', 'claimedAmount', 'approvedAmount']);
-    expect(err(c)).toBe('200');
-    expect(c.body.data.rows.filter((x: { status: string; plan: string }) => x.status === 'PAID' && x.plan === '2026 Health & Wellness Allowance').map((x: { claimedAmount: string; approvedAmount: string; currency: string }) => [x.claimedAmount, x.approvedAmount, x.currency]).sort()).toEqual([...paidAmounts].sort().map((a) => [a, a, 'THB'])); // the approve/reject race earlier decides which claim reached payroll
-    const e = await run(exec, 'benefit_entitlement_summary', ['plan', 'currency', 'granted', 'consumed', 'available']);
-    expect(e.body.data.rows.find((x: { plan: string }) => x.plan === 'Decimal plan')).toMatchObject({ granted: '1000.10', consumed: '1000.10', available: '0.00' });
-    const n = await run(hrAdmin, 'benefit_enrollment_summary', ['plan', 'status', 'organization']);
-    expect(n.body.data.rows.filter((x: { status: string }) => x.status === 'ENROLLED').length).toBeGreaterThanOrEqual(3);
+    const agg = (s: Session, datasetId: string, groupBy: string[], aggregations: { fieldId: string; function: string }[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns: groupBy, filters: [], sort: [], groupBy, aggregations, pageSize: 50 }, page: 1 });
+    const smallGroupsWithheld = (r: request.Response) => { expect(r.status).toBe(200); const rows = r.body.data.rows as Record<string, unknown>[]; expect(rows.length === 0 || r.body.data.suppression === null || r.body.data.suppression.suppressedGroups >= 1).toBe(true); if (rows.length === 0) expect(r.body.data.suppression).toMatchObject({ minimumGroupSize: 5 }); };
+    for (const d of ['benefit_claim_summary', 'benefit_entitlement_summary', 'benefit_enrollment_summary']) expect(err(await run(exec, d, ['plan']))).toBe('422 REPORT_AGGREGATION_REQUIRED');
+    const c = await agg(exec, 'benefit_claim_summary', ['plan', 'currency'], [{ fieldId: 'approvedAmount', function: 'SUM' }]);
+    smallGroupsWithheld(c);
+    for (const a of paidAmounts) expect(text(c.body)).not.toContain(a);
+    const e = await agg(exec, 'benefit_entitlement_summary', ['plan', 'currency'], [{ fieldId: 'granted', function: 'SUM' }]);
+    smallGroupsWithheld(e);
+    const n = await agg(hrAdmin, 'benefit_enrollment_summary', ['plan', 'status'], [{ fieldId: 'plan', function: 'COUNT' }]);
+    smallGroupsWithheld(n);
     for (const r of [c, e, n]) expect(text(r.body)).not.toMatch(/Emma|EMP003|BCL-|check-up|TRF-|Sales|Marketing/);
     expect(err(await run(mgrA, 'benefit_claim_summary', ['plan']))).toMatch(/^40[134]/);
     expect(err(await run(emp, 'benefit_entitlement_summary', ['plan']))).toMatch(/^40[134]/);

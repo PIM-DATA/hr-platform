@@ -1,3 +1,4 @@
+import type { AggregateSuppression } from '../privacy-aggregates';
 import { z } from 'zod';
 import {
   KPI_MEASUREMENT_TYPES, PERFORMANCE_CYCLE_STATUSES, PERFORMANCE_PLAN_STATUSES,
@@ -327,7 +328,10 @@ export interface CycleReportDto {
   cycle: { id: string; code: string; name: string; status: string };
   completion: { assigned: number; selfSubmitted: number; managerSubmitted: number; finalized: number };
   averageFinalScore: string | null;
-  ratingDistribution: { code: string; label: string; count: number }[];
-  byDepartment: { departmentName: string; assigned: number; finalized: number; averageScore: string | null }[];
-  byKpi: { kpiCode: string; kpiName: string; plans: number; averageManagerScore: string | null }[];
+  /** Task 47: set when the scores of this (filtered) population are withheld; the average and distribution are then null. */
+  suppression: AggregateSuppression | null;
+  /** `count` is null when the distribution is suppressed. */
+  ratingDistribution: { code: string; label: string; count: number | null }[];
+  byDepartment: { departmentName: string; assigned: number; finalized: number; averageScore: string | null; suppression: AggregateSuppression | null }[];
+  byKpi: { kpiCode: string; kpiName: string; plans: number; averageManagerScore: string | null; suppression: AggregateSuppression | null }[];
 }

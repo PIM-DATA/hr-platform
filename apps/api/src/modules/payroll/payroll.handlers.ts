@@ -35,7 +35,7 @@ export const payrollWorkflowHandlers = {
     await auditService.log(payrollAudit(ctx.actor, AUDIT_ACTIONS.APPROVE_PAYROLL_RUN, 'PayrollRun', run.id, {
       period: payrollPeriodLabel(run.period.year, run.period.month), employees: approved.employeeCount,
       grossTotal: toMoneyString(approved.grossTotal), deductionTotal: toMoneyString(approved.deductionTotal), netTotal: toMoneyString(approved.netTotal),
-      workflowInstanceId: ctx.instanceId, comment: ctx.comment,
+      workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0,
     }, { status: 'REVIEW' }), tx);
   },
 
@@ -46,7 +46,7 @@ export const payrollWorkflowHandlers = {
     await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'REVIEW', workflowInstanceId: null } });
     await tx.payrollPeriod.update({ where: { id: run.periodId }, data: { status: 'REVIEW' } });
     await auditService.log(payrollAudit(ctx.actor, AUDIT_ACTIONS.REJECT_PAYROLL_RUN, 'PayrollRun', run.id, {
-      period: payrollPeriodLabel(run.period.year, run.period.month), workflowInstanceId: ctx.instanceId, comment: ctx.comment,
+      period: payrollPeriodLabel(run.period.year, run.period.month), workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0,
     }, { status: 'REVIEW' }), tx);
   },
 

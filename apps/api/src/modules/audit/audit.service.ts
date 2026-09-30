@@ -57,6 +57,6 @@ export const auditLogService = {
     const row = await prisma.auditLog.findUnique({ where: { id }, select: listSelect });
     if (!row) throw new AppError(404, 'AUDIT_LOG_NOT_FOUND', 'Audit log entry not found');
     // parsed + redacted on the way out; the stored row is never touched
-    return { ...toListItem(row), oldValue: parseAuditJson(row.oldValue), newValue: parseAuditJson(row.newValue) };
+    return { ...toListItem(row), oldValue: parseAuditJson(row.oldValue, row.module), newValue: parseAuditJson(row.newValue, row.module) };
   },
 };

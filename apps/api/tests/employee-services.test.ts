@@ -408,12 +408,16 @@ describe('who sees what', () => {
     for (const payload of [dash.body.data, rep.body.data]) expect(forbiddenKeys(payload, /^(employeeId|employeeCode|employeeName|firstName|lastName|email|requestNumber|letterNumber|subject|body|salary|salaryAmount|description|documentId)$/)).toEqual([]);
     expect(text(rep.body.data)).not.toMatch(/Emma|EMP003|SR-2026|HRL-2026|30612|visa|apartment/i);
     expect(err(await as(mgrA, 'get', `${X}/dashboard`))).toBe('403 FORBIDDEN');
+    // Task 47 (T44-P1-07): per-person datasets are aggregate-only in fact — a row listing is refused, and a group of fewer
+    // than 5 people is withheld and counted (never shown). BEFORE: one row per record, with its amounts / outcome.
     const run = (s: Session, datasetId: string, columns: string[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns, filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50 }, page: 1 });
-    const r1 = await run(exec, 'service_request_summary', ['requestType', 'category', 'status', 'daysToFulfil', 'overdue']);
-    expect(err(r1)).toBe('200');
-    expect(r1.body.data.rows.filter((x: { status: string }) => x.status === 'FULFILLED').length).toBeGreaterThanOrEqual(3);
-    const r2 = await run(exec, 'hr_letter_summary', ['letterType', 'template', 'status', 'fromRequest']);
-    expect(r2.body.data.rows.filter((x: { letterType: string }) => x.letterType === 'SALARY_CERTIFICATE').length).toBeGreaterThanOrEqual(1);
+    const agg = (s: Session, datasetId: string, groupBy: string[], aggregations: { fieldId: string; function: string }[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns: groupBy, filters: [], sort: [], groupBy, aggregations, pageSize: 50 }, page: 1 });
+    const smallGroupsWithheld = (r: request.Response) => { expect(r.status).toBe(200); const rows = r.body.data.rows as Record<string, unknown>[]; expect(rows.length === 0 || r.body.data.suppression === null || r.body.data.suppression.suppressedGroups >= 1).toBe(true); if (rows.length === 0) expect(r.body.data.suppression).toMatchObject({ minimumGroupSize: 5 }); };
+    for (const d of ['service_request_summary', 'hr_letter_summary']) expect(err(await run(exec, d, ['status']))).toBe('422 REPORT_AGGREGATION_REQUIRED');
+    const r1 = await agg(exec, 'service_request_summary', ['requestType', 'status'], [{ fieldId: 'daysToFulfil', function: 'AVG' }]);
+    smallGroupsWithheld(r1);
+    const r2 = await agg(exec, 'hr_letter_summary', ['letterType'], [{ fieldId: 'letterType', function: 'COUNT' }]);
+    smallGroupsWithheld(r2);
     for (const r of [r1, r2]) expect(text(r.body)).not.toMatch(/Emma|EMP003|SR-2026|HRL-2026|30612|visa|apartment/i);
     expect(err(await run(mgrA, 'service_request_summary', ['requestType']))).toMatch(/^40[134]/);
     expect(err(await run(emp, 'hr_letter_summary', ['letterType']))).toMatch(/^40[134]/);

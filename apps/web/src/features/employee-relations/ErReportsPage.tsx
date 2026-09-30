@@ -17,7 +17,8 @@ export function ErReportsPage() {
       <Card><div className="p-4"><Select label="Department" options={(departments.data?.data ?? []).map((d) => ({ value: d.id, label: d.name }))} placeholder="All departments" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className="max-w-sm" /></div></Card>
       {report.isLoading && <LoadingBlock />}
       {report.isError && <Alert>Could not load the report.</Alert>}
-      {r && (
+      {r && !r.actions && <Alert tone="info">Withheld: this department has fewer than {r.suppression?.minimumGroupSize ?? 5} people, so its figures would describe individuals.</Alert>}
+      {r && r.actions && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[['Actions issued', r.actions.issued], ['Active', r.actions.active], ['Expired', r.actions.expired], ['Awaiting acknowledgement', r.actions.awaitingAcknowledgement], ['Overdue acknowledgement', r.actions.overdueAcknowledgement]].map(([label, value]) => (
@@ -27,7 +28,7 @@ export function ErReportsPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Breakdown title="Cases by status" rows={r.casesByStatus.map((s) => ({ label: s.status.toLowerCase().replace('_', ' '), cells: [`${s.count}`] }))} />
             <Breakdown title="By action type" rows={r.byActionType.map((t) => ({ label: t.actionTypeName, cells: [`${t.issued} issued`, `${t.active} active`] }))} />
-            <Breakdown title="By department" rows={r.byDepartment.map((d) => ({ label: d.departmentName, cells: [`${d.cases} cases`, `${d.issued} issued`, `${d.active} active`] }))} />
+            <Breakdown title="By department" rows={r.byDepartment.map((d) => ({ label: d.departmentName, cells: d.suppression ? ['withheld (small group)'] : [`${d.cases} cases`, `${d.issued} issued`, `${d.active} active`] }))} />
             <Breakdown title="By month" rows={r.byMonth.map((m) => ({ label: m.month, cells: [`${m.cases} cases`, `${m.issued} issued`] }))} />
           </div>
           <p className="text-xs text-slate-500">Aggregate only. This report names nobody and ranks nobody.</p>

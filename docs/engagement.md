@@ -158,3 +158,20 @@ No external anonymous survey link, no email/SMS distribution, no scheduled remin
 scheduler, no AI sentiment analysis or topic modelling, no benchmark provider, no action-plan workflow, no custom
 statistics engine or significance testing, no branching/logic, no matrix questions, no attachments, no
 multilingual questionnaire engine, no identified detailed export, and no cryptographic anonymity guarantee.
+
+## Task 47 — differencing protection (T44-P1-06)
+
+The Task 44 audit showed that the threshold alone was not enough: overall (20) − Sales (16) = Legal (4 answers). The rule now:
+
+- For an anonymous survey, every cohort condition of a result (department, job, organization, or a manager's set of
+  departments) is checked against the partition it selects from — the same query without that condition, split by that
+  dimension. Inside such a partition the hidden cells must describe nobody or at least the survey threshold
+  (complementary suppression); a single cohort is released only if its cell survives, a set of cohorts only if the
+  hidden people inside it and the people outside it are each none or at least the threshold.
+- The rule lives in `aggregate` (results.service.ts), so the results screens, breakdowns, CSV, Report Center datasets,
+  executive rollup and copilot all agree. It depends only on the data, never on the caller — SYSTEM_ADMIN, HR Admin and
+  executives are not exempt, and a manager whose department is the complement of a hidden one sees it withheld too.
+- Participation: for an anonymous survey, completion is hidden (`completed: null`, `completionHidden: true`) for people
+  in a suppressed department group, a completion filter leaves them out, and no exact completion time is ever shown.
+- Consequence to expect: with two departments where one is below the threshold, both are withheld; the overall result
+  stays visible.

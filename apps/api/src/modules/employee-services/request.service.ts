@@ -75,7 +75,7 @@ async function detail(db: Db, auth: AuthContext, r: Row): Promise<ServiceRequest
   return {
     ...dto(auth, r, { attachments: docs.length, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null }),
     description: r.description, answers: r.values.map(answerDto), messages: visibleMessages(auth, r, messages, names), history: await historyDto(db, r.id), documents: docs,
-    letters: r.letters.map(letterSummary), resultNote: r.resultNote, rejectReasonCode: r.rejectReasonCode, rejectExplanation: r.rejectExplanation, blockers,
+    letters: r.letters.map(letterSummary(auth)), resultNote: r.resultNote, rejectReasonCode: r.rejectReasonCode, rejectExplanation: r.rejectExplanation, blockers,
   };
 }
 
@@ -162,7 +162,7 @@ export const serviceRequestService = {
     const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { organizationId: true } });
     return {
       requests: rows.map((r) => dto(auth, r, { attachments: byId.get(r.id) ?? 0, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null })),
-      letters: letters.map(letterSummary),
+      letters: letters.map(letterSummary(auth)),
       catalog: catalog.filter((t) => !t.organizationId || t.organizationId === employee?.organizationId).map((t) => ({ id: t.id, code: t.code, name: t.name, description: t.description, category: t.category as ServiceCategory, requiresAttachment: t.requiresAttachment, targetDays: t.targetDays, fields: t.fields.map(fieldDto) })),
       queue,
     };

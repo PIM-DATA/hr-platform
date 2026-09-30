@@ -234,3 +234,10 @@ source-domain updates of any kind, no electronic signature, no public certificat
 document OCR, no server-generated PDF (the letter is a browser print of a plain-text snapshot), no advanced
 document designer or mail-merge engine beyond the allow-listed tokens, no external document delivery, no
 per-request SLA reporting beyond the derived past-target flag, and no multi-language letter selection.
+
+## Task 47 — reading a salary-bearing letter (T44-P1-20)
+
+Issuing a salary certificate already required the payroll authority; **reading** one now does too. The letter's
+subject, body and salary are returned only to the employee it concerns and to holders of `payroll.manage`. Anyone else
+with organization-wide letter or service-desk scope sees that the letter exists — number, type, date, status — with
+`contentRestricted: true` and subject, body and salary `null` (list, detail, and the request's letter summaries).

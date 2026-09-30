@@ -91,3 +91,16 @@ and are listed as gaps in `docs/production-readiness.md`: they require the custo
 - Consent management, processing register, DPIA tooling, cross-border transfer records.
 - Data-subject self-service (a portal where an employee exports their own file without HR).
 - Notifications or deadline reminders for privacy requests.
+
+## Task 47 — export completeness (T44-P1-17)
+
+The personal-data export now also carries, for the subject only: `compensation` (salary history, recurring pay items),
+`payroll` (results and items of closed runs — what the payslips show), `attendance` (records, clock events, corrections,
+overtime claims), `performance` (plans; manager scores and comments once finalized), `competency` (assessments; manager
+levels once finalized), `training` (enrolments, needs, development plans), `documents` (metadata and version history of
+documents about the subject) and `recruitment` (the candidate record that became this employee, applications, stage
+history, offers). Everything not exported is listed in `notIncluded` with a reason — including document file contents
+(released through the Document Center, authorized and audited), open payroll runs, HR notes, pre-finalization reviewer
+drafts, trainer / IDP manager comments and recruitment evaluations. The earlier line that applied salaries "follow the
+payroll export rules" was false and is gone. (The Included / Not-included tables above predate Task 47; this section
+supersedes them.)

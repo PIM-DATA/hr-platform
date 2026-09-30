@@ -186,3 +186,14 @@ dimension comes from the plan snapshots.
 Measured on the development database with 100 employees and 4 KPIs each: assignment of 101 plans in ~22 ms, the full
 cycle report over 101 plans in ~22 ms, a page of 20 plans in ~6 ms. Assignment and reporting are batched and
 aggregated in the database; nothing loops per employee.
+
+## Task 47 — organization reports and small groups (T44-P1-05)
+
+- `GET /performance/cycles/:id/report` needs **`performance.view_reports`** (HR, HR Admin, Executive, System Admin) and an
+  organization-wide data scope. `performance.view` now means *your own plan* only — before Task 47 every employee could
+  open the organization report and read a colleague's score in a small department.
+- Scores are released only for groups of at least **5 scored plans** (`MIN_AGGREGATE_GROUP_SIZE`), with complementary
+  suppression across the cycle's departments: if one department is hidden, the next smallest is hidden too, so "cycle −
+  visible departments" never recovers it. A department filter is released only when that department's cell is.
+- Withheld values are `null` with an explicit `suppression` object (`SMALL_GROUP` / `COMPLEMENT`); coverage counts
+  (assigned, finalized) stay visible. The executive dashboard and the copilot read the same source.

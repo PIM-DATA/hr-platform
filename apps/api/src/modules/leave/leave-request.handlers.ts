@@ -32,7 +32,7 @@ export const leaveWorkflowHandlers = {
     const r = await balanceService.use(tx, req.entitlementId, req.units, meta(ctx, req, 'use'));
     const now = new Date();
     await tx.leaveRequest.update({ where: { id: req.id }, data: { status: ST.APPROVED, approvedAt: now } });
-    await auditService.log(audit(ctx, 'APPROVE_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.APPROVED, units: req.units, workflowInstanceId: ctx.instanceId, comment: ctx.comment, balance: r.summary }), tx);
+    await auditService.log(audit(ctx, 'APPROVE_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.APPROVED, units: req.units, workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0, balance: r.summary }), tx);
     await notifyLeaveEvent(tx, req, NOTIFICATION_TYPES.LEAVE_APPROVED, 'approved');
   },
   /** Rejection: reservation released, status REJECTED. */
@@ -40,7 +40,7 @@ export const leaveWorkflowHandlers = {
     const req = await pendingRequest(tx, ctx);
     const r = await balanceService.release(tx, req.entitlementId, req.units, meta(ctx, req, 'release'));
     await tx.leaveRequest.update({ where: { id: req.id }, data: { status: ST.REJECTED, rejectedAt: new Date() } });
-    await auditService.log(audit(ctx, 'REJECT_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.REJECTED, units: req.units, workflowInstanceId: ctx.instanceId, comment: ctx.comment, balance: r.summary }), tx);
+    await auditService.log(audit(ctx, 'REJECT_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.REJECTED, units: req.units, workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0, balance: r.summary }), tx);
     // the rejection comment stays in the workflow timeline — it is never copied into a notification body
     await notifyLeaveEvent(tx, req, NOTIFICATION_TYPES.LEAVE_REJECTED, 'rejected');
   },
@@ -71,7 +71,7 @@ export const leaveWorkflowHandlers = {
     const req = await pendingRequest(tx, ctx);
     const r = await balanceService.release(tx, req.entitlementId, req.units, meta(ctx, req, 'release'));
     await tx.leaveRequest.update({ where: { id: req.id }, data: { status: ST.CANCELLED, cancelledAt: new Date() } });
-    await auditService.log(audit(ctx, 'CANCEL_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.CANCELLED, units: req.units, workflowInstanceId: ctx.instanceId, comment: ctx.comment, balance: r.summary }), tx);
+    await auditService.log(audit(ctx, 'CANCEL_LEAVE_REQUEST', req.id, { status: ST.PENDING }, { status: ST.CANCELLED, units: req.units, workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0, balance: r.summary }), tx);
   },
 };
 

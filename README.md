@@ -266,6 +266,11 @@ Audit matrix (every mutation endpoint → action; all admin actions are written 
 Known limitations: `actor.email` is the user's *current* email (the immutable identity is `actor.userId`); no retention/archive or export yet;
 validation failures (duplicates, cycles, in-use) are not audited by design.
 
+- **No narrative free text** (Task 47, T44-P1-18): domain code logs lengths, "changed" flags and reason codes instead
+  of leave reasons, approver comments, ER titles / comments, termination reasons or payroll notes; and a per-module
+  registry (`AUDIT_FREE_TEXT_KEYS`, services/audit/redact.ts) replaces any such key that still arrives with
+  `{ redacted: true, length }` — on write and again on read, so rows written before the rule are masked too.
+
 ## Dashboard
 
 `GET /dashboard/summary` (`dashboard.view`, not audited). Every number uses the **same** population as the employee list —

@@ -332,13 +332,19 @@ describe('reporting, 360, export and executive', () => {
     expect(hrDash.probation.passedLast90Days).toBe(1);
   });
   it('Report Center datasets carry departments, statuses and months only', async () => {
+    // Task 47 (T44-P1-07): per-person datasets are aggregate-only in fact — a row listing is refused, and a group of fewer
+    // than 5 people is withheld and counted (never shown). BEFORE: one row per record, with its amounts / outcome.
     const run = (s: Session, datasetId: string, columns: string[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns, filters: [], sort: [], groupBy: [], aggregations: [], pageSize: 50 }, page: 1 });
-    const p = await run(exec, 'probation_summary', ['department', 'status', 'outcome', 'extensions']);
-    expect(err(p)).toBe('200');
-    expect(p.body.data.rows.find((x: { status: string }) => x.status === 'PASSED')).toMatchObject({ department: 'Engineering', outcome: 'PASS', extensions: 1 });
-    expect(text(p.body)).not.toMatch(/Emma|EMP003|slow start/);
-    const o = await run(hr, 'offboarding_summary', ['department', 'reason', 'status', 'plannedMonth']);
-    expect(o.body.data.rows.find((x: { status: string }) => x.status === 'COMPLETED')).toMatchObject({ reason: 'RESIGNATION', plannedMonth: '2026-12' });
+    const agg = (s: Session, datasetId: string, groupBy: string[], aggregations: { fieldId: string; function: string }[]) => as(s, 'post', '/api/v1/reports/run').send({ datasetId, definition: { columns: groupBy, filters: [], sort: [], groupBy, aggregations, pageSize: 50 }, page: 1 });
+    const smallGroupsWithheld = (r: request.Response) => { expect(r.status).toBe(200); const rows = r.body.data.rows as Record<string, unknown>[]; expect(rows.length === 0 || r.body.data.suppression === null || r.body.data.suppression.suppressedGroups >= 1).toBe(true); if (rows.length === 0) expect(r.body.data.suppression).toMatchObject({ minimumGroupSize: 5 }); };
+    for (const d of ['probation_summary', 'offboarding_summary', 'onboarding_summary']) expect(err(await run(exec, d, ['department']))).toBe('422 REPORT_AGGREGATION_REQUIRED');
+    // BEFORE: "Engineering · PASS · 1 extension" — one person's probation outcome by department.
+    const p = await agg(exec, 'probation_summary', ['department', 'outcome'], [{ fieldId: 'extensions', function: 'SUM' }]);
+    smallGroupsWithheld(p);
+    expect(text(p.body)).not.toMatch(/Emma|EMP003|slow start|Engineering/);
+    const o = await agg(hr, 'offboarding_summary', ['department', 'reason'], [{ fieldId: 'department', function: 'COUNT' }]);
+    smallGroupsWithheld(o);
+    expect(text(o.body)).not.toMatch(/RESIGNATION/);
     expect(err(await run(emp, 'onboarding_summary', ['department']))).toMatch(/^40[13]/);
   });
   it('the Employee 360 carries lifecycle statuses and dates only; the privacy export carries own records without notes', async () => {

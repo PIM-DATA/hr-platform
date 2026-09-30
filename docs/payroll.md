@@ -191,3 +191,9 @@ than not having it.
 
 A run loads every source in batches — one query per source for the whole population, not one per employee. Measured on
 the development database: **~0.7 ms per employee** (250 employees in ~164 ms), scaling linearly.
+
+## Task 47 — the run export is audited (T44-P1-24)
+
+`GET /payroll/runs/:id/export` (every salary of a run) writes an `EXPORT_PAYROLL_RUN` audit event after the file is
+built: actor, run, period, organization, run status, format and row count — never the file, a salary or a name. An
+unknown run is `404 PAYROLL_RUN_NOT_FOUND` (it used to return an empty file); a refused export writes no event.

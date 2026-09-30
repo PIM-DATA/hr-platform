@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { MIN_AGGREGATE_GROUP_SIZE, partitionSuppression } from '@hr/shared';
 import type { ReportDefinition } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import type { FieldDef, ReportDataset, Row, RunContext, RunResult } from './registry';
@@ -80,17 +81,27 @@ function buildSelect(fields: ColumnDef[], def: ReportDefinition): Record<string,
 }
 
 export function prismaDataset(spec: Omit<ReportDataset, 'run' | 'runAll' | 'fields'> & { fields: ColumnDef[]; delegate: Delegate; scope: (auth: RunContext['auth']) => unknown | Promise<unknown>; defaultOrder: unknown }): ReportDataset {
-  const { delegate, scope, defaultOrder, ...rest } = spec;
+  const { delegate, scope: baseScope, defaultOrder, ...rest } = spec;
   const fields = spec.fields;
+  // PRE_AGGREGATED (Task 47): a source row describing fewer than K people (e.g. a payroll run paying two) is withheld.
+  const population = rest.privacy?.kind === 'PRE_AGGREGATED' ? rest.privacy.populationField : null;
+  const K = MIN_AGGREGATE_GROUP_SIZE;
+  const scope = async (auth: RunContext['auth']) => { const base = await baseScope(auth); return population ? { AND: [base ?? {}, { [population]: { gte: K } }] } : base; };
+  const withheld = async (ctx: RunContext): Promise<RunResult['suppression']> => {
+    if (!population) return null;
+    const n = await delegate.count({ where: buildWhere(fields, ctx.definition, { AND: [(await baseScope(ctx.auth)) ?? {}, { [population]: { lt: K } }] }) });
+    return n ? { suppressedGroups: n, minimumGroupSize: K, reason: `${n} source row(s) describe fewer than ${K} people and are withheld` } : null;
+  };
 
   async function runRows(ctx: RunContext, skip: number, take: number): Promise<RunResult> {
     const where = buildWhere(fields, ctx.definition, await scope(ctx.auth));
-    const [total, rows] = await Promise.all([delegate.count({ where }), delegate.findMany({ where, select: buildSelect(fields, ctx.definition), orderBy: buildOrderBy(fields, ctx.definition, defaultOrder), skip, take })]);
-    return { total, rows: rows.map((r) => Object.fromEntries(ctx.definition.columns.map((c) => [c, plain(getPath(r, fields.find((x) => x.id === c)!.column))]))) };
+    const [total, rows, suppression] = await Promise.all([delegate.count({ where }), delegate.findMany({ where, select: buildSelect(fields, ctx.definition), orderBy: buildOrderBy(fields, ctx.definition, defaultOrder), skip, take }), withheld(ctx)]);
+    return { total, suppression, rows: rows.map((r) => Object.fromEntries(ctx.definition.columns.map((c) => [c, plain(getPath(r, fields.find((x) => x.id === c)!.column))]))) };
   }
 
   async function runGrouped(ctx: RunContext, skip: number, take: number): Promise<RunResult> {
     const def = ctx.definition;
+    const suppression = await withheld(ctx);
     const where = buildWhere(fields, def, await scope(ctx.auth));
     const groupFields = def.groupBy.map((g) => fields.find((x) => x.id === g)!);
     const by = groupFields.map((f) => f.groupKey?.column ?? f.column);
@@ -129,7 +140,7 @@ export function prismaDataset(spec: Omit<ReportDataset, 'run' | 'runAll' | 'fiel
       }
       return row;
     });
-    return { total: rows.length, rows: rows.slice(skip, skip + take) };
+    return { total: rows.length, rows: rows.slice(skip, skip + take), suppression };
   }
 
   return {
@@ -162,12 +173,37 @@ export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { lo
       default: return false;
     }
   };
-  async function all(ctx: Omit<RunContext, 'page' | 'pageSize'>): Promise<Row[]> {
+  const privacy = rest.privacy;
+  const K = MIN_AGGREGATE_GROUP_SIZE;
+  async function all(ctx: Omit<RunContext, 'page' | 'pageSize'>): Promise<{ rows: Row[]; suppression: RunResult['suppression'] }> {
     const def = ctx.definition;
-    let rows = (await load(ctx.auth, def)).filter((r) => def.filters.every((flt) => matches(r, flt)));
+    let source = await load(ctx.auth, def);
+    let withheldRows = 0;
+    if (privacy?.kind === 'PRE_AGGREGATED') {
+      const kept = source.filter((r) => Number(r[privacy.populationField] ?? 0) >= K);
+      withheldRows = source.length - kept.length;
+      source = kept;
+    }
+    let rows = source.filter((r) => def.filters.every((flt) => matches(r, flt)));
+    const personRows = privacy?.kind === 'PERSON_ROWS';
+    // "Unfiltered − filtered" must not describe fewer than K people either.
+    const excludedPeople = personRows && def.filters.length ? new Set(source.filter((r) => !rows.includes(r)).map((r) => String(r.__subject ?? ''))).size : 0;
+    let suppressedGroups = withheldRows;
+    let reason = withheldRows ? `${withheldRows} source row(s) describe fewer than ${K} people and are withheld` : '';
     if (def.groupBy.length || def.aggregations.length) {
       const groups = new Map<string, Row[]>();
       for (const r of rows) { const k = def.groupBy.map((g) => String(r[g] ?? '')).join('\u0001'); groups.set(k, [...(groups.get(k) ?? []), r]); }
+      if (personRows) {
+        if (excludedPeople > 0 && excludedPeople < K) {
+          suppressedGroups = groups.size;
+          reason = `The filters leave out fewer than ${K} people, so the result would describe them by subtraction; it is withheld`;
+          groups.clear();
+        } else {
+          const hidden = partitionSuppression([...groups.entries()].map(([key, members]) => ({ key, count: new Set(members.map((m) => String(m.__subject ?? ''))).size })), K);
+          for (const key of hidden.keys()) groups.delete(key);
+          if (hidden.size) { suppressedGroups = hidden.size; reason = `${hidden.size} group(s) describe fewer than ${K} people (or would reveal one by subtraction) and are withheld`; }
+        }
+      }
       rows = [...groups.values()].map((members) => {
         const out: Row = {};
         for (const g of def.groupBy) out[g] = members[0]![g] ?? null;
@@ -190,11 +226,11 @@ export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { lo
       });
     } else rows = rows.map((r) => Object.fromEntries(def.columns.map((c) => [c, r[c] ?? null])));
     for (const s of [...def.sort].reverse()) rows.sort((a, b) => { const x = a[s.fieldId], y = b[s.fieldId]; const c = x === y ? 0 : x === null ? -1 : y === null ? 1 : x < y ? -1 : 1; return s.direction === 'ASC' ? c : -c; });
-    return rows;
+    return { rows, suppression: suppressedGroups ? { suppressedGroups, minimumGroupSize: K, reason } : null };
   }
   return {
     ...rest,
-    run: async (ctx) => { const rows = await all(ctx); return { total: rows.length, rows: rows.slice((ctx.page - 1) * ctx.pageSize, ctx.page * ctx.pageSize) }; },
-    runAll: async (ctx, cap) => { const rows = await all(ctx); return { total: rows.length, rows: rows.slice(0, cap) }; },
+    run: async (ctx) => { const { rows, suppression } = await all(ctx); return { total: rows.length, rows: rows.slice((ctx.page - 1) * ctx.pageSize, ctx.page * ctx.pageSize), suppression }; },
+    runAll: async (ctx, cap) => { const { rows, suppression } = await all(ctx); return { total: rows.length, rows: rows.slice(0, cap), suppression }; },
   };
 }

@@ -364,4 +364,4 @@ export const leaveRequestsService = {
   },
 };
 
-const pick = (r: Row) => ({ leaveTypeId: r.leaveTypeId, startDate: r.startDate, endDate: r.endDate, startPart: r.startPart, endPart: r.endPart, reason: r.reason, attachmentRef: r.attachmentRef });
+const pick = (r: Row) => ({ leaveTypeId: r.leaveTypeId, startDate: r.startDate, endDate: r.endDate, startPart: r.startPart, endPart: r.endPart, reasonLength: r.reason?.length ?? 0, attachmentRef: r.attachmentRef });

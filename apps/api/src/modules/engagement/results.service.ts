@@ -1,4 +1,4 @@
-import { csvCell, enpsScore, meetsThreshold, responseRate, round1, scaleKey, type BreakdownRowDto, type CommentDto, type EngagementDashboardDto, type EnpsResultDto, type IdentifiedResponseDto, type QuestionResultDto, type ResultsFilter, type SuppressedResultDto, type SurveyResultsDto, type ThemeResultDto, type VisibleResultDto } from '@hr/shared';
+import { csvCell, enpsScore, meetsThreshold, partitionSuppression, responseRate, round1, scaleKey, type BreakdownRowDto, type CommentDto, type EngagementDashboardDto, type EnpsResultDto, type IdentifiedResponseDto, type QuestionResultDto, type ResultsFilter, type SuppressedResultDto, type SurveyResultsDto, type ThemeResultDto, type VisibleResultDto } from '@hr/shared';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors';
@@ -43,7 +43,40 @@ async function scopedFilter(db: Db, auth: AuthContext, surveyId: string, mode: s
   return { where, assignWhere, teamScoped, visible, positionUnsupported: !!filter.positionId };
 }
 
-/** Aggregates one group of responses. Applies the threshold before touching an answer. */
+/**
+ * Differencing protection (Task 47, T44-P1-06). A group that meets the threshold on its own can still give away a
+ * smaller one by subtraction: overall 20 − Sales 16 = Legal 4. So for an anonymous survey, every cohort condition of a
+ * query (department, job, organization, or a manager's set of departments) is checked against the partition it selects
+ * from — the same query without that condition, split by that dimension. Inside such a partition the hidden cells must
+ * add up to nobody or to at least the threshold (complementary suppression); a single-value condition is released only
+ * if its cell survives, and a set of values only if the hidden people inside the set and the people outside it are each
+ * none or at least the threshold. The rule depends only on the data, never on who asks, so every screen, export,
+ * Report Center dataset, executive rollup and copilot answer that goes through `aggregate` agrees.
+ */
+const COHORT_DIMS = ['deptCohortId', 'jobCohortId', 'orgCohortId'] as const;
+type CohortDim = (typeof COHORT_DIMS)[number];
+async function releasedByPartitions(db: Db, survey: Survey, where: Prisma.EngagementResponseWhereInput): Promise<boolean> {
+  const t = survey.minimumAnonymousGroupSize;
+  const conds = COHORT_DIMS.filter((d) => (where as Record<string, unknown>)[d] !== undefined);
+  for (const dim of conds) {
+    const raw = (where as Record<string, unknown>)[dim];
+    const values = raw !== null && typeof raw === 'object' && 'in' in (raw as object) ? ((raw as { in: (string | null)[] }).in) : [raw as string | null];
+    const parent = { ...(where as Record<string, unknown>) };
+    delete parent[dim];
+    const cells = await db.engagementResponse.groupBy({ by: [dim as CohortDim], where: { surveyId: survey.id, ...(parent as Prisma.EngagementResponseWhereInput) }, _count: { _all: true } });
+    const keyOf = (v: unknown) => String(v ?? '');
+    const counts = cells.map((c) => ({ key: keyOf((c as Record<string, unknown>)[dim]), count: c._count._all }));
+    const hidden = partitionSuppression(counts, t);
+    const inSet = new Set(values.map(keyOf));
+    if (values.length === 1) { if (hidden.has(keyOf(values[0]))) return false; continue; }
+    const hiddenInside = counts.filter((c) => inSet.has(c.key) && hidden.has(c.key)).reduce((n, c) => n + c.count, 0);
+    const outside = counts.filter((c) => !inSet.has(c.key)).reduce((n, c) => n + c.count, 0);
+    if ((hiddenInside > 0 && hiddenInside < t) || (outside > 0 && outside < t)) return false;
+  }
+  return true;
+}
+
+/** Aggregates one group of responses. Applies the threshold — and the differencing rule — before touching an answer. */
 async function aggregate(db: Db, survey: Survey, questions: Q[], where: Prisma.EngagementResponseWhereInput, positionUnsupported: boolean): Promise<VisibleResultDto | SuppressedResultDto> {
   const anonymous = survey.responseMode === 'ANONYMOUS';
   // Anonymous responses carry no position, so a position filter cannot be answered — it is reported as suppressed, never estimated.
@@ -51,6 +84,7 @@ async function aggregate(db: Db, survey: Survey, questions: Q[], where: Prisma.E
   const responseWhere: Prisma.EngagementResponseWhereInput = { surveyId: survey.id, ...where };
   const responseCount = await db.engagementResponse.count({ where: responseWhere });
   if (!meetsThreshold(responseCount, survey.responseMode as 'ANONYMOUS' | 'IDENTIFIED', survey.minimumAnonymousGroupSize)) return SUPPRESSED(survey.minimumAnonymousGroupSize);
+  if (anonymous && !(await releasedByPartitions(db, survey, where))) return SUPPRESSED(survey.minimumAnonymousGroupSize);
   const numeric = await db.engagementResponseAnswer.groupBy({ by: ['questionId', 'numericValue'], where: { response: responseWhere, numericValue: { not: null } }, _count: { _all: true } });
   const bools = await db.engagementResponseAnswer.groupBy({ by: ['questionId', 'booleanValue'], where: { response: responseWhere, booleanValue: { not: null } }, _count: { _all: true } });
   const texts = await db.engagementResponseAnswer.groupBy({ by: ['questionId'], where: { response: responseWhere, textValue: { not: null } }, _count: { _all: true } });

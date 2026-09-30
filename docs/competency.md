@@ -200,3 +200,10 @@ Nothing here recommends training. Mapping a gap to a course is Task 25's job.
 Measured on the development database with 100 employees and a five-competency job: assignment of 101 assessments and
 505 items in ~308 ms, the full gap report over 101 assessments in ~14 ms, the development hand-off (505 rows) in
 ~16 ms, one skill profile in ~3 ms. Requirements are loaded once per distinct job, not once per employee.
+
+## Task 47 — organization gap report and small groups (T44-P1-05)
+
+- `GET /competency/reports/gaps` needs **`competency.view_reports`** and an organization-wide scope (the copilot
+  `skill_gap_report` tool likewise). `competency.view` means *your own profile* only.
+- Gap figures (with a gap, gap items, averages, per-competency and per-department / job cells) of fewer than 5 assessed
+  people are withheld (`null` + `suppression`), with complementary suppression across departments and jobs.

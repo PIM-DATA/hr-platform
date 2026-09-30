@@ -41,8 +41,8 @@ export function SkillGapReportPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Figure label="Assigned" value={r.coverage.assigned} />
             <Figure label="Assessments complete" value={`${r.coverage.finalized} · ${r.coverage.coveragePercent}%`} />
-            <Figure label="Employees below a requirement" value={r.totals.employeesWithGap} />
-            <Figure label="Average gap" value={r.totals.averageGapNeeded ?? '—'} />
+            <Figure label="Employees below a requirement" value={r.suppression ? <Withheld min={r.suppression.minimumGroupSize} /> : r.totals.employeesWithGap} />
+            <Figure label="Average gap" value={r.suppression ? <Withheld min={r.suppression.minimumGroupSize} /> : (r.totals.averageGapNeeded ?? '—')} />
           </div>
 
           <Card>
@@ -58,7 +58,7 @@ export function SkillGapReportPage() {
                       <span className="block text-xs text-slate-400">{row.assessed} assessed</span>
                     </span>
                     <span className="flex items-center gap-4 text-slate-600">
-                      <span className="tabular-nums">{row.belowRequirement} below</span>
+                      <span className="tabular-nums">{row.belowRequirement === null ? 'withheld (small group)' : `${row.belowRequirement} below`}</span>
                       <span className="tabular-nums">avg {row.averageGap ?? '—'}</span>
                       <span className="tabular-nums">max {row.maxGap ?? '—'}</span>
                     </span>
@@ -78,6 +78,8 @@ export function SkillGapReportPage() {
   );
 }
 
+const Withheld = ({ min }: { min: number }) => <span className="text-sm font-normal text-slate-500">Withheld — fewer than {min} people</span>;
+
 const Figure = ({ label, value }: { label: string; value: React.ReactNode }) => (
   <div className="rounded-lg border border-slate-200 bg-white p-3">
     <div className="text-xs text-slate-500">{label}</div>
@@ -85,7 +87,7 @@ const Figure = ({ label, value }: { label: string; value: React.ReactNode }) => 
   </div>
 );
 
-const Breakdown = ({ title, rows }: { title: string; rows: { label: string; assessed: number; withGap: number; gapItems: number }[] }) => (
+const Breakdown = ({ title, rows }: { title: string; rows: { label: string; assessed: number; withGap: number | null; gapItems: number | null }[] }) => (
   <Card>
     <CardHeader title={title} description="From each assessment's own snapshot, not from where people sit today." />
     <ul className="divide-y divide-slate-100 px-5 py-2">
@@ -95,8 +97,10 @@ const Breakdown = ({ title, rows }: { title: string; rows: { label: string; asse
           <span className="text-slate-700">{row.label}</span>
           <span className="flex items-center gap-4 text-slate-600">
             <span className="tabular-nums">{row.assessed} assessed</span>
-            <span className="tabular-nums">{row.withGap} with a gap</span>
-            <span className="tabular-nums">{row.gapItems} items</span>
+            {row.withGap === null ? <span className="text-slate-400">withheld (fewer than 5 people)</span> : <>
+              <span className="tabular-nums">{row.withGap} with a gap</span>
+              <span className="tabular-nums">{row.gapItems} items</span>
+            </>}
           </span>
         </li>
       ))}

@@ -153,7 +153,7 @@ export async function separateEmployeeWithTx(tx: Tx, employeeId: string, input: 
   await tx.employee.update({ where: { id: employeeId }, data: { employmentStatus: 'TERMINATED', terminationDate: end, updatedBy: actor.auth.userId } });
   await tx.employeePosition.updateMany({ where: { employeeId, endDate: null }, data: { endDate: end } });
   await tx.employeeManager.updateMany({ where: { employeeId, endDate: null }, data: { endDate: end } });
-  await auditService.log(audit(actor, 'TERMINATE_EMPLOYEE', employeeId, { employmentStatus: before.employmentStatus, terminationDate: before.terminationDate?.toISOString() ?? null }, { employmentStatus: 'TERMINATED', terminationDate: input.terminationDate, reason: input.reason }), tx);
+  await auditService.log(audit(actor, 'TERMINATE_EMPLOYEE', employeeId, { employmentStatus: before.employmentStatus, terminationDate: before.terminationDate?.toISOString() ?? null }, { employmentStatus: 'TERMINATED', terminationDate: input.terminationDate, reasonLength: input.reason?.length ?? 0 }), tx);
   return { userId: before.user?.id ?? null, employeeCode: before.employeeCode };
 }
 

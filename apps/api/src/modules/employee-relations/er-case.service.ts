@@ -281,10 +281,10 @@ export const erCaseService = {
         include: caseInclude,
       });
       await auditService.log(erAudit(actor, AUDIT_ACTIONS.UPDATE_EMPLOYEE_RELATION_CASE, 'EmployeeRelationCase', id, {
-        caseNumber: after.caseNumber, title: after.title, incidentDate: after.incidentDate, assignedToUserId: after.assignedToUserId,
+        caseNumber: after.caseNumber, titleChanged: before.title !== after.title, titleLength: after.title.length, incidentDate: after.incidentDate, assignedToUserId: after.assignedToUserId,
         ...narrativeAudit('description', before.description, after.description),
         ...narrativeAudit('internalNotes', before.internalNotes, after.internalNotes),
-      }, { title: before.title, incidentDate: before.incidentDate }), tx);
+      }, { titleLength: before.title.length, incidentDate: before.incidentDate }), tx);
       return after;
     });
     return toDetailDto(prisma, row, true);
@@ -509,7 +509,7 @@ export const erCaseService = {
       await auditService.log(erAudit(actor, AUDIT_ACTIONS.ISSUE_WARNING_LETTER, 'DisciplinaryAction', actionId, { caseNumber: erCase.caseNumber, letterNumber }), tx);
     }
 
-    await auditService.log(erAudit(actor, AUDIT_ACTIONS.APPROVE_DISCIPLINARY_ACTION, 'DisciplinaryAction', actionId, { caseNumber: erCase.caseNumber, comment: comment ?? null }), tx);
+    await auditService.log(erAudit(actor, AUDIT_ACTIONS.APPROVE_DISCIPLINARY_ACTION, 'DisciplinaryAction', actionId, { caseNumber: erCase.caseNumber, commentLength: comment?.length ?? 0 }), tx);
     await auditService.log(erAudit(actor, AUDIT_ACTIONS.ISSUE_DISCIPLINARY_ACTION, 'DisciplinaryAction', actionId, {
       caseNumber: erCase.caseNumber, actionType: fresh.actionTypeCodeSnapshot, issuedDate, validUntil, letterNumber, acknowledgementDueDate: dueDate,
     }), tx);
@@ -534,7 +534,7 @@ export const erCaseService = {
     // REJECTED is terminal for this proposal. HR drafts a new one rather than quietly editing the refused one.
     await tx.disciplinaryAction.update({ where: { id: actionId }, data: { status: 'REJECTED', rejectedAt: new Date() } });
     await tx.employeeRelationCase.update({ where: { id: action.caseId }, data: { status: 'UNDER_REVIEW' } });
-    await auditService.log(erAudit(actor, AUDIT_ACTIONS.REJECT_DISCIPLINARY_ACTION, 'DisciplinaryAction', actionId, { caseNumber: action.case.caseNumber, comment: comment ?? null }), tx);
+    await auditService.log(erAudit(actor, AUDIT_ACTIONS.REJECT_DISCIPLINARY_ACTION, 'DisciplinaryAction', actionId, { caseNumber: action.case.caseNumber, commentLength: comment?.length ?? 0 }), tx);
   },
 
   async withdrawFromWorkflow(tx: Tx, actionId: string) {

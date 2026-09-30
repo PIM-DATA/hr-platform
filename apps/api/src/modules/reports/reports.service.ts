@@ -42,7 +42,7 @@ export const reportsService = {
     const fields = visibleFields(auth, d);
     validateDefinition(d, definition, fields);
     const result = await d.run({ auth, definition, page, pageSize: definition.pageSize });
-    return { datasetId, columns: columnsOf(d, definition, fields), rows: result.rows, meta: { page, pageSize: definition.pageSize, total: result.total, grouped: definition.groupBy.length > 0 || definition.aggregations.length > 0 } };
+    return { datasetId, columns: columnsOf(d, definition, fields), rows: result.rows, meta: { page, pageSize: definition.pageSize, total: result.total, grouped: definition.groupBy.length > 0 || definition.aggregations.length > 0 }, suppression: result.suppression ?? null };
   },
 
   /** Every row up to the cap, as CSV. Refused deterministically when the result would exceed it. */
@@ -55,7 +55,9 @@ export const reportsService = {
     const result = await d.runAll({ auth: actor.auth, definition }, REPORT_LIMITS.exportRows);
     const columns = columnsOf(d, definition, fields);
     const lines = [csvLine(columns.map((c) => c.label)), ...result.rows.map((r) => csvLine(columns.map((c) => r[c.id] ?? null)))];
-    await auditService.log(audit(actor, AUDIT_ACTIONS.EXPORT_REPORT, savedReportId ?? datasetId, { datasetId, savedReportId, rowCount: result.rows.length, columns: columns.map((c) => c.id), filters: definition.filters.map((f) => `${f.fieldId}:${f.operator}`) }));
+    // Withheld small groups are stated in the file too — never silently missing, never exported with their values.
+    if (result.suppression) lines.push('', csvLine(['SUPPRESSED', `${result.suppression.suppressedGroups} group(s) withheld: fewer than ${result.suppression.minimumGroupSize} people`]));
+    await auditService.log(audit(actor, AUDIT_ACTIONS.EXPORT_REPORT, savedReportId ?? datasetId, { datasetId, savedReportId, rowCount: result.rows.length, suppressedGroups: result.suppression?.suppressedGroups ?? 0, columns: columns.map((c) => c.id), filters: definition.filters.map((f) => `${f.fieldId}:${f.operator}`) }));
     return { csv: lines.join('\r\n'), rows: result.rows.length };
   },
 

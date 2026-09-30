@@ -211,6 +211,26 @@ describe('answering', () => {
 });
 
 describe('results and suppression', () => {
+  // Task 47 / T44-P1-06: the Task 44 attack — overall (20) minus the visible Sales breakdown (16) = Legal (4, below 5).
+  const released = (r: { result: { suppressed: boolean; responseCount?: number; enps?: { promoters: number; passives: number; detractors: number } | null } }) => (r.result.suppressed ? null : r.result);
+  it('differencing: no sequence of released aggregates reconstructs a group below the threshold', async () => {
+    for (const who of [hrAdmin, exec, sysAdmin]) {
+      const overall = (await as(who, 'get', `${E}/surveys/${s1}/results`)).body.data;
+      const rows = (await as(who, 'get', `${E}/surveys/${s1}/breakdown?by=department`)).body.data as { name: string; completed: number; result: { suppressed: boolean; responseCount?: number } }[];
+      const bySales = (await as(who, 'get', `${E}/surveys/${s1}/results?departmentId=${salesId}`)).body.data;
+      const byLegal = (await as(who, 'get', `${E}/surveys/${s1}/results?departmentId=${legalId}`)).body.data;
+      const total = released(overall)?.responseCount ?? null;
+      // Breakdown order: total − Σ visible cells must be 0 or ≥ threshold.
+      const visibleSum = rows.filter((r) => !r.result.suppressed).reduce((n, r) => n + (r.result.responseCount ?? 0), 0);
+      if (total !== null) expect([0, ...Array.from({ length: 100 }, (_, i) => i + 5)]).toContain(total - visibleSum);
+      // Filter order: total − a released department filter must be 0 or ≥ threshold, for every department.
+      for (const f of [bySales, byLegal]) { const part = released(f)?.responseCount ?? null; if (total !== null && part !== null) expect(total - part === 0 || total - part >= 5).toBe(true); }
+      // Mixed order: a released filter result must agree with its breakdown cell (no cell hidden in one view but shown in the other).
+      const salesRow = rows.find((r) => r.name === 'Sales')!;
+      expect(bySales.result.suppressed).toBe(salesRow.result.suppressed);
+    }
+  });
+
   it('overall: response rate uses the frozen audience, eNPS uses valid answers only, themes average compatible scales only', async () => {
     const r = await as(hrAdmin, 'get', `${E}/surveys/${s1}/results`);
     expect(err(r)).toBe('200');
@@ -227,12 +247,17 @@ describe('results and suppression', () => {
     expect(d.result.themes).toEqual([{ theme: 'Clarity', scale: 'LIKERT:1-5', questionCount: 2, average: expect.any(Number), responseCount: 40 }]);
     expect(text(d)).not.toMatch(/employeeId|employeeCode|responseId|assignmentId/);
   });
-  it('threshold 5: Sales (16) visible, Legal (4) suppressed — for HR admin, the executive and SYSTEM_ADMIN alike, with no counts leaking', async () => {
+  // Task 47 (T44-P1-06) — BEFORE: Sales (16) was shown next to the overall (20), so overall − Sales = Legal's 4 answers.
+  // AFTER: Legal (4) is below the threshold and Sales is withheld as its complement; the overall stays visible.
+  it('threshold 5 + complement: Legal (4) suppressed and Sales withheld as its complement — for HR admin, the executive and SYSTEM_ADMIN alike, with no counts leaking', async () => {
     for (const who of [hrAdmin, exec, sysAdmin]) {
       const rows = (await as(who, 'get', `${E}/surveys/${s1}/breakdown?by=department`)).body.data;
       const sales = rows.find((x: { name: string }) => x.name === 'Sales'); const legal = rows.find((x: { name: string }) => x.name === 'Legal');
-      expect(sales).toMatchObject({ assigned: 16, completed: 16, responseRate: 100, result: { suppressed: false, responseCount: 16 } });
-      expect(sales.result.enps.score).toBe(62.5);
+      expect(sales).toMatchObject({ assigned: 0, completed: 0, responseRate: null, result: { suppressed: true } });
+      expect(text(sales)).not.toMatch(/62\.5|"16"/);
+      const bySales = (await as(who, 'get', `${E}/surveys/${s1}/results?departmentId=${salesId}`)).body.data;
+      expect(bySales.result.suppressed).toBe(true);
+      expect((await as(who, 'get', `${E}/surveys/${s1}/results`)).body.data.result).toMatchObject({ suppressed: false, responseCount: 20 });
       expect(legal.result).toEqual({ suppressed: true, minimumGroupSize: 5, reason: expect.stringMatching(/Fewer than 5/) });
       expect(legal).toMatchObject({ assigned: 0, completed: 0, responseRate: null });
       expect(text(legal)).not.toMatch(/questions|distribution|average|"4"/);
@@ -249,14 +274,18 @@ describe('results and suppression', () => {
     expect(byPos.result.suppressed).toBe(true);
     const jobs = (await as(hrAdmin, 'get', `${E}/surveys/${s1}/breakdown?by=job&departmentId=${salesId}`)).body.data;
     expect(jobs.find((x: { name: string }) => x.name === 'Sales Lead').result.suppressed).toBe(true);
-    expect(jobs.find((x: { name: string }) => x.name === 'Sales Representative').result).toMatchObject({ suppressed: false, responseCount: 12 });
+    // Task 47: BEFORE Sales Representative (12) was shown; with Sales Lead (4) hidden it would give Lead away as Sales − Rep.
+    expect(jobs.find((x: { name: string }) => x.name === 'Sales Representative').result.suppressed).toBe(true);
+    // the same holds when the attacker asks with filters instead of a breakdown, in either order
+    for (const q of [`departmentId=${salesId}&jobId=${repJob}`, `jobId=${repJob}&departmentId=${salesId}`]) expect((await as(hrAdmin, 'get', `${E}/surveys/${s1}/results?${q}`)).body.data.result.suppressed).toBe(true);
   });
-  it('the manager sees their own department aggregate only: no other department, no comments, no respondents, no participation list', async () => {
+  // Task 47: BEFORE the manager's own-department view showed Sales (16) — the same complement of Legal (4) as above.
+  // AFTER it is withheld too: the rule depends on the data, never on who asks.
+  it('the manager sees their own department aggregate only — withheld here as Legal’s complement: no other department, no comments, no respondents, no participation list', async () => {
     const r = (await as(mgr, 'get', `${E}/surveys/${s1}/results`)).body.data;
     expect(r.scope.teamScoped).toBe(true);
-    expect(r.participation).toEqual({ assigned: 16, completed: 16, responseRate: 100 });
-    expect(r.result.responseCount).toBe(16);
-    expect(r.result.enps.score).toBe(62.5);
+    expect(r.participation).toEqual({ assigned: 0, completed: 0, responseRate: null });
+    expect(r.result.suppressed).toBe(true);
     expect(text(r)).not.toMatch(/manager X|headcount|stand-ups|employeeCode|responseId/);
     expect(err(await as(mgr, 'get', `${E}/surveys/${s1}/results?departmentId=${legalId}`))).toBe('403 FORBIDDEN');
     const bd = (await as(mgr, 'get', `${E}/surveys/${s1}/breakdown?by=department`)).body.data;
@@ -275,10 +304,15 @@ describe('results and suppression', () => {
     expect(err(await as(exec, 'get', `${E}/surveys/${s1}/comments`))).toBe('403 FORBIDDEN');
     expect(err(await as(exec, 'get', `${E}/surveys/${s1}/participation`))).toBe('403 FORBIDDEN');
   });
-  it('HR admin participation shows who completed, with no path to an answer; anonymous comments open only after close, as text alone', async () => {
+  // Task 47: BEFORE the list named exactly who in Legal answered; AFTER completion is withheld for people in suppressed
+  // department groups (here both, Legal and its complement Sales), a completion filter leaves them out, and an anonymous
+  // survey never shows an exact completion time.
+  it('HR admin participation hides completion in suppressed groups, with no path to an answer; anonymous comments open only after close, as text alone', async () => {
     const p = (await as(hrAdmin, 'get', `${E}/surveys/${s1}/participation?completed=false`)).body;
-    expect(p.meta.total).toBe(2);
-    expect(p.data.map((x: { employee: { employeeCode: string } }) => x.employee.employeeCode).sort()).toEqual(['LEG5', 'LEG6']);
+    expect(p.meta.total).toBe(0);
+    const all = (await as(hrAdmin, 'get', `${E}/surveys/${s1}/participation?pageSize=50`)).body;
+    expect(all.meta.total).toBe(22);
+    expect(all.data.every((x: { completed: boolean | null; completionHidden: boolean; completedAt: string | null }) => x.completed === null && x.completionHidden && x.completedAt === null)).toBe(true);
     expect(text(p)).not.toMatch(/responseId|answers|textValue/);
     expect(err(await as(hrAdmin, 'get', `${E}/surveys/${s1}/comments`))).toBe('409 ENGAGEMENT_COMMENTS_NOT_AVAILABLE');
     expect(err(await as(hrAdmin, 'get', `${E}/surveys/${s1}/responses`))).toBe('409 ENGAGEMENT_SURVEY_ANONYMOUS');
@@ -309,7 +343,8 @@ describe('results and suppression', () => {
     expect(sv.body.data.rows.find((x: { survey: string }) => /2026 Employee Engagement/.test(x.survey))).toMatchObject({ enps: 30, completed: 20, suppressed: false });
     const dept = await run(hr, 'engagement_department_summary', ['survey', 'department', 'suppressed', 'enps', 'completed']);
     expect(dept.body.data.rows.find((x: { department: string }) => x.department === 'Legal')).toMatchObject({ suppressed: true, enps: null, completed: null });
-    expect(dept.body.data.rows.find((x: { department: string }) => x.department === 'Sales')).toMatchObject({ suppressed: false, enps: 62.5 });
+    // Task 47: Sales is Legal's complement, so the department grain withholds it as well (BEFORE: suppressed false, eNPS 62.5)
+    expect(dept.body.data.rows.find((x: { department: string }) => x.department === 'Sales')).toMatchObject({ suppressed: true, enps: null });
     const qs = await run(exec, 'engagement_question_summary', ['survey', 'question', 'responses', 'average']);
     expect(err(qs)).toBe('200');
     expect(text(qs.body)).not.toMatch(/manager X|textValue/);
@@ -359,7 +394,10 @@ describe('identified mode, races and history', () => {
     const mktPos = await prisma.position.findUniqueOrThrow({ where: { code: 'P-MKT' } });
     await prisma.employee.update({ where: { id: employees.SAL1 }, data: { departmentId: marketingId, positionId: mktPos.id } });
     const bd = (await as(hrAdmin, 'get', `${E}/surveys/${s1}/breakdown?by=department`)).body.data;
-    expect(bd.find((x: { name: string }) => x.name === 'Sales')).toMatchObject({ assigned: 16, completed: 16 });
+    // The Sales row stays under its historical name (its figures are withheld as Legal's complement since Task 47);
+    // the frozen audience still holds all 16 Sales assignments after the transfer.
+    expect(bd.find((x: { name: string }) => x.name === 'Sales')).toMatchObject({ result: { suppressed: true } });
+    expect(await prisma.engagementSurveyAssignment.count({ where: { surveyId: s1, departmentIdSnapshot: salesId } })).toBe(16);
     expect(bd.some((x: { name: string }) => x.name === 'Marketing')).toBe(false);
     const s3 = (await as(hrAdmin, 'post', `${E}/surveys`).send({ code: 'PULSE-Q4', name: 'Q4 pulse', surveyType: 'PULSE', responseMode: 'ANONYMOUS' })).body.data.id;
     await as(hrAdmin, 'put', `${E}/surveys/${s3}/audience`).send({ employeeIds: [employees.SAL1, employees.SAL2, employees.SAL3, employees.SAL4, employees.MKT1] });

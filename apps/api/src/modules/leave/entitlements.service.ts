@@ -98,7 +98,7 @@ export const entitlementsService = {
     const row = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
       const result = await balanceService.adjust(tx, id, input.units, { operationKey: `adj:${randomUUID()}`, actorUserId: actor.auth.userId, note: input.note });
-      await auditService.log(audit(actor, 'ADJUST_LEAVE_ENTITLEMENT', id, { adjustment: before.adjustment, available: availableUnits(before) }, { units: input.units, note: input.note, adjustment: result.summary.adjustment, available: result.available }), tx);
+      await auditService.log(audit(actor, 'ADJUST_LEAVE_ENTITLEMENT', id, { adjustment: before.adjustment, available: availableUnits(before) }, { units: input.units, noteLength: input.note?.length ?? 0, adjustment: result.summary.adjustment, available: result.available }), tx);
       return findOrThrow(tx, id);
     });
     return toDto(row);
@@ -109,7 +109,7 @@ export const entitlementsService = {
     const row = await prisma.$transaction(async (tx) => {
       const before = await findOrThrow(tx, id);
       const result = await balanceService.carryForward(tx, id, input.units, { operationKey: `cf:${randomUUID()}`, actorUserId: actor.auth.userId, note: input.note ?? null });
-      await auditService.log(audit(actor, 'CARRY_FORWARD_LEAVE_ENTITLEMENT', id, { carriedForward: before.carriedForward }, { units: input.units, note: input.note ?? null, carriedForward: result.summary.carriedForward, available: result.available }), tx);
+      await auditService.log(audit(actor, 'CARRY_FORWARD_LEAVE_ENTITLEMENT', id, { carriedForward: before.carriedForward }, { units: input.units, noteLength: input.note?.length ?? 0, carriedForward: result.summary.carriedForward, available: result.available }), tx);
       return findOrThrow(tx, id);
     });
     return toDto(row);

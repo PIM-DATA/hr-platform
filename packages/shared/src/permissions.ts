@@ -63,10 +63,12 @@ export const PERMISSIONS = {
   PERFORMANCE_REVIEW: 'performance.review',
   PERFORMANCE_MANAGE_CYCLES: 'performance.manage_cycles',
   PERFORMANCE_MANAGE_KPIS: 'performance.manage_kpis',
+  PERFORMANCE_VIEW_REPORTS: 'performance.view_reports',
 
   COMPETENCY_VIEW: 'competency.view',
   COMPETENCY_ASSESS: 'competency.assess',
   COMPETENCY_MANAGE: 'competency.manage',
+  COMPETENCY_VIEW_REPORTS: 'competency.view_reports',
 
   TRAINING_VIEW: 'training.view',
   TRAINING_MANAGE: 'training.manage',
@@ -238,12 +240,14 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { code: PERMISSIONS.PAYROLL_RUN, module: 'payroll', description: 'Calculate and close payroll runs' },
   { code: PERMISSIONS.PAYROLL_APPROVE, module: 'payroll', description: 'Decide payroll runs' },
 
-  { code: PERMISSIONS.PERFORMANCE_VIEW, module: 'performance', description: 'View your own performance plan and aggregate performance reports' },
+  { code: PERMISSIONS.PERFORMANCE_VIEW, module: 'performance', description: 'View your own performance plan' },
+  { code: PERMISSIONS.PERFORMANCE_VIEW_REPORTS, module: 'performance', description: 'Organization performance reports: completion, averages and rating distribution, with small groups suppressed (needs an organization-wide scope)' },
   { code: PERMISSIONS.PERFORMANCE_REVIEW, module: 'performance', description: 'Review the performance plans you are the assigned reviewer for' },
   { code: PERMISSIONS.PERFORMANCE_MANAGE_CYCLES, module: 'performance', description: 'Manage performance cycles and the plans inside them' },
   { code: PERMISSIONS.PERFORMANCE_MANAGE_KPIS, module: 'performance', description: 'Manage the KPI library' },
 
-  { code: PERMISSIONS.COMPETENCY_VIEW, module: 'competency', description: 'View your own competency profile and aggregate competency reports' },
+  { code: PERMISSIONS.COMPETENCY_VIEW, module: 'competency', description: 'View your own competency profile' },
+  { code: PERMISSIONS.COMPETENCY_VIEW_REPORTS, module: 'competency', description: 'Organization competency gap reports, with small groups suppressed (needs an organization-wide scope)' },
   { code: PERMISSIONS.COMPETENCY_ASSESS, module: 'competency', description: 'Assess the competency assessments you are the assigned reviewer for' },
   { code: PERMISSIONS.COMPETENCY_MANAGE, module: 'competency', description: 'Manage the competency framework, job profiles and assessment cycles' },
 

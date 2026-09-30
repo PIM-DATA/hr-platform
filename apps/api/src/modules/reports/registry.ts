@@ -14,7 +14,25 @@ import type { AuthContext } from '../auth/auth.types';
 export interface FieldDef extends ReportFieldDto { requiredPermission?: string }
 export type Row = Record<string, string | number | boolean | null>;
 export interface RunContext { auth: AuthContext; definition: ReportDefinition; page: number; pageSize: number }
-export interface RunResult { rows: Row[]; total: number }
+/** Rows withheld by the small-group rule (Task 47). Present only when something was withheld. */
+export interface RunSuppression { suppressedGroups: number; minimumGroupSize: number; reason: string }
+export interface RunResult { rows: Row[]; total: number; suppression?: RunSuppression | null }
+/**
+ * How an aggregate-only dataset relates to people (Task 47, T44-P1-07). Required for every `aggregateOnly` dataset:
+ *  - PERSON_ROWS: each loaded row belongs to one person (a claim, a case, a plan…) and carries a hidden `__subject`.
+ *    The report must aggregate (no row listing); a group describing fewer than K distinct people is withheld, the
+ *    withheld groups are complemented until they describe none or ≥ K people, and a filter that leaves out fewer than
+ *    K people withholds the whole result (otherwise "unfiltered − filtered" is those people).
+ *  - PRE_AGGREGATED: each row already describes `populationField` people (a payroll run, a salary-review cycle); rows
+ *    describing fewer than K people are withheld.
+ *  - SOURCE_SUPPRESSED: the source module applies its own anonymity rule (engagement's survey threshold + differencing).
+ *  - NON_PERSONAL: plans and structures, no outcome about a person (headcount plans, org-design scenarios, headcounts).
+ */
+export type DatasetPrivacy =
+  | { kind: 'PERSON_ROWS' }
+  | { kind: 'PRE_AGGREGATED'; populationField: string }
+  | { kind: 'SOURCE_SUPPRESSED'; note: string }
+  | { kind: 'NON_PERSONAL'; note: string };
 export interface ReportDataset {
   id: string;
   name: string;
@@ -24,6 +42,8 @@ export interface ReportDataset {
   /** Rows are pre-aggregated (no person in any row), so a viewer limited to aggregate datasets may use it. */
   aggregateOnly: boolean;
   requiredDateRange: { fieldId: string; maxMonths: number } | null;
+  /** Required when aggregateOnly (checked by a test). */
+  privacy?: DatasetPrivacy;
   fields: FieldDef[];
   run(ctx: RunContext): Promise<RunResult>;
   /** Export path: every row up to the cap, in definition order. */
@@ -59,6 +79,7 @@ export function validateDefinition(dataset: ReportDataset, def: ReportDefinition
     }
   }
   if (def.groupBy.length && def.aggregations.length === 0) throw new AppError(422, 'REPORT_AGGREGATION_REQUIRED', 'A grouped report needs at least one aggregation');
+  if (dataset.privacy?.kind === 'PERSON_ROWS' && def.aggregations.length === 0) throw new AppError(422, 'REPORT_AGGREGATION_REQUIRED', `${dataset.name} is aggregate-only: group it and add at least one aggregation (rows about single people are not listed)`);
   if (def.groupBy.length && def.columns.some((c) => !def.groupBy.includes(c))) throw new AppError(422, 'REPORT_COLUMNS_MUST_BE_GROUPED', 'In a grouped report every column must be a group field; other values come from aggregations');
   if (def.aggregations.length && !def.groupBy.length && def.columns.length) throw new AppError(422, 'REPORT_COLUMNS_MUST_BE_GROUPED', 'An ungrouped aggregation cannot also list row columns');
   if (dataset.requiredDateRange) {

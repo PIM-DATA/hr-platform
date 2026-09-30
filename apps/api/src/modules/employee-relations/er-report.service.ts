@@ -1,4 +1,4 @@
-import { businessToday, validityState, type EmployeeRelationsReportDto, type ErReportQuery } from '@hr/shared';
+import { MIN_AGGREGATE_GROUP_SIZE, businessToday, partitionSuppression, suppressedCell, validityState, type AggregateSuppression, type EmployeeRelationsReportDto, type ErReportQuery } from '@hr/shared';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 
@@ -16,6 +16,27 @@ export const erReportService = {
       ...(q.from ? { incidentDate: { gte: q.from } } : {}),
       ...(q.to ? { incidentDate: { ...(q.from ? { gte: q.from } : {}), lte: q.to } } : {}),
     };
+    // Small-department rule (Task 47): the protected unit is the department's population (current active headcount),
+    // partitioned over every department that has a case, independent of the filter so all views agree.
+    const K = MIN_AGGREGATE_GROUP_SIZE;
+    const periodWhere: Prisma.EmployeeRelationCaseWhereInput = { ...caseWhere, departmentId: undefined };
+    const [deptsWithCases, headcounts] = await Promise.all([
+      prisma.employeeRelationCase.findMany({ where: periodWhere, select: { departmentId: true, departmentName: true }, distinct: ['departmentId', 'departmentName'] }),
+      prisma.employee.groupBy({ by: ['departmentId'], where: { employmentStatus: 'ACTIVE' }, _count: { _all: true }, orderBy: { departmentId: 'asc' } }),
+    ]);
+    const heads = new Map(headcounts.map((h) => [h.departmentId ?? '', h._count._all]));
+    const cellOf = (d: { departmentId: string | null; departmentName: string | null }) => d.departmentName ?? 'Unassigned';
+    const population = new Map<string, number>();
+    for (const d of deptsWithCases) population.set(cellOf(d), (population.get(cellOf(d)) ?? 0) + (heads.get(d.departmentId ?? '') ?? 0));
+    // A department with nobody left in it (or no department) is treated as the smallest possible group.
+    const hidden = partitionSuppression([...population.entries()].map(([key, count]) => ({ key, count: Math.max(count, 1) })), K);
+    const deptSuppression = (name: string): AggregateSuppression | null => (hidden.get(name) ? suppressedCell(K, hidden.get(name)!) : null);
+    if (q.departmentId) {
+      const name = deptsWithCases.find((d) => d.departmentId === q.departmentId)?.departmentName ?? null;
+      const filtered = name !== null ? deptSuppression(name) : (heads.get(q.departmentId) ?? 0) < K ? suppressedCell(K) : null;
+      if (filtered) return { suppression: filtered, casesByStatus: [], actions: null, byDepartment: [], byActionType: [], byMonth: [] };
+    }
+
     const [casesByStatus, cases, actions] = await Promise.all([
       prisma.employeeRelationCase.groupBy({ by: ['status'], where: caseWhere, _count: { _all: true }, orderBy: { status: 'asc' } }),
       prisma.employeeRelationCase.findMany({ where: caseWhere, select: { id: true, departmentName: true, createdAt: true } }),
@@ -43,6 +64,7 @@ export const erReportService = {
     const months = new Set([...casesByMonth.keys(), ...issuedByMonth.keys()]);
 
     return {
+      suppression: null,
       casesByStatus: casesByStatus.map((row) => ({ status: row.status, count: row._count._all })),
       actions: {
         issued: actions.length,
@@ -51,12 +73,16 @@ export const erReportService = {
         awaitingAcknowledgement: awaiting.length,
         overdueAcknowledgement: awaiting.filter((a) => a.acknowledgementDueDate && a.acknowledgementDueDate < now).length,
       },
-      byDepartment: [...departments].sort().map((departmentName) => ({
-        departmentName,
-        cases: casesByDept.get(departmentName)?.length ?? 0,
-        issued: actionsByDept.get(departmentName)?.length ?? 0,
-        active: (actionsByDept.get(departmentName) ?? []).filter((a) => validityState(a.status, a.validUntil, now) === 'ACTIVE').length,
-      })),
+      byDepartment: [...departments].sort().map((departmentName) => {
+        const suppression = deptSuppression(departmentName);
+        return {
+          departmentName,
+          cases: suppression ? null : casesByDept.get(departmentName)?.length ?? 0,
+          issued: suppression ? null : actionsByDept.get(departmentName)?.length ?? 0,
+          active: suppression ? null : (actionsByDept.get(departmentName) ?? []).filter((a) => validityState(a.status, a.validUntil, now) === 'ACTIVE').length,
+          suppression,
+        };
+      }),
       byActionType: [...byType.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([actionTypeName, rows]) => ({
         actionTypeName, issued: rows.length, active: rows.filter((a) => validityState(a.status, a.validUntil, now) === 'ACTIVE').length,
       })),

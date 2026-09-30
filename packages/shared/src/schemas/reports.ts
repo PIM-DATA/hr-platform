@@ -51,6 +51,8 @@ export interface ReportRunResultDto {
   columns: { id: string; label: string; type: string }[];
   rows: Record<string, string | number | boolean | null>[];
   meta: { page: number; pageSize: number; total: number; grouped: boolean };
+  /** Task 47: groups withheld by the small-group rule (not in `rows`, never with values). */
+  suppression: { suppressedGroups: number; minimumGroupSize: number; reason: string } | null;
 }
 export interface SavedReportDto {
   id: string; name: string; description: string | null; datasetId: string; datasetName: string;

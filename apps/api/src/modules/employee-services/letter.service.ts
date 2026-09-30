@@ -185,19 +185,30 @@ async function letterDocuments(db: Db, auth: AuthContext, letterId: string): Pro
   return links.map((l) => ({ documentId: l.document.id, documentNumber: l.document.documentNumber, title: l.document.title, accessible: canAccessDocument(auth, l.document) }));
 }
 
+/**
+ * Task 47 (T44-P1-20): reading a salary-bearing letter is salary access. Issuing one already needs the payroll authority
+ * (`canIssueSalaryLetter`); reading one now does too, unless it is your own letter. Organization-wide service and letter
+ * scope alone shows that the letter exists, not what it says.
+ */
+export const letterContentRestricted = (auth: AuthContext, r: { employeeId: string; salaryAmountSnapshot: unknown }): boolean =>
+  r.salaryAmountSnapshot !== null && r.salaryAmountSnapshot !== undefined && !isOwner(auth, r.employeeId) && !has(auth, P.PAYROLL_MANAGE);
+
 export async function letterDto(db: Db, auth: AuthContext, r: LetterRow): Promise<HrLetterDto> {
   const names = await userNames(db, [r.issuedByUserId]);
+  const restricted = letterContentRestricted(auth, r);
   return {
-    id: r.id, letterNumber: r.letterNumber, letterType: r.letterTypeSnapshot as HrLetterType, status: r.status as 'ISSUED' | 'VOID', issuedDate: r.issuedDate, subject: r.renderedSubjectSnapshot,
+    id: r.id, letterNumber: r.letterNumber, letterType: r.letterTypeSnapshot as HrLetterType, status: r.status as 'ISSUED' | 'VOID', issuedDate: r.issuedDate, subject: restricted ? null : r.renderedSubjectSnapshot, contentRestricted: restricted,
     employeeId: r.employeeId, serviceRequestId: r.serviceRequestId, serviceRequestNumber: r.serviceRequest?.requestNumber ?? null, templateId: r.templateId, templateCode: r.templateCodeSnapshot, templateName: r.templateNameSnapshot,
-    snapshot: snapshotDto(r), body: r.renderedBodySnapshot, salaryAmount: r.salaryAmountSnapshot ? toMoneyString(r.salaryAmountSnapshot) : null, salaryCurrency: r.salaryCurrencySnapshot,
+    snapshot: snapshotDto(r), body: restricted ? null : r.renderedBodySnapshot, salaryAmount: !restricted && r.salaryAmountSnapshot ? toMoneyString(r.salaryAmountSnapshot) : null, salaryCurrency: restricted ? null : r.salaryCurrencySnapshot,
     issuedByName: names.get(r.issuedByUserId) ?? null, voidedAt: r.voidedAt?.toISOString() ?? null, voidReasonCode: r.voidReasonCode,
     documents: await letterDocuments(db, auth, r.id), organizationName: r.organizationSnapshot, createdAt: r.createdAt.toISOString(),
     can: { void: r.status === 'ISSUED' && has(auth, P.HR_LETTER_ISSUE) },
   };
 }
-export const letterSummary = (r: { id: string; letterNumber: string; letterTypeSnapshot: string; status: string; issuedDate: string; renderedSubjectSnapshot: string | null }): HrLetterSummaryDto =>
-  ({ id: r.id, letterNumber: r.letterNumber, letterType: r.letterTypeSnapshot as HrLetterType, status: r.status as 'ISSUED' | 'VOID', issuedDate: r.issuedDate, subject: r.renderedSubjectSnapshot });
+export const letterSummary = (auth: AuthContext) => (r: { id: string; employeeId: string; letterNumber: string; letterTypeSnapshot: string; status: string; issuedDate: string; renderedSubjectSnapshot: string | null; salaryAmountSnapshot: unknown }): HrLetterSummaryDto => {
+  const restricted = letterContentRestricted(auth, r);
+  return { id: r.id, letterNumber: r.letterNumber, letterType: r.letterTypeSnapshot as HrLetterType, status: r.status as 'ISSUED' | 'VOID', issuedDate: r.issuedDate, subject: restricted ? null : r.renderedSubjectSnapshot, contentRestricted: restricted };
+};
 
 export const hrLetterService = {
   async list(auth: AuthContext, q: { page: number; pageSize: number; letterType?: string; status?: string; employeeId?: string; from?: string; to?: string; search?: string }) {

@@ -48,7 +48,7 @@ export function useCompetencyTabs() {
     canManage && { label: 'Scales', to: '/hrd/competency/scales' },
     canManage && { label: 'Job profiles', to: '/hrd/competency/job-profiles' },
     canManage && { label: 'Cycles', to: '/hrd/competency/cycles' },
-    { label: 'Skill gaps', to: '/hrd/competency/gaps' },
+    hasPermission(PERMISSIONS.COMPETENCY_VIEW_REPORTS) && { label: 'Skill gaps', to: '/hrd/competency/gaps' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];
 }
 

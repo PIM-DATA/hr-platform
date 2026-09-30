@@ -179,3 +179,10 @@ closing. Payloads carry numbers, statuses and lengths — `descriptionChanged`, 
 
 Measured on the development database with 100 cases and 100 issued actions: case list with filters and the overview
 report each in tens of milliseconds; the list loads each case's actions in one include rather than one query per row.
+
+## Task 47 — report small groups (T44-P1-07)
+
+The ER report withholds per-department counts for departments of fewer than 5 people (current active headcount), with
+complementary suppression, and a department filter onto such a department withholds the whole report (`suppression`,
+`actions: null`). Organization totals remain. The Report Center `employee_relations_aggregate` dataset is per-person
+(`PERSON_ROWS`): it must be grouped, and groups of fewer than 5 people are withheld.

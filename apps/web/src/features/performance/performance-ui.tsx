@@ -73,7 +73,7 @@ export function usePerformanceTabs() {
     canReview && { label: 'Team reviews', to: '/hrm/performance/reviews' },
     managesCycles && { label: 'Cycles', to: '/hrm/performance/cycles' },
     (managesKpis || managesCycles) && { label: 'KPI library', to: '/hrm/performance/kpis' },
-    { label: 'Reports', to: '/hrm/performance/reports' },
+    hasPermission(PERMISSIONS.PERFORMANCE_VIEW_REPORTS) && { label: 'Reports', to: '/hrm/performance/reports' },
   ].filter(Boolean) as { label: string; to: string; end?: boolean }[];
 }
 

@@ -1,4 +1,4 @@
-import { calculateGap, type GapReportDto, type GapReportQuery, type SkillGapQuery, type SkillGapRowDto, type SkillProfileDto, type SkillProfileEntryDto } from '@hr/shared';
+import { MIN_AGGREGATE_GROUP_SIZE, calculateGap, partitionSuppression, suppressedCell, type AggregateSuppression, type GapReportDto, type GapReportQuery, type SkillGapQuery, type SkillGapRowDto, type SkillProfileDto, type SkillProfileEntryDto } from '@hr/shared';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -308,31 +308,58 @@ export const skillGapService = {
     const jobs = group(gapRows, (row) => row.assessment.jobTitle ?? 'Unassigned');
     const average = (sum: number, count: number) => (count === 0 ? null : (sum / count).toFixed(2));
 
+    // Task 47 (T44-P1-05/07): gap figures describe people's assessed levels. Groups of fewer than K people are
+    // withheld; a department / job filter is released only if that cell survives complementary suppression across the
+    // unfiltered population's departments / jobs; inside the result, the department and job rows get the same rule.
+    const K = MIN_AGGREGATE_GROUP_SIZE;
+    const base: Prisma.CompetencyAssessmentWhereInput = { cycleId: q.cycleId, organizationId: q.organizationId, status: 'FINALIZED', items: { some: { finalLevel: { not: null }, competencyId: q.competencyId } } };
+    const filterReleased = async (dim: 'departmentId' | 'jobId', value: string | undefined) => {
+      if (!value) return null;
+      const people = await prisma.competencyAssessment.findMany({ where: base, select: { employeeId: true, departmentId: true, jobId: true } });
+      const cells = new Map<string, Set<string>>();
+      for (const p of people) { const k = String(p[dim] ?? ''); cells.set(k, (cells.get(k) ?? new Set()).add(p.employeeId)); }
+      const hidden = partitionSuppression([...cells.entries()].map(([key, set]) => ({ key, count: set.size })), K);
+      const r = hidden.get(value);
+      return r ? suppressedCell(K, r) : null;
+    };
+    const overall: AggregateSuppression | null =
+      employeesAssessed.size > 0 && employeesAssessed.size < K ? suppressedCell(K)
+        : (await filterReleased('departmentId', q.departmentId)) ?? (await filterReleased('jobId', q.jobId));
+    const rowsSuppressed = (m: Map<string, { assessed: Set<string> }>) => partitionSuppression([...m.entries()].map(([key, b]) => ({ key, count: b.assessed.size })), K);
+    const deptHidden = rowsSuppressed(departments);
+    const jobHidden = rowsSuppressed(jobs);
+    const cell = (hidden: Map<string, AggregateSuppression['reason']>, key: string) => overall ?? (hidden.get(key) ? suppressedCell(K, hidden.get(key)!) : null);
+
     return {
       coverage: { assigned, selfSubmitted, finalized, coveragePercent: assigned === 0 ? 0 : Math.round((finalized / assigned) * 100) },
+      suppression: overall,
       totals: {
         employeesAssessed: employeesAssessed.size,
         competenciesAssessed: gapRows.length,
-        employeesWithGap: employeesWithGap.size,
-        gapItems: withGap.length,
-        averageGapNeeded: average(withGap.reduce((sum, row) => sum + row.gap, 0), withGap.length),
+        employeesWithGap: overall ? null : employeesWithGap.size,
+        gapItems: overall ? null : withGap.length,
+        averageGapNeeded: overall ? null : average(withGap.reduce((sum, row) => sum + row.gap, 0), withGap.length),
       },
       topGaps: [...byCompetency.entries()]
-        .map(([competencyId, bucket]) => ({
-          competencyId,
-          competencyCode: bucket.code,
-          competencyName: bucket.name,
-          assessed: bucket.assessed,
-          belowRequirement: bucket.below,
-          averageGap: average(bucket.gapSum, bucket.below),
-          maxGap: bucket.below === 0 ? null : bucket.maxGap,
-        }))
-        .sort((a, b) => b.belowRequirement - a.belowRequirement || a.competencyCode.localeCompare(b.competencyCode)),
+        .map(([competencyId, bucket]) => {
+          const suppression = overall ?? (bucket.assessed > 0 && bucket.assessed < K ? suppressedCell(K) : null);
+          return {
+            competencyId,
+            competencyCode: bucket.code,
+            competencyName: bucket.name,
+            assessed: bucket.assessed,
+            belowRequirement: suppression ? null : bucket.below,
+            averageGap: suppression ? null : average(bucket.gapSum, bucket.below),
+            maxGap: suppression || bucket.below === 0 ? null : bucket.maxGap,
+            suppression,
+          };
+        })
+        .sort((a, b) => (b.belowRequirement ?? -1) - (a.belowRequirement ?? -1) || a.competencyCode.localeCompare(b.competencyCode)),
       byDepartment: [...departments.entries()]
-        .map(([departmentName, bucket]) => ({ departmentName, assessed: bucket.assessed.size, withGap: bucket.withGap.size, gapItems: bucket.gapItems }))
+        .map(([departmentName, bucket]) => { const suppression = cell(deptHidden, departmentName); return { departmentName, assessed: bucket.assessed.size, withGap: suppression ? null : bucket.withGap.size, gapItems: suppression ? null : bucket.gapItems, suppression }; })
         .sort((a, b) => a.departmentName.localeCompare(b.departmentName)),
       byJob: [...jobs.entries()]
-        .map(([jobTitle, bucket]) => ({ jobTitle, assessed: bucket.assessed.size, withGap: bucket.withGap.size, gapItems: bucket.gapItems }))
+        .map(([jobTitle, bucket]) => { const suppression = cell(jobHidden, jobTitle); return { jobTitle, assessed: bucket.assessed.size, withGap: suppression ? null : bucket.withGap.size, gapItems: suppression ? null : bucket.gapItems, suppression }; })
         .sort((a, b) => a.jobTitle.localeCompare(b.jobTitle)),
     };
   },

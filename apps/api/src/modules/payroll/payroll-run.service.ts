@@ -602,7 +602,7 @@ export async function addManualAdjustmentWithTx(tx: Tx, resultId: string, input:
   await recomputeResultTotals(tx, resultId);
   await recomputeRunTotals(tx, result.run.id);
   await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.ADD_PAYROLL_ADJUSTMENT, 'PayrollResult', resultId, {
-    component: component.code, type: component.type, amount: toMoneyString(input.amount), note: input.note, referenceType: input.reference?.type ?? null, referenceId: input.reference?.id ?? null,
+    component: component.code, type: component.type, amount: toMoneyString(input.amount), noteLength: input.note?.length ?? 0, referenceType: input.reference?.type ?? null, referenceId: input.reference?.id ?? null,
   }), tx);
   return { itemId: item.id, created: true };
 }

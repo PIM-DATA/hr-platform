@@ -64,6 +64,10 @@ beforeAll(async () => {
   // Payroll: one closed run with exact decimals; ER: one issued action.
   const period = await prisma.payrollPeriod.create({ data: { organizationId: org.id, year: 2026, month: 3, periodStart: '2026-03-01', periodEnd: '2026-03-31', attendanceFrom: '2026-03-01', attendanceTo: '2026-03-31', currencyCode: 'THB', status: 'CLOSED' } });
   await prisma.payrollRun.create({ data: { periodId: period.id, status: 'CLOSED', closedAt: new Date(), startedByUserId: hrAdmin.user.id, employeeCount: 3, grossTotal: '123456.78', deductionTotal: '0.10', netTotal: '123456.68', currencyCode: 'THB' } });
+  // Task 47: a run paying fewer than 5 people is withheld from the Report Center (its totals are a few salaries); this
+  // six-person run carries the decimal-exactness checks.
+  const april = await prisma.payrollPeriod.create({ data: { organizationId: org.id, year: 2026, month: 4, periodStart: '2026-04-01', periodEnd: '2026-04-30', attendanceFrom: '2026-04-01', attendanceTo: '2026-04-30', currencyCode: 'THB', status: 'CLOSED' } });
+  await prisma.payrollRun.create({ data: { periodId: april.id, status: 'CLOSED', closedAt: new Date(), startedByUserId: hrAdmin.user.id, employeeCount: 6, grossTotal: '654321.09', deductionTotal: '0.10', netTotal: '654320.99', currencyCode: 'THB' } });
   const at = await prisma.disciplinaryActionType.create({ data: { code: 'WW', name: 'Written warning', severityOrder: 2, requiresWarningLetter: false, requiresAcknowledgement: true } });
   const erCase = await prisma.employeeRelationCase.create({ data: { caseNumber: 'ER-2026-000001', employeeId: ids.EMP005, employeeCodeSnapshot: 'EMP005', employeeNameSnapshot: 'EMP005 -CMD', departmentName: 'Operations', incidentDate: '2026-04-01', title: 'Case', description: 'Narrative that must not be exported', createdByUserId: hrAdmin.user.id } });
   await prisma.disciplinaryAction.create({ data: { caseId: erCase.id, actionTypeId: at.id, actionTypeCodeSnapshot: 'WW', actionTypeNameSnapshot: 'Written warning', employeeId: ids.EMP005, reason: 'Secret reason', status: 'ISSUED', issuedDate: '2026-04-10', requiresWarningLetter: false, requiresAcknowledgement: true, createdByUserId: hrAdmin.user.id } });
@@ -160,11 +164,16 @@ describe('datasets and scope', () => {
 
   it('payroll totals stay decimal strings; the ER dataset is counts only', async () => {
     const p = await as(hrAdmin, 'post', `${R}/run`).send({ datasetId: 'payroll_period_summary', definition: def({ columns: ['year', 'month', 'employeeCount', 'grossTotal', 'netTotal'] }), page: 1 });
-    expect(p.body.data.rows[0]).toMatchObject({ grossTotal: '123456.78', netTotal: '123456.68', employeeCount: 3 });
+    // BEFORE: the 3-person March run was listed with its totals; AFTER it is withheld and counted.
+    expect(p.body.data.rows).toEqual([expect.objectContaining({ month: 4, grossTotal: '654321.09', netTotal: '654320.99', employeeCount: 6 })]);
+    expect(p.body.data.suppression).toMatchObject({ suppressedGroups: 1, minimumGroupSize: 5 });
+    expect(JSON.stringify(p.body.data)).not.toContain('123456');
     const sum = await as(hrAdmin, 'post', `${R}/run`).send({ datasetId: 'payroll_period_summary', definition: def({ columns: ['currencyCode'], groupBy: ['currencyCode'], aggregations: [{ fieldId: 'netTotal', function: 'SUM', alias: 'Net' }] }), page: 1 });
-    expect(sum.body.data.rows[0].Net).toBe('123456.68');
+    expect(sum.body.data.rows[0].Net).toBe('654320.99');
     const er = await as(hrAdmin, 'post', `${R}/run`).send({ datasetId: 'employee_relations_aggregate', definition: def({ columns: ['department', 'actionType'], groupBy: ['department', 'actionType'], aggregations: [{ fieldId: 'actions', function: 'COUNT', alias: 'Count' }] }), page: 1 });
-    expect(er.body.data.rows).toEqual([{ department: 'Operations', actionType: 'Written warning', Count: 1 }]);
+    // BEFORE: "Operations · Written warning · 1" — one person's disciplinary action; AFTER withheld and counted.
+    expect(er.body.data.rows).toEqual([]);
+    expect(er.body.data.suppression).toMatchObject({ suppressedGroups: 1, minimumGroupSize: 5 });
     expect(JSON.stringify(er.body.data)).not.toMatch(/EMP005|Secret reason|Narrative|ER-2026/);
   });
 });
@@ -207,12 +216,14 @@ describe('saved reports, sharing and export', () => {
     expect(r.text).toContain(`"'+CMD Officer"`);
     expect(r.text).toContain(`"'-CMD"`);
     const pay = await as(hrAdmin, 'post', `${R}/export`).send({ datasetId: 'payroll_period_summary', definition: def({ columns: ['year', 'month', 'grossTotal', 'netTotal'] }) });
-    expect(pay.text).toContain('"123456.78","123456.68"');
+    expect(pay.text).toContain('"654321.09","654320.99"');
+    expect(pay.text).toMatch(/SUPPRESSED/);
+    expect(pay.text).not.toContain('123456');
     expect((await as(mgr, 'post', `${R}/export`).send({ datasetId: 'payroll_period_summary', definition: def({ columns: ['netTotal'] }) })).status).toBe(404);
     expect((await as(emp, 'post', `${R}/export`).send({ datasetId: 'employee_directory', definition: def({}) })).status).toBe(403);
     const audit = await prisma.auditLog.findFirst({ where: { action: 'EXPORT_REPORT', module: 'reports' }, orderBy: { createdAt: 'desc' } });
     expect(JSON.parse(audit!.newValue!)).toMatchObject({ datasetId: 'payroll_period_summary', rowCount: 1 });
-    expect(JSON.stringify(audit?.newValue)).not.toContain('123456');
+    expect(JSON.stringify(audit?.newValue)).not.toMatch(/123456|654321/);
     // Over the cap: a deterministic 413 before any rows are built.
     const original = REPORT_LIMITS.exportRows;
     (REPORT_LIMITS as { exportRows: number }).exportRows = 2;

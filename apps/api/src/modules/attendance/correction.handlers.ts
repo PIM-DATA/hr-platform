@@ -61,7 +61,7 @@ export const attendanceCorrectionHandlers = {
     // The day has just been recalculated with the corrected times — check it still supports any approved overtime.
     await assertApprovedOvertimeStillSupported(tx, row.employeeId, row.attendanceDate);
     await auditService.log(attendanceAudit(ctx.actor, AUDIT_ACTIONS.APPROVE_ATTENDANCE_CORRECTION, 'AttendanceCorrection', row.id,
-      { status: 'APPROVED', attendanceDate: row.attendanceDate, workflowInstanceId: ctx.instanceId, comment: ctx.comment },
+      { status: 'APPROVED', attendanceDate: row.attendanceDate, workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0 },
       { status: 'PENDING' }), tx);
     await notifyEmployee(tx, row, NOTIFICATION_TYPES.ATTENDANCE_CORRECTION_APPROVED, 'approved');
   },
@@ -69,7 +69,7 @@ export const attendanceCorrectionHandlers = {
   async onRejected(ctx: WorkflowCallbackContext, tx: Tx) {
     const row = await correctionsService.applyDecision(tx, ctx.entityId, 'REJECTED');
     await auditService.log(attendanceAudit(ctx.actor, AUDIT_ACTIONS.REJECT_ATTENDANCE_CORRECTION, 'AttendanceCorrection', row.id,
-      { status: 'REJECTED', attendanceDate: row.attendanceDate, workflowInstanceId: ctx.instanceId, comment: ctx.comment },
+      { status: 'REJECTED', attendanceDate: row.attendanceDate, workflowInstanceId: ctx.instanceId, commentLength: ctx.comment?.length ?? 0 },
       { status: 'PENDING' }), tx);
     // The approver's comment stays in the workflow timeline; the notification only says it was rejected.
     await notifyEmployee(tx, row, NOTIFICATION_TYPES.ATTENDANCE_CORRECTION_REJECTED, 'rejected');
