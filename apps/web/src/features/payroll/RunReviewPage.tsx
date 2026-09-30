@@ -293,8 +293,10 @@ function LineGroup({ title, items, currency, editable, onRemove }: {
             </span>
             <span className="flex shrink-0 items-center gap-1">
               <Money amount={i.amount} currency={currency} className="text-sm text-slate-900" />
-              {/* Only manual lines can be removed: a calculated line is the engine's and is rebuilt, never edited. */}
-              {editable && i.isManual && (
+              {/* Only manual lines can be removed: a calculated line is the engine's and is rebuilt, never edited. A line
+                  handed over by benefits or expense is an approved reimbursement and stays (Task 48). */}
+              {i.sourceLinked && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600" title="Handed over by benefits or expense; it cannot be removed in payroll">{i.referenceType === 'BENEFIT_CLAIM' ? 'Benefit claim' : 'Expense report'}</span>}
+              {editable && i.isManual && !i.sourceLinked && (
                 <Button variant="ghost" size="sm" aria-label="Remove adjustment" title="Remove adjustment" onClick={() => onRemove(i.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>

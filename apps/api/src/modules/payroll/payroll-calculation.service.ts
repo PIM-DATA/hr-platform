@@ -87,16 +87,25 @@ export interface EmployeeCalculation {
   lines: LineDraft[];
 }
 
-const componentCache = new Map<string, { id: string; name: string; type: string }>();
+/**
+ * System components, cached per transaction client. A process-wide cache (before Task 48) kept ids created inside a
+ * calculation that then rolled back — on a fresh database, one refused first calculation (a missing salary, a currency
+ * mismatch) left every later calculation failing on a foreign key to a component that no longer existed.
+ */
+const componentCache = new WeakMap<Db, Map<string, { id: string; name: string; type: string }>>();
 async function systemComponent(db: Db, code: string) {
-  const cached = componentCache.get(code);
+  const perDb = componentCache.get(db) ?? new Map<string, { id: string; name: string; type: string }>();
+  componentCache.set(db, perDb);
+  const cached = perDb.get(code);
   if (cached) return cached;
   await payComponentService.ensureSystemComponents(db);
   const row = await db.payComponent.findUnique({ where: { code }, select: { id: true, name: true, type: true } });
   if (!row) throw new AppError(500, 'PAY_COMPONENT_NOT_FOUND', `System pay component ${code} is missing`);
-  componentCache.set(code, row);
+  perDb.set(code, row);
   return row;
 }
+
+const FINGERPRINT_V2 = 'v2:';
 
 export const payrollCalculationService = {
   /**
@@ -180,7 +189,73 @@ export const payrollCalculationService = {
    * moved since the run was calculated, the numbers on screen are not the numbers the sources now imply, and the run
    * must be recalculated rather than approved.
    */
+  /**
+   * Task 48 (T44-P1-16): version 2 covers every input the calculation reads — also the salary currency, hire and
+   * termination dates (proration), the pay component's type and active flag, whether a leave policy is paid, and the
+   * organization calendar inside the period. Dates are recorded as they bear on this period (an end date after the
+   * period is "open"), so a future salary change does not make an approved run look stale.
+   */
   async fingerprint(db: Db, employeeIds: string[], inputs: CalculationInputs): Promise<string> {
+    const within = (from: string, to: string | null) => [
+      compareBusinessDate(from, inputs.periodStart) > 0 ? from : null,
+      to && compareBusinessDate(to, inputs.periodEnd) < 0 ? to : null,
+    ];
+    const [employees, compensations, payItems, overtime, leave, attendance] = await Promise.all([
+      db.employee.findMany({ where: { id: { in: employeeIds } }, select: { id: true, organizationId: true, hireDate: true, terminationDate: true }, orderBy: { id: 'asc' } }),
+      db.employeeCompensation.findMany({
+        where: { employeeId: { in: employeeIds }, effectiveFrom: { lte: inputs.periodEnd }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: inputs.periodStart } }] },
+        select: { id: true, baseSalary: true, currencyCode: true, effectiveFrom: true, effectiveTo: true },
+        orderBy: { id: 'asc' },
+      }),
+      db.employeePayItem.findMany({
+        where: { employeeId: { in: employeeIds }, effectiveFrom: { lte: inputs.periodEnd }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: inputs.periodStart } }] },
+        select: { id: true, amount: true, effectiveFrom: true, effectiveTo: true, componentId: true, component: { select: { type: true, isActive: true } } },
+        orderBy: { id: 'asc' },
+      }),
+      db.overtimeRequest.findMany({
+        where: { employeeId: { in: employeeIds }, attendanceDate: { gte: inputs.attendanceFrom, lte: inputs.attendanceTo }, status: 'APPROVED' },
+        select: { id: true, approvedMinutes: true, rateMultiplierSnapshot: true, dayType: true },
+        orderBy: { id: 'asc' },
+      }),
+      db.leaveRequest.findMany({
+        where: { employeeId: { in: employeeIds }, status: LEAVE_REQUEST_STATUS.APPROVED, startDate: { lte: inputs.attendanceTo }, endDate: { gte: inputs.attendanceFrom } },
+        select: { id: true, units: true, startDate: true, endDate: true, startPart: true, endPart: true, policyId: true, policy: { select: { isPaid: true } } },
+        orderBy: { id: 'asc' },
+      }),
+      db.attendanceRecord.findMany({
+        where: { employeeId: { in: employeeIds }, attendanceDate: { gte: inputs.attendanceFrom, lte: inputs.attendanceTo } },
+        select: { id: true, status: true, lateMinutes: true, attendanceDate: true },
+        orderBy: { id: 'asc' },
+      }),
+    ]);
+    const calendars: unknown[] = [];
+    for (const organizationId of [...new Set(employees.map((e) => e.organizationId))].sort()) {
+      const c = await calendarsService.effectiveForOrganization(db, organizationId);
+      calendars.push([organizationId, c ? [...c.workingDays] : null, c ? [...c.holidays].filter((d) => d >= inputs.periodStart && d <= inputs.periodEnd).sort() : null]);
+    }
+    const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+    const payload = JSON.stringify({
+      period: { ...inputs, policy: { ...inputs.policy, monthlyDivisorDays: inputs.policy.monthlyDivisorDays.toString(), dailyWorkHours: inputs.policy.dailyWorkHours.toString() } },
+      employees: employees.map((e) => [e.id, iso(e.hireDate), iso(e.terminationDate)]),
+      compensations: compensations.map((c) => [c.id, c.baseSalary.toString(), c.currencyCode, ...within(c.effectiveFrom, c.effectiveTo)]),
+      payItems: payItems.map((p) => [p.id, p.amount.toString(), ...within(p.effectiveFrom, p.effectiveTo), p.componentId, p.component.type, p.component.isActive]),
+      overtime: overtime.map((o) => [o.id, o.approvedMinutes, o.rateMultiplierSnapshot, o.dayType]),
+      leave: leave.map((l) => [l.id, l.units, l.startDate, l.endDate, l.startPart, l.endPart, l.policyId, l.policy?.isPaid ?? null]),
+      attendance: attendance.map((a) => [a.id, a.status, a.lateMinutes, a.attendanceDate]),
+      calendars,
+    });
+    return `${FINGERPRINT_V2}${createHash('sha256').update(payload).digest('hex')}`;
+  },
+
+  /** Does a stored fingerprint still describe the sources? Runs calculated before Task 48 are compared the old way. */
+  async fingerprintMatches(db: Db, stored: string, employeeIds: string[], inputs: CalculationInputs): Promise<boolean> {
+    return stored.startsWith(FINGERPRINT_V2)
+      ? stored === (await payrollCalculationService.fingerprint(db, employeeIds, inputs))
+      : stored === (await payrollCalculationService.legacyFingerprint(db, employeeIds, inputs));
+  },
+
+  /** The pre-Task-48 fingerprint, kept only to compare runs calculated before it. */
+  async legacyFingerprint(db: Db, employeeIds: string[], inputs: CalculationInputs): Promise<string> {
     const [compensations, payItems, overtime, leave, attendance] = await Promise.all([
       db.employeeCompensation.findMany({
         where: { employeeId: { in: employeeIds }, effectiveFrom: { lte: inputs.periodEnd }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: inputs.periodStart } }] },
@@ -261,6 +336,11 @@ async function calculateEmployee(db: Db, employee: EmployeeForPayroll, inputs: C
     throw new AppError(409, 'PAYROLL_COMPENSATION_SPLITS_PERIOD', `${employee.employeeCode} has more than one salary record inside ${inputs.periodStart} → ${inputs.periodEnd}; this release does not prorate a mid-period salary change`);
   }
   const compensation = sources.compensations[0];
+  // Task 48 (T44-P1-14): a salary is paid only in the currency it is recorded in. There is no FX here, so a salary in
+  // another currency than the period's is refused — never paid as if it were the period's currency.
+  if (compensation.currencyCode !== inputs.currencyCode) {
+    throw new AppError(409, 'PAYROLL_CURRENCY_MISMATCH', `${employee.employeeCode}'s salary is recorded in ${compensation.currencyCode}; this period pays in ${inputs.currencyCode}. Record the salary in ${inputs.currencyCode} (no currency conversion is done).`);
+  }
   if (compareBusinessDate(compensation.effectiveFrom, inputs.periodStart) > 0 || (compensation.effectiveTo && compareBusinessDate(compensation.effectiveTo, inputs.periodEnd) < 0)) {
     throw new AppError(409, 'PAYROLL_COMPENSATION_SPLITS_PERIOD', `${employee.employeeCode}'s salary record does not cover the whole period ${inputs.periodStart} → ${inputs.periodEnd}`);
   }

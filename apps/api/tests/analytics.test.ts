@@ -212,7 +212,11 @@ describe('Executive analytics', () => {
 
   it('payroll totals need the extra permission and are organization-level only', async () => {
     const d = (await as(hrAdmin, 'get', `${A}/executive/overview?${RANGE}`)).body.data;
-    expect(d.sections.payroll, JSON.stringify(d.sections.payroll)).toMatchObject({ runs: 1, employeesPaid: 1, netTotal: '77777.00' });
+    // Task 48 (T44-P2-15 + the Task 47 small-group rule, applied to the one payroll source) — BEFORE:
+    // { runs: 1, employeesPaid: 1, netTotal: '77777.00' } — a one-person run total is that person's pay.
+    // AFTER: the run is withheld and counted; money appears only per currency, and only for runs of ≥ 5 employees.
+    expect(d.sections.payroll, JSON.stringify(d.sections.payroll)).toMatchObject({ runs: 0, byCurrency: [], withheldRuns: 1, minimumGroupSize: 5 });
+    expect(text(d.sections.payroll)).not.toContain('77777');
     expect(Object.keys(d.sections.payroll)).not.toContain('byDepartment');
     expect(personalDataIn(d)).toEqual([]);
   });

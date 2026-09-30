@@ -144,7 +144,23 @@ export function ExecutiveDashboardPage() {
           {s.payroll && (
             <section>
               <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold text-slate-900">Payroll (organization totals)</h2>{link(PERMISSIONS.PAYROLL_MANAGE, '/hrm/payroll', 'Payroll')}</div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Stat label="Closed runs" value={n(s.payroll.runs)} /><Stat label="Employees paid" value={n(s.payroll.employeesPaid)} /><Stat label="Gross total" value={`${s.payroll.grossTotal} ${s.payroll.currencyCode ?? ''}`} /><Stat label="Net total" value={`${s.payroll.netTotal} ${s.payroll.currencyCode ?? ''}`} /></div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Stat label="Closed runs" value={n(s.payroll.runs)} /><Stat label="Employees paid" value={n(s.payroll.employeesPaid)} /></div>
+              {/* Task 48: one row per currency — never a total across currencies, and no default currency. */}
+              {s.payroll.byCurrency.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">No closed run in this range{s.payroll.withheldRuns ? ' that can be shown' : ''}.</p>
+              ) : (
+                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-3 py-2 font-medium">Currency</th><th className="px-3 py-2 text-right font-medium">Runs</th><th className="px-3 py-2 text-right font-medium">Gross</th><th className="px-3 py-2 text-right font-medium">Deductions</th><th className="px-3 py-2 text-right font-medium">Net</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {s.payroll.byCurrency.map((c) => (
+                        <tr key={c.currencyCode}><td className="px-3 py-2 font-medium text-slate-900">{c.currencyCode}</td><td className="px-3 py-2 text-right tabular-nums">{n(c.runs)}</td><td className="px-3 py-2 text-right tabular-nums">{c.grossTotal}</td><td className="px-3 py-2 text-right tabular-nums">{c.deductionTotal}</td><td className="px-3 py-2 text-right tabular-nums">{c.netTotal}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {s.payroll.withheldRuns > 0 && <p className="mt-1 text-xs text-slate-500">Withheld: {s.payroll.withheldRuns} run(s) of fewer than {s.payroll.minimumGroupSize} employees.</p>}
               <p className="mt-1 text-xs text-slate-500">{s.payroll.note}</p>
             </section>
           )}

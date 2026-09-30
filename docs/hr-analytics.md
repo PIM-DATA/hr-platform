@@ -176,3 +176,12 @@ small groups (performance / competency: fewer than 5 scored / assessed people; E
 with complementary suppression. A department or job filter onto such a group shows the section as withheld (explicit
 `suppression`, UI "withheld", CSV `SUPPRESSED`), never a number. Workforce counts (headcount, hires, terminations) are
 not suppressed: executives can already see the employee directory, so they reveal nothing beyond it.
+
+## Task 48 — full-population attendance / overtime and currency-keyed payroll (T44-P1-13, P2-15)
+
+- Attendance and overtime sections are computed from SQL aggregates over each department's full population (before:
+  the first 500 employees of each department, silently); still no employee rows.
+- Payroll section: `byCurrency` (one entry per currency: runs, employees paid, gross, deductions, net), `byPeriod` with
+  organization and currency, `withheldRuns` / `minimumGroupSize`. The single total and its "currency of the first run"
+  label are gone — THB and USD used to be added and shown as one figure. Runs of fewer than 5 employees are withheld,
+  as in the Report Center (a one-person run total is that person's pay). The CSV and the copilot read the same source.

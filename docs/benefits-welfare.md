@@ -233,3 +233,15 @@ flexible-benefit marketplace, OCR receipt extraction, fraud detection, bank paym
 benefits engine, automatic payroll treatment, FX conversion, external reimbursement provider, automated claim
 adjudication, recurring payment scheduler, provident-fund or pension engine, stock or equity benefits, AI benefit
 recommendation, partial approval, or department-level utilization for executives.
+
+## Task 48 — payroll handoff integrity (T44-P1-14, T44-P1-15)
+
+- A claim sent to payroll can no longer disappear from it: its payroll line cannot be removed in payroll
+  (`409 PAYROLL_ITEM_SOURCE_LINKED`), the database refuses the delete (`ON DELETE RESTRICT`), and a payroll recalculation
+  keeps the same line and id (the claim's `payrollResultItemId` never dangles).
+- The claim currency must equal the payroll run currency (`409 PAYROLL_CURRENCY_MISMATCH`; the claim stays
+  `READY_FOR_PAYMENT` — pay it outside payroll). No conversion.
+- A `SENT_TO_PAYROLL` claim cannot be cancelled (unchanged) and can only be recorded as paid with method `PAYROLL`
+  (`409 BENEFIT_CLAIM_IN_PAYROLL`): recording an external payment as well would pay it twice.
+- Reconciliation invariant (tested by `expectHandoffReconciled`): source → line exists; line → source by
+  `(referenceType, referenceId)`; amounts equal to the satang; line currency = claim currency; exactly one line.

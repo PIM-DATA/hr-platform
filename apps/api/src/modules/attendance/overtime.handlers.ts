@@ -6,6 +6,7 @@ import { notificationService } from '../../services/notification';
 import { attendanceAudit, type Tx } from './attendance.types';
 import { overtimeEligibilityService } from './overtime-eligibility.service';
 import { overtimeService } from './overtime.service';
+import { assertPayrollInputsOpen } from '../payroll/payroll-freeze';
 
 /**
  * Overtime workflow callbacks, run INSIDE the engine's transaction.
@@ -45,6 +46,8 @@ export const overtimeWorkflowHandlers = {
   async onApproved(ctx: WorkflowCallbackContext, tx: Tx) {
     const request = await overtimeService.loadForMutation(tx, ctx.entityId);
     if (request.status !== 'PENDING') throw new AppError(409, 'OT_REQUEST_NOT_PENDING', `This claim is ${request.status.toLowerCase()}`);
+    // Task 48 (T44-P1-16): approved overtime is payroll input; a day inside an approved/closed payroll stays unpaid-as-claimed.
+    await assertPayrollInputsOpen(tx, request.employeeId, { from: request.attendanceDate, to: request.attendanceDate }, 'ATTENDANCE', `Overtime on ${request.attendanceDate}`);
 
     const assessment = await overtimeEligibilityService.assess(tx, request.employeeId, request.attendanceDate);
     if (assessment.notFinalReason || request.claimedMinutes > assessment.eligibility.eligibleMinutes) {

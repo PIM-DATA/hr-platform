@@ -117,3 +117,13 @@ Withheld groups are never returned as 0 or null values: they are left out and co
 `withheldGroups` with an instruction not to estimate them. Limitation: arbitrary filter combinations can in theory still
 be differenced across many queries (a general "tracker" attack); the residual rule and per-person grouping close the
 simple cases the audit found, and all exports are audited.
+
+## Task 48 — money and totals
+
+- `payroll_period_summary`: gross / deductions / net declare `currencyField: currencyCode`, so a SUM/AVG needs a
+  currency group or a one-currency filter (`422 REPORT_CURRENCY_GROUP_REQUIRED`) like every other money field. Every
+  DECIMAL money field in the registry now has a currency (the only DECIMAL without one is a performance score).
+- In-memory DECIMAL filters (`EQ`, `NE`, `GT`, `GTE`, `LT`, `LTE`) compare with Decimal, not `Number()` — amounts beyond
+  float precision (e.g. 9,999,999,999,999,999.01 vs .02) no longer compare equal.
+- Attendance / overtime datasets aggregate in the database without an employee cap (verified with 3,020 employees);
+  the preview page size never limits a grouped total.

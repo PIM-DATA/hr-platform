@@ -7,6 +7,7 @@ import { leaveNotificationVars, notifyLeaveEvent } from './leave-notifications';
 import type { Tx } from './balance.service';
 import { balanceService } from './balance.service';
 import { loadLeaveRequestForMutation } from './leave-requests.service';
+import { assertPayrollInputsOpen } from '../payroll/payroll-freeze';
 
 /**
  * Leave-side terminal handlers, run INSIDE the workflow engine's transaction (approve/reject via the generic action
@@ -28,6 +29,8 @@ export const leaveWorkflowHandlers = {
   /** Final approval: reservation → usage, status APPROVED. */
   async onApproved(ctx: WorkflowCallbackContext, tx: Tx) {
     const req = await pendingRequest(tx, ctx);
+    // Task 48 (T44-P1-16): an approved leave is payroll input (paid/unpaid days); not inside an approved/closed payroll.
+    await assertPayrollInputsOpen(tx, req.employeeId, { from: req.startDate, to: req.endDate }, 'ATTENDANCE', `Leave ${req.startDate} → ${req.endDate}`);
     await balanceService.release(tx, req.entitlementId, req.units, meta(ctx, req, 'release'));
     const r = await balanceService.use(tx, req.entitlementId, req.units, meta(ctx, req, 'use'));
     const now = new Date();

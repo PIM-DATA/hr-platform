@@ -380,7 +380,10 @@ describe('reports, metrics and sources', () => {
     expect(shownToModel()).not.toMatch(/77777|EMP00/);
     seen.length = 0; scriptFakeProvider([call('executive_hr_overview', { from: '2026-01-01', to: '2026-12-31' }), answer()]);
     await chat(hrAdmin, 'payroll totals this year');
-    expect(shownToModel()).toMatch(/"grossTotal":"77777.00"/);
+    // Task 48 — BEFORE: the model was shown "grossTotal":"77777.00" (a one-employee run = one salary).
+    // AFTER: the payroll source withholds runs of fewer than 5 employees; the model sees the count, not the money.
+    expect(shownToModel()).toMatch(/"withheldRuns":1/);
+    expect(shownToModel()).not.toMatch(/77777/);
     expect(shownToModel()).not.toMatch(/EMP003/);
   });
 });

@@ -6,6 +6,7 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { Db, Tx } from './attendance.types';
 import { schedulesService } from './schedules.service';
+import { assertPayrollInputsOpen } from '../payroll/payroll-freeze';
 
 /**
  * The one place a day of attendance is decided.
@@ -133,6 +134,12 @@ export const attendanceCalculationService = {
       correctionId: inputs.correctionId,
       calculatedAt: now,
     };
+    // Task 48 (T44-P1-16): a change payroll reads (a new day, another status, other late minutes) inside an approved or
+    // closed payroll period is refused; an identical recalculation (a retry, a look at a finished day) still passes.
+    const existing = await tx.attendanceRecord.findUnique({ where: { employeeId_attendanceDate: { employeeId, attendanceDate: date } }, select: { status: true, lateMinutes: true } });
+    if (!existing || existing.status !== data.status || existing.lateMinutes !== data.lateMinutes) {
+      await assertPayrollInputsOpen(tx, employeeId, { from: date, to: date }, 'ATTENDANCE', `Attendance on ${date}`);
+    }
     return tx.attendanceRecord.upsert({
       where: { employeeId_attendanceDate: { employeeId, attendanceDate: date } },
       create: data,

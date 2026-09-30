@@ -28,7 +28,7 @@ export const useOvertimeRequest = (id: string | null) =>
 export const useOvertimePolicies = (f: Record<string, unknown>) =>
   useQuery({ queryKey: overtimeKeys.policies(f), queryFn: () => api.get<OvertimePolicyDto[]>(`/attendance/overtime/policies?${qs(f)}`), placeholderData: (p) => p });
 
-export const useOvertimeReport = (f: { from: string; to: string; departmentId?: string; employeeId?: string }, enabled = true) =>
+export const useOvertimeReport = (f: { from: string; to: string; departmentId?: string; employeeId?: string; page?: number; pageSize?: number }, enabled = true) =>
   useQuery({ queryKey: overtimeKeys.report(f), queryFn: () => api.get<OvertimeReportDto>(`/attendance/overtime/reports/overview?${qs(f)}`).then((r) => r.data), enabled });
 
 export function useOvertimeMutations() {

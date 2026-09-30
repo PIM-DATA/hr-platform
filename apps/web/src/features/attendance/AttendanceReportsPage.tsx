@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card';
 import { Alert } from '@/components/ui/Alert';
 import { Select } from '@/components/ui/Select';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { useDepartments } from '@/features/organization/organization.api';
 import { useAttendanceReport, useToday } from './attendance.api';
 import { formatMinutes } from './attendance-ui';
@@ -18,9 +19,10 @@ export function AttendanceReportsPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [page, setPage] = useState(1);
   const departments = useDepartments({ page: 1, pageSize: 100 });
 
-  const range = { from: from || defaultFrom, to: to || defaultTo, departmentId: departmentId || undefined };
+  const range = { from: from || defaultFrom, to: to || defaultTo, departmentId: departmentId || undefined, page };
   const report = useAttendanceReport(range, !!range.from && !!range.to);
 
   const columns: Column<Row>[] = [
@@ -48,20 +50,20 @@ export function AttendanceReportsPage() {
     <Card>
       <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2">
-          <input type="date" value={range.from} onChange={(e) => setFrom(e.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm" aria-label="From" />
+          <input type="date" value={range.from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm" aria-label="From" />
           <span className="text-slate-400">→</span>
-          <input type="date" value={range.to} onChange={(e) => setTo(e.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm" aria-label="To" />
+          <input type="date" value={range.to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm" aria-label="To" />
         </div>
         <Select
           options={(departments.data?.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
           placeholder="All departments"
           value={departmentId}
-          onChange={(e) => setDepartmentId(e.target.value)}
+          onChange={(e) => { setDepartmentId(e.target.value); setPage(1); }}
           className="w-48"
         />
         {report.data && (
           <div className="text-sm text-slate-500 sm:ml-auto">
-            Total worked <span className="font-medium text-slate-900">{formatMinutes(report.data.totals.workMinutes)}</span> ·
+            {report.data.totalEmployees} employee(s) · total worked <span className="font-medium text-slate-900">{formatMinutes(report.data.totals.workMinutes)}</span> ·
             absent <span className="font-medium text-slate-900">{report.data.totals.absentDays}</span> day(s)
           </div>
         )}
@@ -75,6 +77,10 @@ export function AttendanceReportsPage() {
         emptyTitle="Nothing in this range"
         emptyDescription="Attendance appears once days are scheduled and calculated."
       />
+      {/* Totals above cover every employee in scope; the table shows one page of them (Task 48). */}
+      {report.data && report.data.meta.total > report.data.meta.pageSize && (
+        <Pagination page={report.data.meta.page} pageSize={report.data.meta.pageSize} total={report.data.meta.total} onPageChange={setPage} />
+      )}
     </Card>
   );
 }

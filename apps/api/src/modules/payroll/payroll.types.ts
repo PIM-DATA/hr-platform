@@ -6,6 +6,11 @@ export type Tx = Prisma.TransactionClient;
 export type Db = Prisma.TransactionClient | typeof import('../../lib/prisma').prisma;
 export type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 
+/** Payroll lines handed over by another module (Task 48): they carry an approved reimbursement and are immutable here. */
+export const SOURCE_LINKED_REFERENCES = ['BENEFIT_CLAIM', 'EXPENSE_REPORT'] as const;
+export type SourceLinkedReference = (typeof SOURCE_LINKED_REFERENCES)[number];
+export const isSourceLinkedLine = (item: { referenceType: string | null }) => (SOURCE_LINKED_REFERENCES as readonly (string | null)[]).includes(item.referenceType);
+
 /**
  * Audit entries for payroll.
  *

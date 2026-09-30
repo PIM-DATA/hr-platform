@@ -1,5 +1,5 @@
 import {
-  AUDIT_ACTIONS, PAYROLL_PERIOD_FROZEN, PAYROLL_WORKFLOW, SYSTEM_PAY_COMPONENTS, payrollPeriodLabel,
+  AUDIT_ACTIONS, MIN_AGGREGATE_GROUP_SIZE, PAYROLL_PERIOD_FROZEN, PAYROLL_WORKFLOW, SYSTEM_PAY_COMPONENTS, payrollPeriodLabel, type PayrollAggregateDto,
   type AddPayrollAdjustmentInput, type CreatePayrollPeriodInput, type PayrollPeriodDto, type PayrollPeriodListQuery,
   type PayrollPeriodStatus, type PayrollReconciliationDto, type PayrollResultDto, type PayrollResultItemDto,
   type PayrollResultListQuery, type PayrollRunSummaryDto, type PayrollSummaryDto, type UpdatePayrollPeriodInput,
@@ -11,7 +11,7 @@ import { auditService } from '../../services/audit/audit.service';
 import { workflowEngine } from '../../services/workflow';
 import type { AuthContext } from '../auth/auth.types';
 import { dec, equals, money, sumMoney, toMoneyString, toQuantityString, toRateString, ZERO } from './money';
-import { payrollAudit, type Actor, type Db, type Tx } from './payroll.types';
+import { isSourceLinkedLine, payrollAudit, type Actor, type Db, type SourceLinkedReference, type Tx } from './payroll.types';
 import { payrollPolicyService } from './payroll-master.service';
 import { payrollCalculationService, systemComponent, type CalculationInputs, type EmployeeForPayroll } from './payroll-calculation.service';
 
@@ -54,6 +54,7 @@ const toItemDto = (row: Prisma.PayrollResultItemGetPayload<object>): PayrollResu
   referenceType: row.referenceType,
   referenceId: row.referenceId,
   isManual: row.isManual,
+  sourceLinked: isSourceLinkedLine(row),
 });
 
 const toResultDto = (row: ResultRow): PayrollResultDto => ({
@@ -259,88 +260,78 @@ export const payrollRunService = {
         ? await tx.payrollRun.update({ where: { id: existingRun.id }, data: { version: existingRun.version + 1, status: 'REVIEW', calculatedAt: new Date(), inputFingerprint: fingerprint, currencyCode: period.currencyCode } })
         : await tx.payrollRun.create({ data: { periodId, status: 'REVIEW', startedByUserId: actor.auth.userId, calculatedAt: new Date(), inputFingerprint: fingerprint, currencyCode: period.currencyCode } });
 
-      // Keep the manual adjustments, drop everything the engine generated, then rebuild.
-      const manual = await tx.payrollResultItem.findMany({
-        where: { isManual: true, payrollResult: { runId: run.id } },
-        include: { payrollResult: { select: { employeeId: true } } },
+      // Rebuilt in place (Task 48, T44-P1-15): a result row and its manual lines keep their ids across recalculations —
+      // a benefit claim or expense report points at its payroll line by id, and that link must never dangle. Only the
+      // engine-generated lines are replaced. Before, every result was deleted and re-created with new ids.
+      const prior = await tx.payrollResult.findMany({
+        where: { runId: run.id },
+        select: { id: true, employeeId: true, employeeCode: true, items: { where: { isManual: true }, select: { type: true, amount: true, referenceType: true } } },
       });
-      const manualByEmployee = new Map<string, typeof manual>();
-      for (const item of manual) manualByEmployee.set(item.payrollResult.employeeId, [...(manualByEmployee.get(item.payrollResult.employeeId) ?? []), item]);
-      await tx.payrollResult.deleteMany({ where: { runId: run.id } }); // cascades to items
+      const calculated = new Set(calculations.map((c) => c.employeeId));
+      const dropped = prior.filter((r) => !calculated.has(r.employeeId));
+      // Somebody who left the population cannot silently take an approved reimbursement with them.
+      const orphaned = dropped.find((r) => r.items.some((i) => isSourceLinkedLine(i)));
+      if (orphaned) {
+        throw new AppError(409, 'PAYROLL_HANDOFF_LINE_ORPHANED', `${orphaned.employeeCode} is no longer paid by this period but carries a reimbursement handed over from benefits or expense; resolve that employee's population change first`);
+      }
+      if (dropped.length) await tx.payrollResult.deleteMany({ where: { id: { in: dropped.map((r) => r.id) } } }); // ordinary manual lines go with them, as before
+      await tx.payrollResultItem.deleteMany({ where: { isManual: false, payrollResult: { runId: run.id } } });
+      const priorByEmployee = new Map(prior.map((r) => [r.employeeId, r]));
 
       let grossTotal = ZERO;
       let deductionTotal = ZERO;
       let netTotal = ZERO;
       for (const calculation of calculations) {
-        const keptManual = manualByEmployee.get(calculation.employeeId) ?? [];
+        const existing = priorByEmployee.get(calculation.employeeId);
+        const keptManual = existing?.items ?? [];
         const manualEarnings = sumMoney(keptManual.filter((i) => i.type === 'EARNING').map((i) => i.amount));
         const manualDeductions = sumMoney(keptManual.filter((i) => i.type === 'DEDUCTION').map((i) => i.amount));
         const gross = money(calculation.grossPay.plus(manualEarnings));
         const deductions = money(calculation.totalDeductions.plus(manualDeductions));
         const net = money(gross.minus(deductions));
 
-        const result = await tx.payrollResult.create({
-          data: {
-            runId: run.id,
-            employeeId: calculation.employeeId,
-            employeeCode: calculation.employeeCode,
-            employeeName: calculation.employeeName,
-            organizationId: calculation.organizationId,
-            departmentId: calculation.departmentId,
-            departmentName: calculation.departmentName,
-            positionId: calculation.positionId,
-            positionTitle: calculation.positionTitle,
-            compensationId: calculation.compensationId,
-            baseSalary: calculation.baseSalary,
-            dailyRate: calculation.dailyRate,
-            minuteRate: calculation.minuteRate,
-            grossPay: gross,
-            totalDeductions: deductions,
-            netPay: net,
-            currencyCode: period.currencyCode,
-            absentDays: calculation.absentDays,
-            lateMinutes: calculation.lateMinutes,
-            unpaidLeaveUnits: calculation.unpaidLeaveUnits,
-            approvedOtMinutes: calculation.approvedOtMinutes,
-            proratedDays: calculation.proratedDays,
-          },
-        });
+        const data = {
+          employeeCode: calculation.employeeCode,
+          employeeName: calculation.employeeName,
+          organizationId: calculation.organizationId,
+          departmentId: calculation.departmentId,
+          departmentName: calculation.departmentName,
+          positionId: calculation.positionId,
+          positionTitle: calculation.positionTitle,
+          compensationId: calculation.compensationId,
+          baseSalary: calculation.baseSalary,
+          dailyRate: calculation.dailyRate,
+          minuteRate: calculation.minuteRate,
+          grossPay: gross,
+          totalDeductions: deductions,
+          netPay: net,
+          currencyCode: period.currencyCode,
+          absentDays: calculation.absentDays,
+          lateMinutes: calculation.lateMinutes,
+          unpaidLeaveUnits: calculation.unpaidLeaveUnits,
+          approvedOtMinutes: calculation.approvedOtMinutes,
+          proratedDays: calculation.proratedDays,
+        };
+        const result = existing
+          ? await tx.payrollResult.update({ where: { id: existing.id }, data })
+          : await tx.payrollResult.create({ data: { ...data, runId: run.id, employeeId: calculation.employeeId } });
         await tx.payrollResultItem.createMany({
-          data: [
-            ...calculation.lines.map((line) => ({
-              payrollResultId: result.id,
-              componentId: line.componentId,
-              componentCodeSnapshot: line.componentCode,
-              componentNameSnapshot: line.componentName,
-              type: line.type,
-              source: line.source,
-              quantity: line.quantity ?? null,
-              rate: line.rate ?? null,
-              multiplier: line.multiplier ?? null,
-              amount: line.amount,
-              description: line.description ?? null,
-              referenceType: line.referenceType ?? null,
-              referenceId: line.referenceId ?? null,
-              isManual: false,
-            })),
-            ...keptManual.map((item) => ({
-              payrollResultId: result.id,
-              componentId: item.componentId,
-              componentCodeSnapshot: item.componentCodeSnapshot,
-              componentNameSnapshot: item.componentNameSnapshot,
-              type: item.type,
-              source: item.source,
-              quantity: item.quantity,
-              rate: item.rate,
-              multiplier: item.multiplier,
-              amount: item.amount,
-              description: item.description,
-              referenceType: item.referenceType,
-              referenceId: item.referenceId,
-              isManual: true,
-              createdByUserId: item.createdByUserId,
-            })),
-          ],
+          data: calculation.lines.map((line) => ({
+            payrollResultId: result.id,
+            componentId: line.componentId,
+            componentCodeSnapshot: line.componentCode,
+            componentNameSnapshot: line.componentName,
+            type: line.type,
+            source: line.source,
+            quantity: line.quantity ?? null,
+            rate: line.rate ?? null,
+            multiplier: line.multiplier ?? null,
+            amount: line.amount,
+            description: line.description ?? null,
+            referenceType: line.referenceType ?? null,
+            referenceId: line.referenceId ?? null,
+            isManual: false,
+          })),
         });
 
         grossTotal = grossTotal.plus(gross);
@@ -367,8 +358,7 @@ export const payrollRunService = {
     const policy = await payrollPolicyService.resolve(db, period.organizationId, period.periodEnd).catch(() => null);
     if (!policy) return false;
     const employees = await populationFor(db, period.organizationId, period.periodStart, period.periodEnd);
-    const fingerprint = await payrollCalculationService.fingerprint(db, employees.map((e) => e.id), inputsFor(period, policy));
-    return fingerprint === run.inputFingerprint;
+    return payrollCalculationService.fingerprintMatches(db, run.inputFingerprint, employees.map((e) => e.id), inputsFor(period, policy));
   },
 
   // ---------- results and adjustments ----------
@@ -409,6 +399,11 @@ export const payrollRunService = {
       if (!item) throw new AppError(404, 'PAYROLL_ITEM_NOT_FOUND', 'Payroll line not found');
       await lockPeriod(tx, item.payrollResult.run.periodId);
       if (!item.isManual) throw new AppError(409, 'PAYROLL_ITEM_GENERATED', 'Generated lines cannot be removed; recalculate the run instead');
+      // Task 48 (T44-P1-15): a line handed over by benefits or expense is an approved reimbursement; deleting it here
+      // would leave the claim "sent to payroll" and never paid. It is not removable from payroll.
+      if (isSourceLinkedLine(item)) {
+        throw new AppError(409, 'PAYROLL_ITEM_SOURCE_LINKED', `This line is ${item.referenceType === 'BENEFIT_CLAIM' ? 'a benefit claim' : 'an expense report'} reimbursement handed over to payroll; it cannot be removed here`);
+      }
       assertRunMutable(item.payrollResult.run);
 
       await tx.payrollResultItem.delete({ where: { id: itemId } });
@@ -511,6 +506,12 @@ export const payrollRunService = {
       const current = await tx.payrollRun.findUniqueOrThrow({ where: { id: runId } });
       if (current.status === 'CLOSED') throw new AppError(409, 'PAYROLL_RUN_CLOSED', 'This run is already closed');
       if (current.status !== 'APPROVED') throw new AppError(409, 'PAYROLL_RUN_NOT_APPROVED', 'Only an approved run can be closed');
+      // Task 48 (T44-P1-16): the sources are compared once more. Source changes inside an approved period are refused
+      // where they happen (payroll-freeze.ts); anything that got past that is caught here instead of being closed.
+      const period = await loadPeriod(tx, run.periodId);
+      if (!(await payrollRunService.inputsAreCurrent(tx, period, current))) {
+        throw new AppError(409, 'PAYROLL_INPUT_CHANGED', 'A salary, attendance, leave, overtime or calendar source has changed since this run was approved. Restore the source (approved payroll is not recalculated) before closing.');
+      }
 
       const updated = await tx.payrollRun.update({ where: { id: runId }, data: { status: 'CLOSED', closedAt: new Date(), closedByUserId: actor.auth.userId } });
       await tx.payrollPeriod.update({ where: { id: run.periodId }, data: { status: 'CLOSED' } });
@@ -566,6 +567,41 @@ export const payrollRunService = {
     };
   },
 
+  /**
+   * Closed-run totals for a month range — the one source of organization-level payroll money for other modules
+   * (executive overview, its CSV, the copilot). Task 48 (T44-P2-15): one entry per currency, summed as Decimal in SQL,
+   * never across currencies. Runs below the minimum group size are withheld and counted.
+   */
+  async closedTotals(f: { organizationId?: string; from: { year: number; month: number }; to: { year: number; month: number } }): Promise<PayrollAggregateDto> {
+    const min = MIN_AGGREGATE_GROUP_SIZE;
+    const where: Prisma.PayrollRunWhereInput = {
+      status: 'CLOSED',
+      period: {
+        organizationId: f.organizationId,
+        OR: [{ year: { gt: f.from.year } }, { year: f.from.year, month: { gte: f.from.month } }],
+        AND: [{ OR: [{ year: { lt: f.to.year } }, { year: f.to.year, month: { lte: f.to.month } }] }],
+      },
+    };
+    const released: Prisma.PayrollRunWhereInput = { ...where, employeeCount: { gte: min } };
+    const [byCurrency, runs, withheldRuns] = await Promise.all([
+      prisma.payrollRun.groupBy({ by: ['currencyCode'], where: released, _count: { _all: true }, _sum: { employeeCount: true, grossTotal: true, deductionTotal: true, netTotal: true }, orderBy: { currencyCode: 'asc' } }),
+      prisma.payrollRun.findMany({ where: released, select: { currencyCode: true, employeeCount: true, grossTotal: true, netTotal: true, period: { select: { year: true, month: true, organization: { select: { name: true } } } } }, orderBy: [{ period: { year: 'asc' } }, { period: { month: 'asc' } }, { currencyCode: 'asc' }] }),
+      prisma.payrollRun.count({ where: { ...where, employeeCount: { lt: min } } }),
+    ]);
+    return {
+      runs: runs.length,
+      employeesPaid: runs.reduce((n, r) => n + r.employeeCount, 0),
+      byCurrency: byCurrency.map((c) => ({
+        currencyCode: c.currencyCode, runs: c._count._all, employeesPaid: c._sum.employeeCount ?? 0,
+        grossTotal: toMoneyString(c._sum.grossTotal ?? 0), deductionTotal: toMoneyString(c._sum.deductionTotal ?? 0), netTotal: toMoneyString(c._sum.netTotal ?? 0),
+      })),
+      byPeriod: runs.map((r) => ({ periodLabel: payrollPeriodLabel(r.period.year, r.period.month), organizationName: r.period.organization.name, currencyCode: r.currencyCode, employees: r.employeeCount, grossTotal: toMoneyString(r.grossTotal), netTotal: toMoneyString(r.netTotal) })),
+      withheldRuns,
+      minimumGroupSize: min,
+      note: 'Organization-level totals of closed runs, one line per currency — amounts in different currencies are never added. Runs of fewer than ' + min + ' employees are withheld. No department split: in a small department a total would reveal an individual salary.',
+    };
+  },
+
   loadPeriod,
   lockPeriod,
   populationFor,
@@ -574,18 +610,22 @@ export const payrollRunService = {
   toResultDto,
 };
 
-/** Recomputes one employee's totals from their lines. Called after any adjustment. */
 /**
  * A manual line on a payroll result, composable inside another module's transaction (benefits reimbursement handoff).
  * Rules are payroll's own: the period is locked, the run must be in review and not awaiting approval, the component
  * active. `reference` identifies the source record and makes the call idempotent: a second call with the same
  * reference returns the existing line and writes nothing.
  */
-export async function addManualAdjustmentWithTx(tx: Tx, resultId: string, input: { componentId: string; amount: string; note: string; reference?: { type: string; id: string } }, actor: Actor): Promise<{ itemId: string; created: boolean }> {
-  const result = await tx.payrollResult.findUnique({ where: { id: resultId }, include: { run: { select: { id: true, status: true, periodId: true, workflowInstanceId: true } } } });
+export async function addManualAdjustmentWithTx(tx: Tx, resultId: string, input: { componentId: string; amount: string; note: string; reference?: { type: SourceLinkedReference; id: string; currency: string } }, actor: Actor): Promise<{ itemId: string; created: boolean }> {
+  const result = await tx.payrollResult.findUnique({ where: { id: resultId }, include: { run: { select: { id: true, status: true, periodId: true, workflowInstanceId: true, currencyCode: true } } } });
   if (!result) throw new AppError(404, 'PAYROLL_RESULT_NOT_FOUND', 'Payroll result not found');
   await lockPeriod(tx, result.run.periodId);
   assertRunMutable(result.run);
+  // Task 48 (T44-P1-14): a handed-over amount is money in the source's currency; payroll pays only its own currency and
+  // converts nothing. An ordinary manual adjustment is entered in the run currency by definition.
+  if (input.reference && input.reference.currency !== result.run.currencyCode) {
+    throw new AppError(409, 'PAYROLL_CURRENCY_MISMATCH', `The ${input.reference.type === 'BENEFIT_CLAIM' ? 'claim' : 'report'} is in ${input.reference.currency}; this payroll run pays in ${result.run.currencyCode}. Pay it outside payroll (no currency conversion is done).`);
+  }
   if (input.reference) {
     const existing = await tx.payrollResultItem.findFirst({ where: { referenceType: input.reference.type, referenceId: input.reference.id, isManual: true }, select: { id: true } });
     if (existing) return { itemId: existing.id, created: false };

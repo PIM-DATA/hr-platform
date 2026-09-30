@@ -197,3 +197,58 @@ the development database: **~0.7 ms per employee** (250 employees in ~164 ms), s
 `GET /payroll/runs/:id/export` (every salary of a run) writes an `EXPORT_PAYROLL_RUN` audit event after the file is
 built: actor, run, period, organization, run status, format and row count — never the file, a salary or a name. An
 unknown run is `404 PAYROLL_RUN_NOT_FOUND` (it used to return an empty file); a refused export writes no event.
+
+## Task 48 — currency, handoff lines and the approval freeze (T44-P1-14, P1-15, P1-16, P2-15)
+
+**Currency semantics.** The authoritative currency is the period's (`PayrollPeriod.currencyCode`, copied from the
+payroll policy when the period is created); the run and every result carry it. Payroll converts nothing.
+
+| Money input | Currency rule |
+|---|---|
+| Base salary (`EmployeeCompensation`) | Must equal the period currency, else the whole calculation is refused: `409 PAYROLL_CURRENCY_MISMATCH` naming the employee — nothing is written. |
+| Overtime pay, absence / late / unpaid-leave deductions, proration | Derived from that salary's daily/minute rate → same currency by construction. |
+| Recurring items (`EmployeePayItem`), manual adjustments | No currency column: they are denominated in the payroll currency by definition (an adjustment is typed in on the run). |
+| Benefit claim / expense report handoff | The source currency must equal the run currency, else `409 PAYROLL_CURRENCY_MISMATCH`; the source stays `READY_FOR_PAYMENT`. |
+
+The salary currency is part of the input fingerprint, so changing it after a calculation makes the run stale.
+
+**Handoff lines (source-linked).** A line created by the benefits or expense handoff (`referenceType` `BENEFIT_CLAIM` /
+`EXPENSE_REPORT`) is an approved reimbursement and is immutable in payroll:
+
+- `DELETE /payroll/adjustments/:id` → `409 PAYROLL_ITEM_SOURCE_LINKED` (ordinary manual adjustments stay removable
+  during review); the web hides the remove button and labels the line.
+- The source points at its line through a real foreign key, `ON DELETE RESTRICT` (migration
+  `20261003090000_payroll_handoff_line_restrict`): the database refuses to delete it too.
+- Recalculation is done **in place**: results and manual lines keep their ids; only engine-generated lines are rebuilt
+  (before, every result was deleted and re-created, leaving the source pointing at nothing). If an employee carrying a
+  handoff line has left the period's population, recalculation is refused: `409 PAYROLL_HANDOFF_LINE_ORPHANED`.
+- The source cannot be cancelled once sent (`*_NOT_CANCELLABLE`, unchanged) and cannot be recorded as paid by another
+  method (`409 BENEFIT_CLAIM_IN_PAYROLL` / `EXPENSE_REPORT_IN_PAYROLL`) — that would pay it twice.
+- The handoff stays idempotent (one line per source; concurrent double handoff tested).
+- Upgrade note: the migration re-links pointers left dangling by earlier recalculations using `(reference_type,
+  reference_id)`. A pointer whose line was genuinely deleted before Task 48 is cleared; find such rows with
+  `SELECT id FROM benefit_claims WHERE status = 'SENT_TO_PAYROLL' AND payroll_result_item_id IS NULL` (same for
+  `expense_reports`) and reconcile them by hand.
+
+**Approval freeze.** Once a period is `APPROVED` or `CLOSED`, a source change dated inside it is refused at the source
+with `409 PAYROLL_PERIOD_LOCKED` — attendance days that would change status or late minutes, overtime approval, leave
+approval (attendance window), salary records and recurring items created, re-priced or re-dated (salary window),
+compensation-planning Apply. The overlapping period rows are locked `FOR SHARE`, so a source change and an approval
+cannot interleave (tested with concurrent requests). `close` compares the inputs once more and refuses
+`409 PAYROLL_INPUT_CHANGED` if anything moved (for example a calendar edit, which is not guarded at its source); approved
+payroll is not recalculated — the source must be restored. There is no retro-adjustment procedure: a correction goes into
+a later period as a manual adjustment.
+
+**Input fingerprint v2.** Runs calculated from Task 48 on store `v2:` fingerprints that also cover salary currency, hire
+and termination dates, pay component type/active flag, leave policy paid flag and the organization calendar inside the
+period; dates are recorded as they bear on the period (a salary end date after the period counts as open, so a future
+salary change does not make an approved run stale). Runs calculated earlier are still compared with the old fingerprint.
+
+**Organization totals (P2-15).** `payrollRunService.closedTotals` is the single source of closed-run money for the
+executive overview, its CSV and the copilot: one entry per currency (`byCurrency`), Decimal sums in SQL, never a total
+across currencies, and runs of fewer than 5 employees withheld (`withheldRuns`, same rule as the Report Center dataset,
+whose money fields now declare `currencyField: currencyCode`).
+
+**Fix found on the way.** System pay components were cached for the whole process; a refused first calculation on a
+fresh database kept ids created inside the rolled-back transaction, and every later calculation failed on a foreign key.
+The cache is now per transaction client.

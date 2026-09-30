@@ -280,6 +280,8 @@ export const expenseReportService = {
     await prisma.$transaction(async (tx) => {
       const r = await loadReportForMutation(tx, id);
       if (r.status !== 'READY_FOR_PAYMENT' && r.status !== 'SENT_TO_PAYROLL') throw new AppError(409, 'EXPENSE_REPORT_NOT_PAYABLE', `A ${r.status.toLowerCase().replace(/_/g, ' ')} report cannot be recorded as paid`);
+      // Task 48 (T44-P1-15): a report handed to payroll is paid by payroll — recording another payment would pay it twice.
+      if (r.status === 'SENT_TO_PAYROLL' && input.paymentMethod !== 'PAYROLL') throw new AppError(409, 'EXPENSE_REPORT_IN_PAYROLL', 'This report was handed over to payroll; it can only be recorded as paid through payroll');
       const after = await tx.expenseReport.update({ where: { id }, data: { status: 'PAID', paymentMethod: input.paymentMethod, paymentReference: input.paymentReference ?? null, paidDate: input.paidDate, paidAt: new Date(), paidByUserId: actor.auth.userId } });
       await history(tx, 'EXPENSE_REPORT', id, r.status, 'PAID', actor.auth.userId, input.paymentMethod);
       await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.RECORD_EXPENSE_PAYMENT, 'ExpenseReport', id, { reportNumber: r.reportNumber, total: toMoneyString(r.totalAmount), currency: r.currency, paymentMethod: input.paymentMethod, paidDate: input.paidDate, referenceLength: input.paymentReference?.length ?? 0 }, { status: r.status }), tx);
@@ -297,7 +299,7 @@ export const expenseReportService = {
       if (!component || component.type !== 'EARNING') throw new AppError(422, 'VALIDATION_ERROR', 'Choose an earning component for the reimbursement line', [{ field: 'componentId', message: 'Must be an active EARNING component' }]);
       const target = await findPayrollResultForEmployee(tx, input.payrollPeriodId, r.employeeId);
       if (!target) throw new AppError(409, 'PAYROLL_RESULT_NOT_FOUND', 'Calculate the payroll period first; the employee has no result in it');
-      const line = await addManualAdjustmentWithTx(tx, target.resultId, { componentId: input.componentId, amount: toMoneyString(r.totalAmount), note: `Expense report ${r.reportNumber}`, reference: { type: 'EXPENSE_REPORT', id: r.id } }, actor);
+      const line = await addManualAdjustmentWithTx(tx, target.resultId, { componentId: input.componentId, amount: toMoneyString(r.totalAmount), note: `Expense report ${r.reportNumber}`, reference: { type: 'EXPENSE_REPORT', id: r.id, currency: r.currency } }, actor);
       await tx.expenseReport.update({ where: { id }, data: { status: 'SENT_TO_PAYROLL', paymentMethod: 'PAYROLL', payrollResultItemId: line.itemId } });
       await history(tx, 'EXPENSE_REPORT', id, r.status, 'SENT_TO_PAYROLL', actor.auth.userId, 'PAYROLL');
       await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.SEND_EXPENSE_TO_PAYROLL, 'ExpenseReport', id, { reportNumber: r.reportNumber, total: toMoneyString(r.totalAmount), payrollPeriodId: input.payrollPeriodId, payrollResultId: target.resultId, payrollResultItemId: line.itemId, created: line.created }), tx);

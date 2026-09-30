@@ -338,6 +338,15 @@ describe('workflow', () => {
     expect((await decide(colleague, instanceId, 'APPROVE')).status).toBe(403);
   });
 
+  it('Task 48 (T44-P1-16): a claim dated inside an approved payroll period cannot be approved; it stays pending', async () => {
+    const d = day();
+    // Before Task 48: 200 — approved overtime appeared as input of a payroll that had already been approved.
+    const frozen = await prisma.payrollPeriod.create({ data: { organizationId: orgId, year: Number(d.slice(0, 4)), month: Number(d.slice(5, 7)), periodStart: `${d.slice(0, 7)}-01`, periodEnd: d, attendanceFrom: d, attendanceTo: d, currencyCode: 'THB', status: 'APPROVED' } });
+    expect(err(await decide(manager, instanceId, 'APPROVE'))).toBe('409 PAYROLL_PERIOD_LOCKED');
+    expect((await as(staff, 'get', `/api/v1/attendance/overtime/requests/${requestId}`)).body.data.status).toBe('PENDING');
+    await prisma.payrollPeriod.delete({ where: { id: frozen.id } });
+  });
+
   it('approving freezes the minutes and tells the employee', async () => {
     expect((await decide(manager, instanceId, 'APPROVE', 'Month-end, agreed beforehand')).status).toBe(200);
     const approved = await as(staff, 'get', `/api/v1/attendance/overtime/requests/${requestId}`);

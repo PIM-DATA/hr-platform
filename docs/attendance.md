@@ -157,3 +157,22 @@ HRM → Time & attendance: **My attendance** (clock in/out + history + request a
 - **No overtime calculation or approval, and no payroll posting.** `extraMinutes` is recorded for information only.
 - Absence appears when a day is recalculated after it ends; there is no scheduler in the application yet.
 - Editing a shift does not retroactively change days already calculated against it.
+
+## Task 48 — range report totals cover everybody (T44-P1-13)
+
+`GET /attendance/reports/overview` used to load the first 500 employees (by code) and sum only them: a department of
+520 reported 500, silently, and the executive overview inherited it. Now:
+
+- `totals` is one SQL aggregate over **every** employee in the caller's scope and filters; `totalEmployees` is the
+  population; neither depends on the page.
+- `rows` is one page of employees: `page` (default 1) and `pageSize` (default 50, at most 100 — a larger value is
+  `400`, never silently shortened); `meta: { page, pageSize, total }`. The web report pages through them.
+- `attendanceRecordsService.summary` (totals + population, no rows) feeds the executive overview; the copilot's team
+  view reads its team's rows explicitly (`rowsFor`).
+- `POST /attendance/recalculate` processes every active employee in scope in id-ordered batches of 500 (it stopped at
+  2,000 before, leaving later employees' days — and the payroll inputs read from them — stale).
+- Verified at 499 / 500 / 501 / 520 / 1,000 employees in one department and 3,020 in one organization
+  (`audit44-large-department.test.ts`).
+
+**Payroll freeze.** A recalculation that would change a day's status or late minutes inside an approved or closed
+payroll period is refused (`409 PAYROLL_PERIOD_LOCKED`, see payroll.md); an identical recalculation still passes.

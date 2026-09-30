@@ -12,6 +12,7 @@ import { auditService } from '../../services/audit/audit.service';
 import { workflowDefinitionsService } from '../../services/workflow';
 import { dec, money, toMoneyString, toQuantityString, type DecimalLike } from './money';
 import { employeeRef, payrollAudit, type Actor, type Db, type Tx } from './payroll.types';
+import { assertPayrollInputsOpen, endDateChangeWindow } from './payroll-freeze';
 
 /**
  * Payroll master data: salary history, the components a payslip can contain, recurring items, and the policy that
@@ -83,6 +84,7 @@ export const compensationService = {
       if (clash) {
         throw new AppError(409, 'COMPENSATION_OVERLAP', `Overlaps an existing salary record (${clash.effectiveFrom} → ${clash.effectiveTo ?? 'open'}). Close that record first.`);
       }
+      await assertPayrollInputsOpen(tx, input.employeeId, { from: input.effectiveFrom, to: input.effectiveTo ?? null }, 'PAY', 'A salary record');
       const created = await tx.employeeCompensation.create({
         data: {
           employeeId: input.employeeId,
@@ -126,6 +128,8 @@ export const compensationService = {
           throw new AppError(409, 'COMPENSATION_IN_USE', `A payroll run has already paid this salary up to ${periodEnd}; it cannot end before that`);
         }
       }
+      const moved = endDateChangeWindow(before.effectiveTo, effectiveTo, addCalendarDays);
+      if (moved) await assertPayrollInputsOpen(tx, before.employeeId, moved, 'PAY', 'Changing the end of a salary record');
       const after = await tx.employeeCompensation.update({ where: { id }, data: { effectiveTo, note: input.note === undefined ? undefined : input.note }, include: compensationInclude });
       await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.UPDATE_COMPENSATION, 'EmployeeCompensation', id,
         { effectiveTo: after.effectiveTo }, { effectiveTo: before.effectiveTo }), tx);
@@ -188,6 +192,7 @@ export async function applyCompensationChangesWithTx(tx: Tx, changes: (Compensat
   const bad = changes.find((c) => problems.get(c.employeeId));
   if (bad) throw new AppError(409, problems.get(bad.employeeId)!, 'A salary record this change was planned against has changed or is already paid past the new start date; reconcile it first', [{ field: 'employeeId', message: bad.employeeId }]);
   for (const c of changes) {
+    await assertPayrollInputsOpen(tx, c.employeeId, { from: c.effectiveFrom, to: null }, 'PAY', 'A salary change');
     const closeOn = addCalendarDays(c.effectiveFrom, -1);
     const before = await tx.employeeCompensation.update({ where: { id: c.expectedCompensationId }, data: { effectiveTo: closeOn } });
     await auditService.log(payrollAudit(actor, AUDIT_ACTIONS.UPDATE_COMPENSATION, 'EmployeeCompensation', before.id, { effectiveTo: closeOn, source: c.note }, { effectiveTo: null }), tx);
@@ -340,6 +345,7 @@ export const payItemService = {
       });
       const clash = others.find((o) => rangesOverlap(input.effectiveFrom, input.effectiveTo ?? null, o.effectiveFrom, o.effectiveTo));
       if (clash) throw new AppError(409, 'PAY_ITEM_OVERLAP', `This employee already has that component from ${clash.effectiveFrom} to ${clash.effectiveTo ?? 'open'}`);
+      await assertPayrollInputsOpen(tx, input.employeeId, { from: input.effectiveFrom, to: input.effectiveTo ?? null }, 'PAY', 'A recurring pay item');
 
       const created = await tx.employeePayItem.create({
         data: {
@@ -362,6 +368,12 @@ export const payItemService = {
     const row = await prisma.$transaction(async (tx) => {
       const before = await tx.employeePayItem.findUnique({ where: { id }, include: payItemInclude });
       if (!before) throw new AppError(404, 'PAY_ITEM_NOT_FOUND', 'Recurring item not found');
+      const nextTo = input.effectiveTo === undefined ? before.effectiveTo : input.effectiveTo;
+      if (input.amount !== undefined && !dec(input.amount).equals(before.amount)) {
+        await assertPayrollInputsOpen(tx, before.employeeId, { from: before.effectiveFrom, to: nextTo }, 'PAY', 'Re-pricing a recurring pay item');
+      }
+      const moved = endDateChangeWindow(before.effectiveTo, nextTo, addCalendarDays);
+      if (moved) await assertPayrollInputsOpen(tx, before.employeeId, moved, 'PAY', 'Changing the end of a recurring pay item');
       const after = await tx.employeePayItem.update({
         where: { id },
         data: {

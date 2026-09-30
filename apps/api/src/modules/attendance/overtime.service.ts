@@ -82,6 +82,30 @@ async function loadForMutation(tx: Tx, id: string) {
   return row;
 }
 
+const OVERTIME_REPORT_NOTE = 'Minutes and multipliers only — this release calculates no monetary overtime.' as const;
+
+const overtimeReportEmployeeWhere = (auth: AuthContext, q: { departmentId?: string; employeeId?: string }): Prisma.EmployeeWhereInput => ({
+  AND: [
+    employeeScopeWhere(auth),
+    ...(q.departmentId ? [{ departmentId: q.departmentId }] : []),
+    ...(q.employeeId ? [{ id: q.employeeId }] : []),
+  ],
+});
+
+/** Status × day-type groups (of one employee, or of a whole scope) → the report's figures. */
+function overtimeFigures(groups: { status: string; dayType: string | null; _count: { _all: number }; _sum: { approvedMinutes: number | null } }[]): OvertimeReportDto['totals'] {
+  const byDayType = { WORKDAY: 0, OFF_DAY: 0, HOLIDAY: 0 };
+  let approvedMinutes = 0;
+  let approvedRequests = 0;
+  for (const g of groups.filter((g) => g.status === 'APPROVED')) {
+    const minutes = g._sum.approvedMinutes ?? 0;
+    approvedMinutes += minutes;
+    approvedRequests += g._count._all;
+    if (g.dayType && g.dayType in byDayType) byDayType[g.dayType as keyof typeof byDayType] += minutes;
+  }
+  return { requests: groups.reduce((sum, g) => sum + g._count._all, 0), approvedRequests, approvedMinutes, byDayType };
+}
+
 export const overtimeService = {
   /** What the claim screen shows: the day, what was worked, what is eligible and what the policy allows. */
   async preview(auth: AuthContext, attendanceDate: string) {
@@ -319,65 +343,44 @@ export const overtimeService = {
   },
 
   // ---------- reporting ----------
+  /**
+   * Task 48 (T44-P1-13): totals are one SQL aggregate over every employee in scope; the rows are a separate page.
+   * Before, only the first 500 employees were loaded and summed, silently.
+   */
   async report(auth: AuthContext, q: OvertimeReportQuery): Promise<OvertimeReportDto> {
-    const employees = await prisma.employee.findMany({
-      where: {
-        AND: [
-          employeeScopeWhere(auth),
-          ...(q.departmentId ? [{ departmentId: q.departmentId }] : []),
-          ...(q.employeeId ? [{ id: q.employeeId }] : []),
-        ],
-      },
-      ...employeeRef,
-      orderBy: { employeeCode: 'asc' },
-      take: 500,
-    });
-    const empty = { WORKDAY: 0, OFF_DAY: 0, HOLIDAY: 0 };
-    if (employees.length === 0) {
-      return { from: q.from, to: q.to, rows: [], totals: { requests: 0, approvedRequests: 0, approvedMinutes: 0, byDayType: { ...empty } }, note: 'Minutes and multipliers only — this release calculates no monetary overtime.' };
-    }
-
-    const grouped = await prisma.overtimeRequest.groupBy({
+    const page = q.page ?? 1;
+    const pageSize = q.pageSize ?? 50;
+    const where = overtimeReportEmployeeWhere(auth, q);
+    const [totalEmployees, totals, employees] = await Promise.all([
+      prisma.employee.count({ where }),
+      overtimeService.totals(auth, q),
+      prisma.employee.findMany({ where, ...employeeRef, orderBy: [{ employeeCode: 'asc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize }),
+    ]);
+    const grouped = employees.length === 0 ? [] : await prisma.overtimeRequest.groupBy({
       by: ['employeeId', 'status', 'dayType'],
       where: { employeeId: { in: employees.map((e) => e.id) }, attendanceDate: { gte: q.from, lte: q.to }, status: { not: 'DRAFT' } },
       _count: { _all: true },
       _sum: { approvedMinutes: true },
     });
+    const rows = employees.map((employee) => ({ employee, ...overtimeFigures(grouped.filter((g) => g.employeeId === employee.id)) }));
+    return { from: q.from, to: q.to, rows, totals, totalEmployees, meta: { page, pageSize, total: totalEmployees }, note: OVERTIME_REPORT_NOTE };
+  },
 
-    const rows = employees.map((employee) => {
-      const mine = grouped.filter((g) => g.employeeId === employee.id);
-      const byDayType = { ...empty };
-      let approvedMinutes = 0;
-      let approvedRequests = 0;
-      for (const g of mine.filter((g) => g.status === 'APPROVED')) {
-        const minutes = g._sum.approvedMinutes ?? 0;
-        approvedMinutes += minutes;
-        approvedRequests += g._count._all;
-        if (g.dayType && g.dayType in byDayType) byDayType[g.dayType as keyof typeof byDayType] += minutes;
-      }
-      return {
-        employee,
-        requests: mine.reduce((sum, g) => sum + g._count._all, 0),
-        approvedRequests,
-        approvedMinutes,
-        byDayType,
-      };
+  /** Population + totals, no rows (executive overview). */
+  async summary(auth: AuthContext, q: Pick<OvertimeReportQuery, 'from' | 'to' | 'departmentId'>): Promise<{ totalEmployees: number; totals: OvertimeReportDto['totals'] }> {
+    const [totalEmployees, totals] = await Promise.all([prisma.employee.count({ where: overtimeReportEmployeeWhere(auth, q) }), overtimeService.totals(auth, q)]);
+    return { totalEmployees, totals };
+  },
+
+  /** The report's totals alone — every employee in scope, one grouped query, no rows. Used by the executive overview. */
+  async totals(auth: AuthContext, q: Pick<OvertimeReportQuery, 'from' | 'to' | 'departmentId' | 'employeeId'>): Promise<OvertimeReportDto['totals']> {
+    const grouped = await prisma.overtimeRequest.groupBy({
+      by: ['status', 'dayType'],
+      where: { employee: overtimeReportEmployeeWhere(auth, q), attendanceDate: { gte: q.from, lte: q.to }, status: { not: 'DRAFT' } },
+      _count: { _all: true },
+      _sum: { approvedMinutes: true },
     });
-
-    const totals = rows.reduce(
-      (acc, r) => ({
-        requests: acc.requests + r.requests,
-        approvedRequests: acc.approvedRequests + r.approvedRequests,
-        approvedMinutes: acc.approvedMinutes + r.approvedMinutes,
-        byDayType: {
-          WORKDAY: acc.byDayType.WORKDAY + r.byDayType.WORKDAY,
-          OFF_DAY: acc.byDayType.OFF_DAY + r.byDayType.OFF_DAY,
-          HOLIDAY: acc.byDayType.HOLIDAY + r.byDayType.HOLIDAY,
-        },
-      }),
-      { requests: 0, approvedRequests: 0, approvedMinutes: 0, byDayType: { ...empty } },
-    );
-    return { from: q.from, to: q.to, rows, totals, note: 'Minutes and multipliers only — this release calculates no monetary overtime.' };
+    return overtimeFigures(grouped);
   },
 
   /**

@@ -181,3 +181,11 @@ under).
   yet.
 - **No device integration** (biometric, terminal, GPS) — overtime is derived from the same web clock as attendance.
 - Nothing here is a statement of legal compliance: multipliers, minimums and caps are whatever the customer configures.
+
+## Task 48 — report totals and the payroll freeze (T44-P1-13, P1-16)
+
+- `GET /attendance/overtime/reports/overview`: the same architecture as attendance — `totals` are one SQL aggregate over
+  every employee in scope (before: the first 500 only), `totalEmployees` is the population, `rows` are a page
+  (`page`, `pageSize` ≤ 100, `meta`). The executive overview uses `overtimeService.summary` (no rows).
+- Approving a claim dated inside an approved or closed payroll period's attendance window is refused
+  (`409 PAYROLL_PERIOD_LOCKED`); the claim stays pending. Approved claims could already not be withdrawn.

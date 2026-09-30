@@ -187,3 +187,12 @@ itinerary integration, no budget or cost-centre accounting, no tax or VAT decisi
 line-item approval, no multi-currency report, no delegation of approval, no reminder scheduler, no policy
 versioning beyond effective dates, no policy priority editor or policy selection groups (ties are refused), no department-level spend for managers or executives, and no Employee 360
 section.
+
+## Task 48 — payroll handoff integrity and currency-keyed travel estimates (T44-P1-14, P1-15, P2-15)
+
+- Same guarantees as benefits: the report's payroll line is immutable in payroll (`409 PAYROLL_ITEM_SOURCE_LINKED`,
+  `ON DELETE RESTRICT`, stable id across recalculation), the report currency must equal the run currency
+  (`409 PAYROLL_CURRENCY_MISMATCH`), a `SENT_TO_PAYROLL` report cannot be cancelled and can only be recorded as paid
+  through payroll (`409 EXPENSE_REPORT_IN_PAYROLL`). A concurrent delete and recalculation leave the one linked line.
+- Reports API: `travel.estimatedTotal` (a sum over every currency) is removed; `travel.estimatedByCurrency` and
+  `travel.byMonth` (now `{ month, currency, … }`) are the figures. The web shows them per currency.

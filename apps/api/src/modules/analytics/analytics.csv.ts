@@ -54,7 +54,12 @@ export function executiveOverviewCsv(o: ExecutiveOverviewDto): string {
     section('Succession coverage', ['Metric', 'Value'], [['Open plans', s.talent.succession.plans.total], ['With a successor', s.talent.succession.plans.withSuccessor], ['With a ready-now successor', s.talent.succession.plans.withReadyNow], ['Without a successor', s.talent.succession.plans.withoutSuccessor], ['Critical without successor', s.talent.succession.criticalWithoutSuccessor]]);
     section('9-box distribution', ['Cell', 'Count'], s.talent.talent.nineBox.map((c) => [c.cell, c.count]));
   }
-  if (s.payroll) section('Payroll (organization-level totals)', ['Period', 'Employees paid', 'Gross', 'Net'], s.payroll.byPeriod.map((p) => [p.periodLabel, p.employees, p.grossTotal, p.netTotal]));
+  if (s.payroll) {
+    // Task 48 (T44-P2-15): one line per currency; amounts in different currencies are never added.
+    section('Payroll by currency (closed runs)', ['Currency', 'Runs', 'Employees paid', 'Gross', 'Deductions', 'Net'], s.payroll.byCurrency.map((c) => [c.currencyCode, c.runs, c.employeesPaid, c.grossTotal, c.deductionTotal, c.netTotal]));
+    section('Payroll by period', ['Period', 'Organization', 'Currency', 'Employees paid', 'Gross', 'Net'], s.payroll.byPeriod.map((p) => [p.periodLabel, p.organizationName, p.currencyCode, p.employees, p.grossTotal, p.netTotal]));
+    if (s.payroll.withheldRuns) section('Payroll', ['SUPPRESSED'], [[`${s.payroll.withheldRuns} run(s) of fewer than ${s.payroll.minimumGroupSize} employees withheld`]]);
+  }
   if (s.benefits) {
     const b = s.benefits;
     section('Benefits (current, organization level)', ['Metric', 'Value'], [['Active plans', b.current.activePlans], ['Enrolled', b.current.enrolled], ['Coverage-only enrolments', b.current.coverageOnlyEnrolled], ['Claims pending approval', b.current.claims.pendingApproval], ['Claims ready for payment', b.current.claims.readyForPayment], ['Claims sent to payroll', b.current.claims.sentToPayroll], ['Claims paid', b.current.claims.paid]]);

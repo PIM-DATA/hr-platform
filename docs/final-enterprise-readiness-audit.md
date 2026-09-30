@@ -69,6 +69,13 @@ What stands between this system and real use:
 | T44-P1-24 payroll run export not audited | **RESOLVED — Task 47** | `EXPORT_PAYROLL_RUN` with run, period, row count, format — no salary; unknown run `404`; refused export writes nothing |
 | T44-P1-19 self-approval, T44-P1-21 scope per permission, T44-P1-22 copilot high-impact | open — deliberately not in Task 47 | P1-19 is maker-checker governance, not a data-exposure path; P1-21 needs an RBAC scope redesign (would destabilize Task 45); P1-22: source authorization is intact (tools re-check permissions, suppressed results reach the model) — the gap is behavioural enforcement |
 | Test harness (Task 47) | fixed | The recurring "organization position 409" flake: `organization.test.ts` looked up `code: 'SALES'` without `isActive`/order, and ZED's SALES department is deactivated earlier in the file — PostgreSQL returned either (evidence: `409 DEPARTMENT_INACTIVE`). Lookup pinned to the active department. Also `benefits.test.ts` drew receipt document numbers from 90 random values (unique-constraint collision) — now a counter. No business fixture changed |
+| T44-P1-13 attendance / overtime truncation | **RESOLVED — Task 48** | Reproduced first (`audit44-large-department.test.ts` on the old code: 501 → 500, 1,000 → 500, 3,020 → 500, OT 60,000 → 30,000 minutes, page of 500 rows). Totals are one SQL aggregate over the full scope; rows are a page (`meta`, `totalEmployees`, `pageSize` ≤ 100); executive uses row-free `summary`; recalculation batches through everybody (no 2,000 cap, 3,020 verified). Tested at 499/500/501/520/1,000 and 3,020; both `it.fails` converted to `it` |
+| T44-P1-14 payroll currency | **RESOLVED — Task 48** | Reproduced first (`financial-integrity.test.ts`: USD salary → `200`, paid as THB; USD claim / report handed over → `200`). Now `409 PAYROLL_CURRENCY_MISMATCH` at calculation (nothing written) and at handoff (source stays `READY_FOR_PAYMENT`); salary currency in the fingerprint; no FX anywhere |
+| T44-P1-15 payroll handoff loss | **RESOLVED — Task 48** | Reproduced first (old code: `DELETE /payroll/adjustments/:id` `200` for benefits and expense lines; after a recalculation the claim pointed at a non-existent line). Now `409 PAYROLL_ITEM_SOURCE_LINKED`, FK `ON DELETE RESTRICT` (migration `20261003090000`, repairs dangling pointers), in-place recalculation keeps ids, `409 PAYROLL_HANDOFF_LINE_ORPHANED` if the employee left the population, no second payment by another method; idempotency and delete/recalculate race tested; reconciliation helper `expectHandoffReconciled` |
+| T44-P1-16 payroll after approval | **RESOLVED — Task 48** | Reproduced first (old code: pay item / salary record in an approved period `201`, attendance recalculation `200`, leave and OT approval `200`, `close` `200` with changed inputs). Now `409 PAYROLL_PERIOD_LOCKED` at every guarded source (period rows locked `FOR SHARE` against approval's `FOR UPDATE`; approval-vs-mutation race tested, one side always refused), `close` re-checks the inputs (`409 PAYROLL_INPUT_CHANGED`), fingerprint v2 covers currency, hire/termination dates, component state, leave paid flag and calendar. No retro-adjustment path (documented) |
+| T44-P2-15 remaining cross-currency sums | **RESOLVED — Task 48** | Reproduced first (executive payroll: THB 152,000.50 + USD 16,500.25 shown as "168500.75 USD"). One payroll source `closedTotals` keyed by currency (executive, CSV, copilot); Report Center payroll money declares `currencyField`; travel estimate total removed, `byMonth` keyed by currency. The same source applies the Task 47 small-group rule to payroll totals (runs < 5 employees withheld) — a one-employee run total was shown to executives and the copilot before |
+| T44-P1-19 self-approval (re-evaluated in Task 48) | open — deferred | The payroll evidence (own compensation / own adjustments) is pre-approval maker-checker governance, not the post-approval drift of P1-16; a proper fix spans compensation, pay items, adjustments, compensation planning, ER and services (subject ≠ actor, maker ≠ checker). The workflow engine already refuses requester self-approval of the payroll run itself |
+| Also fixed in Task 48 | fixed | Payroll system-component cache was process-wide: a refused first calculation on a fresh database cached ids from a rolled-back transaction and broke every later calculation (FK error) — now per transaction. Report Center in-memory DECIMAL filters compared with `Number()` — now Decimal (tested beyond float precision) |
 | All other findings | open | — |
 
 The classifications above are unchanged by these fixes; the remaining Pilot blockers are listed in §27.
@@ -331,7 +338,7 @@ evidence of a product defect; if it recurs, capture the full log (the suite now 
 
 **Large department (live, `audit44-large-department.test.ts`, 520 employees):** attendance and overtime reports return
 exactly 500 rows and 500 × totals with no truncation marker; the executive overview shows `attendance.employees: 500`.
-Correctness assertions are `it.fails` (expected-fail) until fixed. Other silent caps: attendance recalculation 2,000
+Correctness assertions were `it.fails` (expected-fail) until fixed — **fixed in Task 48** (now normal tests, plus 499/500/501/1,000 and 3,020). Other silent caps: attendance recalculation 2,000
 employees (stale payroll input past the cap), approver inboxes 500, team leave calendar 500, document list 1,000 with a
 wrong total, team development 200.
 
@@ -539,10 +546,10 @@ copilot prompts, browser walk) were run from the session scratch area against th
 | T44-P1-10 | Document backup | No script covers `DOCUMENT_STORAGE_DIR`; live: DB restored without files → ready "ok", downloads 404 | Uploaded HR documents lost on disk loss or incomplete restore | Paired DB + document backup/restore command; consistency check in `ops:check`; readiness must not re-create the root | yes (if documents enabled) / yes / yes |
 | T44-P1-11 | Backups off-host / scheduled / alerted | Local directory only; no schedule, encryption, retention, freshness alert | Host loss destroys data and backups; silent backup failure | Reference encrypted off-host copy + schedule + retention + failure/freshness alert (operator runbook, not a product) | yes (operator commitment) / yes / yes |
 | T44-P1-12 | Monitoring / supervision | No alerting, no supervisor; runbook event names not emitted | Outages and disk-full go unnoticed; crashed API stays down | Emit the documented events; document supervisor unit and external uptime check on `/health/ready`; disk alerts | yes (uptime check) / yes / yes |
-| T44-P1-13 | Attendance/OT truncation | Live 520-employee test: 500 rows, 500 totals, executive `employees: 500`; recalculation cap 2,000 | Silent under-reporting; stale payroll input past 2,000 | Paginate or aggregate in SQL without an employee cap; error instead of truncating | conditional (dept > 500) / yes / yes |
-| T44-P1-14 | Payroll currency | `payroll-calculation.service.ts:263-303` never checks salary currency; handoffs unchecked | Non-THB salary/claim paid as THB | Block calculation/handoff on currency mismatch | no (single-currency pilot) / yes / yes |
-| T44-P1-15 | Payroll handoff loss | `removeAdjustment`, recalculation re-creates lines (dangling ids, no FK) | Approved reimbursement never paid, silently | Protect handoff lines; link by (referenceType, referenceId); fail recalculation that drops them | conditional (if handoff used) / yes / yes |
-| T44-P1-16 | Payroll after approval | `close()` does not re-check inputs; source changes in closed periods accepted | Closed payroll diverges from attendance/leave without reconciliation | Re-check at close; block or flag changes in approved/closed periods; retro-adjustment path | conditional / yes / yes |
+| T44-P1-13 ✅ resolved (Task 48) | Attendance/OT truncation | Live 520-employee test: 500 rows, 500 totals, executive `employees: 500`; recalculation cap 2,000 | Silent under-reporting; stale payroll input past 2,000 | Paginate or aggregate in SQL without an employee cap; error instead of truncating | conditional (dept > 500) / yes / yes |
+| T44-P1-14 ✅ resolved (Task 48) | Payroll currency | `payroll-calculation.service.ts:263-303` never checks salary currency; handoffs unchecked | Non-THB salary/claim paid as THB | Block calculation/handoff on currency mismatch | no (single-currency pilot) / yes / yes |
+| T44-P1-15 ✅ resolved (Task 48) | Payroll handoff loss | `removeAdjustment`, recalculation re-creates lines (dangling ids, no FK) | Approved reimbursement never paid, silently | Protect handoff lines; link by (referenceType, referenceId); fail recalculation that drops them | conditional (if handoff used) / yes / yes |
+| T44-P1-16 ✅ resolved (Task 48) | Payroll after approval | `close()` does not re-check inputs; source changes in closed periods accepted | Closed payroll diverges from attendance/leave without reconciliation | Re-check at close; block or flag changes in approved/closed periods; retro-adjustment path | conditional / yes / yes |
 | T44-P1-17 ✅ resolved (Task 47) | Privacy export completeness | Salary history, payroll, attendance/OT, performance, competency, training/IDP, documents, recruitment of hires neither exported nor declared | Incomplete and partly false subject-access answers | Add collections or declare them in `notIncluded`; fix docs | yes (declare) / yes / yes |
 | T44-P1-18 ✅ resolved (Task 47) | Sensitive text in append-only audit | Leave reason/comments, ER comments/title, termination reason, payroll notes | Health/disciplinary text readable by every `audit.view` holder forever | Switch to the existing length/changed pattern | yes / yes / yes |
 | T44-P1-19 | Self-approval / self-dealing | Compensation override/approve/apply chain; payroll own compensation/adjustments; ER subject; service fulfiller own ticket/letter | One person can raise and pay their own salary or handle their own case | Subject ≠ actor checks; maker ≠ checker on money steps | conditional (small trusted HR team) / yes / yes |
@@ -570,7 +577,7 @@ copilot prompts, browser walk) were run from the session scratch area against th
 | T44-P2-12 | Document linking without source access; manage-level reclassification; domain map missing HR_LETTER etc. | Access check on link; classification guard |
 | T44-P2-13 | Talent 9-box reveals potential to managers; self-nomination | Hide cell; block self-nomination |
 | T44-P2-14 | Import: shared-formula child cells accepted (live); no zip-bomb limit; 5,000-row single transaction; re-validation outside `tx` | Reject any formula-bearing value; size/entry limits; use `tx` |
-| T44-P2-15 | Remaining cross-currency sums (executive payroll, `payroll_period_summary`, travel estimate) | Key by currency; `currencyField` |
+| T44-P2-15 ✅ resolved (Task 48) | Remaining cross-currency sums (executive payroll, `payroll_period_summary`, travel estimate) | Key by currency; `currencyField` |
 | T44-P2-16 | Other silent caps (inboxes 500, team calendar 500, documents 1,000 wrong total, team development 200) | Paginate or mark truncated |
 | T44-P2-17 | PostgreSQL: no `statement_timeout`/`lock_timeout`, default pool, `P2028` unmapped | Set timeouts/pool; map to 409/503 |
 | T44-P2-18 | Missing concurrency tests (attendance corrections, most numbering sequences); first-of-year upsert race UNVERIFIED | Add tests |
@@ -605,15 +612,16 @@ Blockers (must be fixed or explicitly accepted before a real customer pilot):
 5. Operator commitments written into the pilot checklist: ~~correct `TRUST_PROXY` (T44-P1-04), proxy security headers
    (T44-P1-08)~~ (now enforced / shipped and verifiable — Task 46), scheduled off-host backups of the database **and** document directory with a restore drill
    (**T44-P1-10/11**), an external uptime check and a process supervisor (**T44-P1-12**).
-6. Scope limits: one currency (THB), Asia/Bangkok, departments ≤ 500 employees, copilot disabled or restricted to
-   non-decision use, small trusted HR team aware of the self-approval gaps (**T44-P1-13/14/19/22/23**).
+6. Scope limits: Asia/Bangkok, copilot disabled or restricted to non-decision use, small trusted HR team aware of the
+   self-approval gaps (**T44-P1-19/22/23**). ~~One currency (THB), departments ≤ 500 employees (T44-P1-13/14)~~ — no
+   longer needed after Task 48: a mismatched currency is refused, not paid, and totals cover any department size.
 
 ## 28. Production classification — **NO**
 
-Beyond the pilot blockers, production requires the remaining P1 items: RBAC SoD enforced (P1-01), small-group
-suppression in analytics and Report Center (P1-07), document and off-host backups automated with alerting (P1-10/11),
-monitoring and supervision (P1-12), attendance/OT truncation (P1-13), payroll currency, handoff and post-approval
-integrity (P1-14/15/16), complete privacy export (P1-17), maker-checker and subject exclusion (P1-19), per-permission
+Beyond the pilot blockers, production requires the remaining P1 items: ~~RBAC SoD enforced (P1-01), small-group
+suppression in analytics and Report Center (P1-07)~~ (resolved in Tasks 45 / 47), document and off-host backups automated with alerting (P1-10/11),
+monitoring and supervision (P1-12), ~~attendance/OT truncation (P1-13), payroll currency, handoff and post-approval
+integrity (P1-14/15/16)~~ (resolved in Task 48), ~~complete privacy export (P1-17)~~ (Task 47), maker-checker and subject exclusion (P1-19), per-permission
 scope (P1-21), copilot high-impact restriction if enabled (P1-22), organization timezone everywhere (P1-23), plus defined
 RPO/RTO and MFA for privileged roles.
 
@@ -630,7 +638,7 @@ engineering (tags, changelog, reproducible versioned builds).
    consistency + honest readiness; P1-11/12 backup schedule, off-host copy, uptime/supervisor guidance and emitted events;
    doc drift (P2-21).
 3. **Confidentiality (pilot):** P1-05, P1-06, P1-18, P1-20, P1-24; then P1-07 and P1-21.
-4. **Data correctness (production):** P1-13, P1-14, P1-15, P1-16, P1-23; P2-15/16/17.
+4. **Data correctness (production):** ~~P1-13, P1-14, P1-15, P1-16~~ and ~~P2-15~~ resolved in Task 48; P1-23; P2-16/17.
 5. **Governance and privacy (production):** P1-17, P1-19, P1-22; P2-07/08/09/10; MFA for privileged roles (P2-25).
 6. **Hardening (production):** remaining P2 items.
 7. **Enterprise track:** §26 / §29.

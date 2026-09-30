@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { OVERTIME_DAY_TYPES, OVERTIME_STATUSES } from '../enums';
 import { isBusinessDate } from '../business-date';
-import { paginationQuerySchema } from './common';
+import { paginationQuerySchema, reportPage, reportPageSize, type ApiListMeta } from './common';
 
 /**
  * Overtime contracts (Task 21).
@@ -168,9 +168,13 @@ export const overtimeReportQuerySchema = z
     to: businessDate,
     departmentId: z.string().min(1).optional(),
     employeeId: z.string().min(1).optional(),
+    // Task 48 (T44-P1-13): rows are paged; totals always cover every employee in scope.
+    page: reportPage,
+    pageSize: reportPageSize,
   })
   .refine((v) => v.from <= v.to, { message: 'The end date cannot be before the start date', path: ['to'] });
-export type OvertimeReportQuery = z.infer<typeof overtimeReportQuerySchema>;
+/** Internal callers (executive, Employee 360) may omit paging: page 1, 50 rows. */
+export type OvertimeReportQuery = Omit<z.infer<typeof overtimeReportQuerySchema>, 'page' | 'pageSize'> & { page?: number; pageSize?: number };
 
 export interface OvertimeReportRowDto {
   employee: { id: string; employeeCode: string; firstName: string; lastName: string; department: { id: string; name: string } | null };
@@ -183,8 +187,12 @@ export interface OvertimeReportRowDto {
 export interface OvertimeReportDto {
   from: string;
   to: string;
+  /** One page of employees (`meta`). */
   rows: OvertimeReportRowDto[];
+  /** Every employee in scope, aggregated in SQL — never the sum of the visible page (Task 48, T44-P1-13). */
   totals: { requests: number; approvedRequests: number; approvedMinutes: number; byDayType: { WORKDAY: number; OFF_DAY: number; HOLIDAY: number } };
+  totalEmployees: number;
+  meta: ApiListMeta;
   /** Stated in the payload so no reader mistakes this for a payroll figure. */
   note: 'Minutes and multipliers only — this release calculates no monetary overtime.';
 }

@@ -115,14 +115,20 @@ export interface WorkforceAnalyticsDto {
   terminationsNote: string;
 }
 
+/**
+ * Closed payroll runs, organization level. Task 48 (T44-P2-15): money is keyed by currency — there is no total across
+ * currencies, and no "default" currency. Runs of fewer than MIN_AGGREGATE_GROUP_SIZE employees are withheld (counted in
+ * `withheldRuns`), as in the Report Center: a one-person run total is that person's salary.
+ */
+export interface PayrollCurrencyTotalsDto { currencyCode: string; runs: number; employeesPaid: number; grossTotal: string; deductionTotal: string; netTotal: string }
 export interface PayrollAggregateDto {
-  currencyCode: string | null;
+  /** Counts across currencies (no money). */
   runs: number;
   employeesPaid: number;
-  grossTotal: string;
-  deductionTotal: string;
-  netTotal: string;
-  byPeriod: { periodLabel: string; employees: number; grossTotal: string; netTotal: string }[];
+  byCurrency: PayrollCurrencyTotalsDto[];
+  byPeriod: { periodLabel: string; organizationName: string; currencyCode: string; employees: number; grossTotal: string; netTotal: string }[];
+  withheldRuns: number;
+  minimumGroupSize: number;
   note: string;
 }
 

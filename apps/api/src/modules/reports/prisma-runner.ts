@@ -158,16 +158,22 @@ export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { lo
     const f = fields.find((x) => x.id === flt.fieldId)!;
     const v = row[flt.fieldId];
     const num = (x: unknown) => (typeof x === 'string' ? Number(x) : (x as number));
+    // Task 48: DECIMAL (money) compares exactly; NUMBER (counts, minutes) as numbers. NaN = not comparable → no match.
+    const cmp = (x: unknown, y: unknown): number => {
+      if (f.type === 'DECIMAL') { try { return new Prisma.Decimal(String(x)).comparedTo(new Prisma.Decimal(String(y))); } catch { return NaN; } }
+      const a = num(x); const b = num(y);
+      return a > b ? 1 : a < b ? -1 : a === b ? 0 : NaN;
+    };
     switch (flt.operator) {
       case 'IS_NULL': return v === null; case 'IS_NOT_NULL': return v !== null;
-      case 'EQ': return f.type === 'DECIMAL' || f.type === 'NUMBER' ? num(v) === num(flt.value) : v === flt.value;
-      case 'NE': return f.type === 'DECIMAL' || f.type === 'NUMBER' ? num(v) !== num(flt.value) : v !== flt.value;
+      case 'EQ': return f.type === 'DECIMAL' || f.type === 'NUMBER' ? cmp(v, flt.value) === 0 : v === flt.value;
+      case 'NE': return f.type === 'DECIMAL' || f.type === 'NUMBER' ? cmp(v, flt.value) !== 0 : v !== flt.value;
       case 'CONTAINS': return typeof v === 'string' && v.toLowerCase().includes(String(flt.value).toLowerCase());
       case 'STARTS_WITH': return typeof v === 'string' && v.toLowerCase().startsWith(String(flt.value).toLowerCase());
-      case 'GT': case 'AFTER': return v !== null && (f.type === 'DATE' ? String(v) > String(flt.value) : num(v) > num(flt.value));
-      case 'GTE': return v !== null && num(v) >= num(flt.value);
-      case 'LT': case 'BEFORE': return v !== null && (f.type === 'DATE' ? String(v) < String(flt.value) : num(v) < num(flt.value));
-      case 'LTE': return v !== null && num(v) <= num(flt.value);
+      case 'GT': case 'AFTER': return v !== null && (f.type === 'DATE' ? String(v) > String(flt.value) : cmp(v, flt.value) > 0);
+      case 'GTE': return v !== null && cmp(v, flt.value) >= 0;
+      case 'LT': case 'BEFORE': return v !== null && (f.type === 'DATE' ? String(v) < String(flt.value) : cmp(v, flt.value) < 0);
+      case 'LTE': return v !== null && cmp(v, flt.value) <= 0;
       case 'BETWEEN': { const [a, b] = flt.value as [string, string]; return v !== null && String(v).slice(0, 10) >= a && String(v).slice(0, 10) <= b; }
       case 'IN': return (flt.value as string[]).includes(String(v));
       default: return false;

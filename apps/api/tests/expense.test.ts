@@ -14,6 +14,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import { createTestServer, createUser, loginAs, resetDatabase } from './helpers';
+import { expectHandoffReconciled } from './payroll-handoff-helpers';
 
 const app: Server = createTestServer();
 const PW = 'Correct-Horse-1';
@@ -401,6 +402,12 @@ describe('expense reports', () => {
     const comp = await as(admin, 'post', '/api/v1/payroll/components').send({ code: 'EXPENSE_REIMB', name: 'Expense reimbursement', type: 'EARNING' });
     const body = { payrollPeriodId: period.body.data.id, componentId: comp.body.data.id };
     expect(err(await as(hr, 'post', `${X}/expense-reports/${id}/send-to-payroll`).send(body))).toBe('403 FORBIDDEN');
+    // Task 48 (T44-P1-14): a report in another currency than the payroll run is refused; nothing is written (simulated
+    // on the fixture row, then restored). Before: the USD total became a THB payroll line.
+    await prisma.expenseReport.update({ where: { id }, data: { currency: 'USD' } });
+    expect(err(await as(payAdmin, 'post', `${X}/expense-reports/${id}/send-to-payroll`).send(body))).toBe('409 PAYROLL_CURRENCY_MISMATCH');
+    expect((await prisma.expenseReport.findUniqueOrThrow({ where: { id } })).status).toBe('READY_FOR_PAYMENT');
+    await prisma.expenseReport.update({ where: { id }, data: { currency: 'THB' } });
     const before = await prisma.payrollResultItem.count();
     const sent = await Promise.all([as(payAdmin, 'post', `${X}/expense-reports/${id}/send-to-payroll`).send(body), as(payAdmin, 'post', `${X}/expense-reports/${id}/send-to-payroll`).send(body)]);
     expect(sent.map((r) => r.status).sort(), text(sent.map((r) => r.body))).toEqual([200, 200]);
@@ -410,6 +417,18 @@ describe('expense reports', () => {
     expect(line).toMatchObject({ isManual: true, componentCodeSnapshot: 'EXPENSE_REIMB' });
     expect(line!.amount.toFixed(2)).toBe('2000.00');
     expect((await as(payAdmin, 'get', `${X}/expense-reports/${id}`)).body.data).toMatchObject({ status: 'SENT_TO_PAYROLL', paymentMethod: 'PAYROLL', paidDate: null });
+    // Task 48 (T44-P1-15): the same guarantees as benefits.
+    const { itemId } = await expectHandoffReconciled('EXPENSE_REPORT', id);
+    expect(err(await as(payAdmin, 'delete', `/api/v1/payroll/adjustments/${itemId}`))).toBe('409 PAYROLL_ITEM_SOURCE_LINKED'); // before: 200, line gone
+    await expect(prisma.payrollResultItem.delete({ where: { id: itemId } })).rejects.toThrow();
+    expect((await as(admin, 'post', `/api/v1/payroll/periods/${period.body.data.id}/calculate`)).status).toBe(200);
+    expect((await expectHandoffReconciled('EXPENSE_REPORT', id)).itemId).toBe(itemId); // before: a new id, the report dangled
+    expect(err(await as(emp, 'post', `${X}/expense-reports/${id}/cancel`))).toBe('409 EXPENSE_REPORT_NOT_CANCELLABLE');
+    expect(err(await as(payAdmin, 'post', `${X}/expense-reports/${id}/payment`).send({ paymentMethod: 'EXTERNAL', paidDate: '2026-09-28' }))).toBe('409 EXPENSE_REPORT_IN_PAYROLL');
+    // a concurrent delete and recalculation leave the same single, linked line
+    const race = await Promise.all([as(payAdmin, 'delete', `/api/v1/payroll/adjustments/${itemId}`), as(admin, 'post', `/api/v1/payroll/periods/${period.body.data.id}/calculate`)]);
+    expect(race.map((r) => r.status).sort()).toEqual([200, 409]);
+    await expectHandoffReconciled('EXPENSE_REPORT', id);
     expect((await as(payAdmin, 'post', `${X}/expense-reports/${id}/payment`).send({ paymentMethod: 'PAYROLL', paidDate: '2026-09-28' })).body.data.status).toBe('PAID');
   });
 
@@ -447,7 +466,11 @@ describe('who sees what', () => {
     expect(rep.body.data.byPolicy.find((p: { policy: string }) => p.policy === 'Thailand Business Expense Policy')).toMatchObject({ currency: 'THB', paidTotal: '9350.00' });
     expect(rep.body.data.byCategory.find((c: { category: string }) => c.category === 'Meals')).toMatchObject({ items: 3 }); // 450.00 + the two strict-policy items
     expect(rep.body.data.byCategory.find((c: { category: string }) => c.category === 'Office Supplies')).toMatchObject({ items: 5, total: '1131.10' });
-    expect(rep.body.data.travel).toMatchObject({ requests: 2, approved: 2, estimatedTotal: '12600.00' });
+    // Task 48 (T44-P2-15) — BEFORE: { estimatedTotal: '12600.00' } (one figure over every currency).
+    // AFTER: estimates only per currency; there is no cross-currency total.
+    expect(rep.body.data.travel).toMatchObject({ requests: 2, approved: 2, estimatedByCurrency: [{ currency: 'THB', requests: 2, estimatedTotal: '12600.00' }] });
+    expect(rep.body.data.travel).not.toHaveProperty('estimatedTotal');
+    expect(rep.body.data.travel.byMonth.every((m: { currency: string }) => m.currency === 'THB')).toBe(true);
     for (const payload of [dash.body.data, rep.body.data]) expect(forbiddenKeys(payload, /^(employeeId|employeeCode|employeeName|firstName|lastName|name|email|reportNumber|requestNumber|merchant|description|purpose|destination|documentId|paymentReference)$/)).toEqual([]);
     expect(text(rep.body.data)).not.toMatch(/Emma|EMP003|EXP-|TRV-|Hotel|Chiang|northern|TRF-/);
     // Task 47 (T44-P1-07): per-person datasets are aggregate-only in fact — a row listing is refused, and a group of fewer

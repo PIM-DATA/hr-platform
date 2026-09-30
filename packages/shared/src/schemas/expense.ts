@@ -93,5 +93,6 @@ export interface ExpenseReportsDto {
   byPolicy: { policy: string; currency: string; reports: number; submittedTotal: string; readyTotal: string; paidTotal: string; rejected: number }[];
   byCategory: { category: string; currency: string; items: number; total: string }[];
   byMonth: { month: string; currency: string; reports: number; total: string; paid: string }[];
-  travel: { requests: number; approved: number; rejected: number; estimatedTotal: string; estimatedByCurrency: { currency: string; requests: number; estimatedTotal: string }[]; byMonth: { month: string; requests: number; estimatedTotal: string }[] };
+  /** Task 48 (T44-P2-15): estimates per currency only — there is no total across currencies. */
+  travel: { requests: number; approved: number; rejected: number; estimatedByCurrency: { currency: string; requests: number; estimatedTotal: string }[]; byMonth: { month: string; currency: string; requests: number; estimatedTotal: string }[] };
 }

@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { ExpenseDashboardDto, ExpenseReportsDto } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
-import { ZERO, dec, money, toMoneyString } from '../payroll/money';
+import { ZERO, money, toMoneyString } from '../payroll/money';
 import { today } from './expense.types';
 
 /** Aggregates only: by policy, category and month, organization-wide. No person, number, merchant, description, receipt or reference. */
@@ -38,7 +38,8 @@ export const expenseAnalyticsService = {
     const catRows = reports.flatMap((r) => r.items.map((i) => ({ category: i.categoryNameSnapshot, currency: r.currency, amount: i.amount })));
     const byCategory = [...group(catRows, (r) => `${r.category}|${r.currency}`)].map(([k, rows]) => ({ category: k.split('|')[0], currency: k.split('|')[1], items: rows.length, total: toMoneyString(sum(rows.map((r) => r.amount))) })).sort((a, b) => a.category.localeCompare(b.category));
     const byMonth = [...group(reports, (r) => `${r.submittedAt!.toISOString().slice(0, 7)}|${r.currency}`)].map(([k, rows]) => ({ month: k.split('|')[0], currency: k.split('|')[1], reports: rows.length, total: toMoneyString(sum(rows.map((r) => r.totalAmount))), paid: toMoneyString(sum(rows.filter((r) => r.status === 'PAID').map((r) => r.totalAmount))) })).sort((a, b) => a.month.localeCompare(b.month));
-    const travelByMonth = [...group(travel, (r) => r.submittedAt!.toISOString().slice(0, 7))].map(([month, rows]) => ({ month, requests: rows.length, estimatedTotal: toMoneyString(sum(rows.map((r) => r.estimatedAmount))) })).sort((a, b) => a.month.localeCompare(b.month));
-    return { range: { from, to }, byPolicy, byCategory, byMonth, travel: { requests: travel.length, approved: travel.filter((r) => r.status === 'APPROVED' || r.status === 'COMPLETED').length, rejected: travel.filter((r) => r.status === 'REJECTED').length, estimatedTotal: toMoneyString(sum(travel.map((r) => dec(r.estimatedAmount)))), estimatedByCurrency: [...group(travel, (r) => r.currency)].map(([currency, rows]) => ({ currency, requests: rows.length, estimatedTotal: toMoneyString(sum(rows.map((r) => r.estimatedAmount))) })).sort((a, b) => a.currency.localeCompare(b.currency)), byMonth: travelByMonth } };
+    // Task 48 (T44-P2-15): travel estimates are keyed by currency like every other money figure here.
+    const travelByMonth = [...group(travel, (r) => `${r.submittedAt!.toISOString().slice(0, 7)}|${r.currency}`)].map(([k, rows]) => ({ month: k.split('|')[0]!, currency: k.split('|')[1]!, requests: rows.length, estimatedTotal: toMoneyString(sum(rows.map((r) => r.estimatedAmount))) })).sort((a, b) => a.month.localeCompare(b.month) || a.currency.localeCompare(b.currency));
+    return { range: { from, to }, byPolicy, byCategory, byMonth, travel: { requests: travel.length, approved: travel.filter((r) => r.status === 'APPROVED' || r.status === 'COMPLETED').length, rejected: travel.filter((r) => r.status === 'REJECTED').length, estimatedByCurrency: [...group(travel, (r) => r.currency)].map(([currency, rows]) => ({ currency, requests: rows.length, estimatedTotal: toMoneyString(sum(rows.map((r) => r.estimatedAmount))) })).sort((a, b) => a.currency.localeCompare(b.currency)), byMonth: travelByMonth } };
   },
 };

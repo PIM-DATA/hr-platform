@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tenureMonths } from '@hr/shared';
 import { prisma } from '../src/lib/prisma';
 import { createTestServer, createUser, loginAs, resetDatabase } from './helpers';
+import { expectHandoffReconciled } from './payroll-handoff-helpers';
 
 const app: Server = createTestServer();
 const PW = 'Correct-Horse-1';
@@ -376,6 +377,12 @@ describe('payment, payroll boundary, coverage, transfer', () => {
     const body = { payrollPeriodId: period.body.data.id, componentId: comp.body.data.id };
     expect(err(await as(hr, 'post', `${B}/claims/${claimB}/send-to-payroll`).send(body))).toBe('403 FORBIDDEN'); // no record_payment
     expect(err(await as(payAdmin, 'post', `${B}/claims/${claimB}/send-to-payroll`).send({ ...body, componentId: deduction.body.data.id }))).toBe('422 VALIDATION_ERROR');
+    // Task 48 (T44-P1-14): a claim in another currency than the payroll run is refused; nothing is written. Before: the
+    // USD amount became a THB payroll line. (The USD claim is simulated on the fixture row and restored.)
+    await prisma.benefitClaim.update({ where: { id: claimB }, data: { currency: 'USD' } });
+    expect(err(await as(payAdmin, 'post', `${B}/claims/${claimB}/send-to-payroll`).send(body))).toBe('409 PAYROLL_CURRENCY_MISMATCH');
+    expect((await prisma.benefitClaim.findUniqueOrThrow({ where: { id: claimB } })).status).toBe('READY_FOR_PAYMENT');
+    await prisma.benefitClaim.update({ where: { id: claimB }, data: { currency: 'THB' } });
     const itemsBefore = await prisma.payrollResultItem.count();
     const sent = await Promise.all([as(payAdmin, 'post', `${B}/claims/${claimB}/send-to-payroll`).send(body), as(payAdmin, 'post', `${B}/claims/${claimB}/send-to-payroll`).send(body)]);
     expect(sent.map((r) => r.status).sort()).toEqual([200, 200]);
@@ -390,6 +397,18 @@ describe('payment, payroll boundary, coverage, transfer', () => {
     expect(line!.amount.toFixed(2)).toBe(claim.approvedAmount);
     // the payroll line carries no taxability decision: it is an earning line like any other manual adjustment
     expect(Object.keys(line!)).not.toEqual(expect.arrayContaining(['taxable', 'taxTreatment']));
+    // Task 48 (T44-P1-15): the handed-over reimbursement cannot disappear from payroll.
+    const { itemId } = await expectHandoffReconciled('BENEFIT_CLAIM', claimB);
+    // Before: 200 — the line was deleted and the claim stayed SENT_TO_PAYROLL, never paid.
+    expect(err(await as(payAdmin, 'delete', `/api/v1/payroll/adjustments/${itemId}`))).toBe('409 PAYROLL_ITEM_SOURCE_LINKED');
+    await expect(prisma.payrollResultItem.delete({ where: { id: itemId } })).rejects.toThrow(); // the database refuses too (ON DELETE RESTRICT)
+    // Before: recalculation re-created the line with a new id; the claim pointed at nothing.
+    expect((await as(admin, 'post', `/api/v1/payroll/periods/${period.body.data.id}/calculate`)).status).toBe(200);
+    expect((await expectHandoffReconciled('BENEFIT_CLAIM', claimB)).itemId).toBe(itemId);
+    // the claim cannot be cancelled behind payroll's back, nor paid a second time outside it
+    expect(err(await as(emp, 'post', `${B}/claims/${claimB}/cancel`))).toBe('409 BENEFIT_CLAIM_NOT_CANCELLABLE');
+    expect(err(await as(payAdmin, 'post', `${B}/claims/${claimB}/payment`).send({ paymentMethod: 'EXTERNAL', paidDate: '2026-09-28' }))).toBe('409 BENEFIT_CLAIM_IN_PAYROLL');
+    await expectHandoffReconciled('BENEFIT_CLAIM', claimB);
     // then HR records PAID once payroll is done — a separate human step
     const paidB = await as(payAdmin, 'post', `${B}/claims/${claimB}/payment`).send({ paymentMethod: 'PAYROLL', paidDate: '2026-09-28' });
     expect(paidB.body.data.status).toBe('PAID');

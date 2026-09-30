@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { AuthContext } from '../auth/auth.types';
 import { toMoneyString, toQuantityString, toRateString } from './money';
+import { isSourceLinkedLine } from './payroll.types';
 
 /**
  * Payslips — the one payroll surface an ordinary employee sees.
@@ -29,6 +30,7 @@ const itemDto = (row: { id: string; componentCodeSnapshot: string; componentName
   referenceType: row.referenceType,
   referenceId: row.referenceId,
   isManual: row.isManual,
+  sourceLinked: isSourceLinkedLine(row),
 });
 
 function requireEmployee(auth: AuthContext): string {

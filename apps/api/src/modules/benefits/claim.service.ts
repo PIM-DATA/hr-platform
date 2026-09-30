@@ -221,6 +221,8 @@ export const claimService = {
     await prisma.$transaction(async (tx) => {
       const r = await loadClaimForMutation(tx, id);
       if (r.status !== 'READY_FOR_PAYMENT' && r.status !== 'SENT_TO_PAYROLL') throw new AppError(409, 'BENEFIT_CLAIM_NOT_PAYABLE', `A ${r.status.toLowerCase().replace(/_/g, ' ')} claim cannot be recorded as paid`);
+      // Task 48 (T44-P1-15): a claim handed to payroll is paid by payroll — recording another payment would pay it twice.
+      if (r.status === 'SENT_TO_PAYROLL' && input.paymentMethod !== 'PAYROLL') throw new AppError(409, 'BENEFIT_CLAIM_IN_PAYROLL', 'This claim was handed over to payroll; it can only be recorded as paid through payroll');
       const after = await tx.benefitClaim.update({ where: { id }, data: { status: 'PAID', paymentMethod: input.paymentMethod, paymentReference: input.paymentReference ?? null, paidDate: input.paidDate, paidAt: new Date(), paidByUserId: actor.auth.userId } });
       await history(tx, id, r.status, 'PAID', actor.auth.userId, input.paymentMethod);
       await auditService.log(benefitsAudit(actor, AUDIT_ACTIONS.RECORD_BENEFIT_PAYMENT, 'BenefitClaim', id, { claimNumber: r.claimNumber, amount: toMoneyString(r.approvedAmount ?? r.claimedAmount), currency: r.currency, paymentMethod: input.paymentMethod, paidDate: input.paidDate, referenceLength: input.paymentReference?.length ?? 0 }, { status: r.status }), tx);
@@ -242,7 +244,7 @@ export const claimService = {
       if (!component || component.type !== 'EARNING') throw new AppError(422, 'VALIDATION_ERROR', 'Choose an earning component for the reimbursement line', [{ field: 'componentId', message: 'Must be an active EARNING component' }]);
       const target = await findPayrollResultForEmployee(tx, input.payrollPeriodId, r.employeeId);
       if (!target) throw new AppError(409, 'PAYROLL_RESULT_NOT_FOUND', 'Calculate the payroll period first; the employee has no result in it');
-      const line = await addManualAdjustmentWithTx(tx, target.resultId, { componentId: input.componentId, amount: toMoneyString(r.approvedAmount ?? r.claimedAmount), note: `Benefit claim ${r.claimNumber} (${r.planCodeSnapshot})`, reference: { type: 'BENEFIT_CLAIM', id: r.id } }, actor);
+      const line = await addManualAdjustmentWithTx(tx, target.resultId, { componentId: input.componentId, amount: toMoneyString(r.approvedAmount ?? r.claimedAmount), note: `Benefit claim ${r.claimNumber} (${r.planCodeSnapshot})`, reference: { type: 'BENEFIT_CLAIM', id: r.id, currency: r.currency } }, actor);
       await tx.benefitClaim.update({ where: { id }, data: { status: 'SENT_TO_PAYROLL', paymentMethod: 'PAYROLL', payrollResultItemId: line.itemId } });
       await history(tx, id, r.status, 'SENT_TO_PAYROLL', actor.auth.userId, 'PAYROLL');
       await auditService.log(benefitsAudit(actor, AUDIT_ACTIONS.SEND_BENEFIT_TO_PAYROLL, 'BenefitClaim', id, { claimNumber: r.claimNumber, amount: toMoneyString(r.approvedAmount ?? r.claimedAmount), payrollPeriodId: input.payrollPeriodId, payrollResultId: target.resultId, payrollResultItemId: line.itemId, created: line.created }), tx);

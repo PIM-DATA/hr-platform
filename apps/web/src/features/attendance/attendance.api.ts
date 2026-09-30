@@ -50,7 +50,7 @@ export const useAttendanceRecords = (f: Record<string, unknown>, enabled = true)
 export const useDailySummary = (date: string, departmentId?: string) =>
   useQuery({ queryKey: attendanceKeys.summary(date, departmentId), queryFn: () => api.get<AttendanceDailySummaryDto>(`/attendance/summary?${qs({ date, departmentId })}`).then((r) => r.data), enabled: !!date });
 
-export const useAttendanceReport = (f: { from: string; to: string; departmentId?: string; employeeId?: string }, enabled = true) =>
+export const useAttendanceReport = (f: { from: string; to: string; departmentId?: string; employeeId?: string; page?: number; pageSize?: number }, enabled = true) =>
   useQuery({ queryKey: [KEY, 'report', f], queryFn: () => api.get<AttendanceReportDto>(`/attendance/reports/overview?${qs(f)}`).then((r) => r.data), enabled });
 
 export const useScheduleGrid = (f: Record<string, unknown>, enabled = true) =>

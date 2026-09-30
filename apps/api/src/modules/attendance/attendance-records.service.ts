@@ -48,6 +48,29 @@ const scopedEmployeeWhere = (auth: AuthContext, extra: Prisma.EmployeeWhereInput
   AND: [employeeScopeWhere(auth), ...extra],
 });
 
+const reportEmployeeWhere = (auth: AuthContext, q: { departmentId?: string; employeeId?: string }) => scopedEmployeeWhere(auth, [
+  ...(q.departmentId ? [{ departmentId: q.departmentId }] : []),
+  ...(q.employeeId ? [{ id: q.employeeId }] : []),
+]);
+
+/** Status groups (of one employee, or of a whole scope) → the report's figures. */
+function attendanceFigures(groups: { status: string; _count: { _all: number }; _sum: { workMinutes: number | null; lateMinutes: number | null } }[]): AttendanceReportDto['totals'] {
+  const countOf = (...statuses: AttendanceStatus[]) => groups.filter((g) => statuses.includes(g.status as AttendanceStatus)).reduce((sum, g) => sum + g._count._all, 0);
+  const present = countOf('NORMAL', 'LATE', 'EARLY_LEAVE', 'LATE_AND_EARLY');
+  return {
+    scheduledDays: present + countOf('ABSENT', 'INCOMPLETE', 'SCHEDULED'),
+    presentDays: present,
+    lateDays: countOf('LATE', 'LATE_AND_EARLY'),
+    absentDays: countOf('ABSENT'),
+    leaveDays: countOf('ON_LEAVE'),
+    incompleteDays: countOf('INCOMPLETE'),
+    workMinutes: groups.reduce((sum, g) => sum + (g._sum.workMinutes ?? 0), 0),
+    lateMinutes: groups.reduce((sum, g) => sum + (g._sum.lateMinutes ?? 0), 0),
+  };
+}
+
+const RECALCULATE_BATCH = 500;
+
 export const attendanceRecordsService = {
   /** The caller's own attendance for a date range (ESS). Days with no record yet are calculated on the fly. */
   async mine(auth: AuthContext, q: MyAttendanceQuery): Promise<{ data: AttendanceRecordDto[] }> {
@@ -121,73 +144,84 @@ export const attendanceRecordsService = {
   async recalculate(auth: AuthContext, input: { from: string; to: string; employeeId?: string; departmentId?: string }, actor: Actor): Promise<{ employees: number; records: number }> {
     const dates = enumerateDates(input.from, input.to);
     if (dates.length === 0 || dates.length > 62) throw new AppError(400, 'VALIDATION_ERROR', 'Recalculate at most 62 days at a time');
-    const employees = await prisma.employee.findMany({
-      where: scopedEmployeeWhere(auth, [
-        { employmentStatus: 'ACTIVE' },
-        ...(input.employeeId ? [{ id: input.employeeId }] : []),
-        ...(input.departmentId ? [{ departmentId: input.departmentId }] : []),
-      ]),
-      select: { id: true },
-      take: 2000,
-    });
-    const { records } = await attendanceCalculationService.recalculateRange(employees.map((e) => e.id), dates);
+    const where = scopedEmployeeWhere(auth, [
+      { employmentStatus: 'ACTIVE' },
+      ...(input.employeeId ? [{ id: input.employeeId }] : []),
+      ...(input.departmentId ? [{ departmentId: input.departmentId }] : []),
+    ]);
+    // Task 48 (T44-P1-13): every employee in scope, in id-ordered batches. Before, `take: 2000` silently skipped the
+    // rest, leaving their days (and the payroll inputs read from them) stale.
+    let employees = 0;
+    let records = 0;
+    let cursor: string | undefined;
+    for (;;) {
+      const batch = await prisma.employee.findMany({ where, select: { id: true }, orderBy: { id: 'asc' }, take: RECALCULATE_BATCH, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+      if (batch.length === 0) break;
+      records += (await attendanceCalculationService.recalculateRange(batch.map((e) => e.id), dates)).records;
+      employees += batch.length;
+      cursor = batch[batch.length - 1]!.id;
+      if (batch.length < RECALCULATE_BATCH) break;
+    }
     await auditService.log(attendanceAudit(actor, AUDIT_ACTIONS.RECALCULATE_ATTENDANCE, 'AttendanceRecord', `${input.from}..${input.to}`, {
-      from: input.from, to: input.to, employees: employees.length, records,
+      from: input.from, to: input.to, employees, records,
     }));
-    return { employees: employees.length, records };
+    return { employees, records };
   },
 
-  /** Range report: one row per employee with the counts HR actually asks for. Aggregated in SQL. */
+  /**
+   * Range report: one row per employee with the counts HR actually asks for.
+   *
+   * Task 48 (T44-P1-13): the totals are one SQL aggregate over every employee in scope; the rows are a separate page.
+   * Before, the report loaded the first 500 employees and summed only them, so employee #501 onward vanished from the
+   * totals (and from the executive overview) without a word.
+   */
   async report(auth: AuthContext, q: AttendanceReportQuery): Promise<AttendanceReportDto> {
-    const employees = await prisma.employee.findMany({
-      where: scopedEmployeeWhere(auth, [
-        ...(q.departmentId ? [{ departmentId: q.departmentId }] : []),
-        ...(q.employeeId ? [{ id: q.employeeId }] : []),
-      ]),
-      ...employeeRef,
-      orderBy: { employeeCode: 'asc' },
-      take: 500,
+    const page = q.page ?? 1;
+    const pageSize = q.pageSize ?? 50;
+    const where = reportEmployeeWhere(auth, q);
+    const [totalEmployees, totals, employees] = await Promise.all([
+      prisma.employee.count({ where }),
+      attendanceRecordsService.totals(auth, q),
+      prisma.employee.findMany({ where, ...employeeRef, orderBy: [{ employeeCode: 'asc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize }),
+    ]);
+    const grouped = employees.length === 0 ? [] : await prisma.attendanceRecord.groupBy({
+      by: ['employeeId', 'status'],
+      where: { employeeId: { in: employees.map((e) => e.id) }, attendanceDate: { gte: q.from, lte: q.to } },
+      _count: { _all: true },
+      _sum: { workMinutes: true, lateMinutes: true },
     });
-    if (employees.length === 0) {
-      return { from: q.from, to: q.to, rows: [], totals: { scheduledDays: 0, presentDays: 0, lateDays: 0, absentDays: 0, leaveDays: 0, incompleteDays: 0, workMinutes: 0, lateMinutes: 0 } };
-    }
+    const rows = employees.map((employee) => ({ employee, ...attendanceFigures(grouped.filter((g) => g.employeeId === employee.id)) }));
+    return { from: q.from, to: q.to, rows, totals, totalEmployees, meta: { page, pageSize, total: totalEmployees } };
+  },
+
+  /** The report's totals alone — every employee in scope, one grouped query, no rows. Used by the executive overview. */
+  async totals(auth: AuthContext, q: Pick<AttendanceReportQuery, 'from' | 'to' | 'departmentId' | 'employeeId'>): Promise<AttendanceReportDto['totals']> {
+    const grouped = await prisma.attendanceRecord.groupBy({
+      by: ['status'],
+      where: { employee: reportEmployeeWhere(auth, q), attendanceDate: { gte: q.from, lte: q.to } },
+      _count: { _all: true },
+      _sum: { workMinutes: true, lateMinutes: true },
+    });
+    return attendanceFigures(grouped);
+  },
+
+  /** Population + totals, no rows (executive overview). */
+  async summary(auth: AuthContext, q: Pick<AttendanceReportQuery, 'from' | 'to' | 'departmentId'>): Promise<{ totalEmployees: number; totals: AttendanceReportDto['totals'] }> {
+    const [totalEmployees, totals] = await Promise.all([prisma.employee.count({ where: reportEmployeeWhere(auth, q) }), attendanceRecordsService.totals(auth, q)]);
+    return { totalEmployees, totals };
+  },
+
+  /** Report rows for named employees (the copilot's team view) — the caller's scope still applies. */
+  async rowsFor(auth: AuthContext, q: { from: string; to: string }, employeeIds: string[]): Promise<AttendanceReportDto['rows']> {
+    if (employeeIds.length === 0) return [];
+    const employees = await prisma.employee.findMany({ where: scopedEmployeeWhere(auth, [{ id: { in: employeeIds } }]), ...employeeRef, orderBy: { employeeCode: 'asc' } });
     const grouped = await prisma.attendanceRecord.groupBy({
       by: ['employeeId', 'status'],
       where: { employeeId: { in: employees.map((e) => e.id) }, attendanceDate: { gte: q.from, lte: q.to } },
       _count: { _all: true },
       _sum: { workMinutes: true, lateMinutes: true },
     });
-
-    const rows = employees.map((employee) => {
-      const mine = grouped.filter((g) => g.employeeId === employee.id);
-      const countOf = (...statuses: AttendanceStatus[]) => mine.filter((g) => statuses.includes(g.status as AttendanceStatus)).reduce((sum, g) => sum + g._count._all, 0);
-      const present = countOf('NORMAL', 'LATE', 'EARLY_LEAVE', 'LATE_AND_EARLY');
-      return {
-        employee,
-        scheduledDays: present + countOf('ABSENT', 'INCOMPLETE', 'SCHEDULED'),
-        presentDays: present,
-        lateDays: countOf('LATE', 'LATE_AND_EARLY'),
-        absentDays: countOf('ABSENT'),
-        leaveDays: countOf('ON_LEAVE'),
-        incompleteDays: countOf('INCOMPLETE'),
-        workMinutes: mine.reduce((sum, g) => sum + (g._sum.workMinutes ?? 0), 0),
-        lateMinutes: mine.reduce((sum, g) => sum + (g._sum.lateMinutes ?? 0), 0),
-      };
-    });
-    const totals = rows.reduce(
-      (acc, r) => ({
-        scheduledDays: acc.scheduledDays + r.scheduledDays,
-        presentDays: acc.presentDays + r.presentDays,
-        lateDays: acc.lateDays + r.lateDays,
-        absentDays: acc.absentDays + r.absentDays,
-        leaveDays: acc.leaveDays + r.leaveDays,
-        incompleteDays: acc.incompleteDays + r.incompleteDays,
-        workMinutes: acc.workMinutes + r.workMinutes,
-        lateMinutes: acc.lateMinutes + r.lateMinutes,
-      }),
-      { scheduledDays: 0, presentDays: 0, lateDays: 0, absentDays: 0, leaveDays: 0, incompleteDays: 0, workMinutes: 0, lateMinutes: 0 },
-    );
-    return { from: q.from, to: q.to, rows, totals };
+    return employees.map((employee) => ({ employee, ...attendanceFigures(grouped.filter((g) => g.employeeId === employee.id)) }));
   },
 
   /** Business "today" for an organization — the UI asks so it never guesses the customer's timezone. */

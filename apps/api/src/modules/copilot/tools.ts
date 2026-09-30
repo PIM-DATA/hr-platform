@@ -196,8 +196,8 @@ const tools: CopilotTool[] = [
         sources.push(src(`Team leave · ${t}`, 'leave', asOfNow(), link(auth, PERMISSIONS.LEAVE_VIEW, '/hrm/leave')));
       }
       if (hasPermission(auth, PERMISSIONS.ATTENDANCE_VIEW)) {
-        const att = await attendanceRecordsService.report(auth, { from: t, to: t });
-        const rows = att.rows.filter((r) => ids.has(r.employee.id));
+        // The team's own rows (Task 48: the report is paged, so filtering its first page would miss people).
+        const rows = await attendanceRecordsService.rowsFor(auth, { from: t, to: t }, [...ids]);
         data.attendanceToday = { present: rows.reduce((n, r) => n + r.presentDays, 0), late: rows.filter((r) => r.lateDays > 0).map((r) => r.employee.employeeCode), absent: rows.filter((r) => r.absentDays > 0).map((r) => r.employee.employeeCode), incomplete: rows.filter((r) => r.incompleteDays > 0).map((r) => r.employee.employeeCode), noRecordYet: team.length - rows.length };
         sources.push(src(`Team attendance · ${t}`, 'attendance', asOfNow(), link(auth, PERMISSIONS.ATTENDANCE_VIEW, '/hrm/attendance')));
       }
@@ -235,7 +235,7 @@ const tools: CopilotTool[] = [
         recruitment: s.recruitment ? { funnel: s.recruitment.funnel, hires: s.recruitment.hires, averageTimeToHireDays: s.recruitment.averageTimeToHireDays, offers: s.recruitment.offers } : null,
         employeeRelations: s.employeeRelations ? s.employeeRelations.actions : null,
         talent: s.talent ? { succession: s.talent.succession.plans, criticalWithoutSuccessor: s.talent.succession.criticalWithoutSuccessor, nineBox: s.talent.talent.nineBox.filter((c) => c.count > 0) } : null,
-        payroll: s.payroll ? { runs: s.payroll.runs, employeesPaid: s.payroll.employeesPaid, grossTotal: s.payroll.grossTotal, netTotal: s.payroll.netTotal, currency: s.payroll.currencyCode, note: s.payroll.note } : null,
+        payroll: s.payroll ? { runs: s.payroll.runs, employeesPaid: s.payroll.employeesPaid, byCurrency: s.payroll.byCurrency, withheldRuns: s.payroll.withheldRuns, note: s.payroll.note } : null, // one entry per currency (Task 48)
         benefits: s.benefits ? { current: s.benefits.current, approvedAndPaidInRange: s.benefits.inRange.money } : null,
         expense: s.expense ? { current: s.expense.current, submittedInRange: s.expense.inRange.money, travelInRange: s.expense.inRange.travel } : null,
         employeeServices: s.employeeServices ? { current: s.employeeServices.current, inRange: s.employeeServices.inRange.totals, letters: { issued: s.employeeServices.inRange.letters.issued, voided: s.employeeServices.inRange.letters.voided } } : null,

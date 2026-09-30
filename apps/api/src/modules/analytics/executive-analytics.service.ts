@@ -119,9 +119,10 @@ async function attendanceAggregate(auth: AuthContext, f: AnalyticsFilter): Promi
   let employees = 0;
   const byDepartment: NonNullable<Sections['attendance']>['byDepartment'] = [];
   for (const d of departments) {
-    const r = await attendanceRecordsService.report(auth, { from: f.from, to: f.to, departmentId: d.id });
-    if (r.rows.length === 0) continue;
-    employees += r.rows.length;
+    // Task 48 (T44-P1-13): the full department from one SQL aggregate — no employee rows, no first-500 page.
+    const r = await attendanceRecordsService.summary(auth, { from: f.from, to: f.to, departmentId: d.id });
+    if (r.totalEmployees === 0) continue;
+    employees += r.totalEmployees;
     for (const k of Object.keys(totals) as (keyof AttendanceReportDto['totals'])[]) totals[k] += r.totals[k];
     byDepartment.push({ departmentName: d.name, scheduledDays: r.totals.scheduledDays, presentDays: r.totals.presentDays, lateDays: r.totals.lateDays, absentDays: r.totals.absentDays, leaveDays: r.totals.leaveDays, incompleteDays: r.totals.incompleteDays });
   }
@@ -132,11 +133,10 @@ async function overtimeAggregate(auth: AuthContext, f: AnalyticsFilter): Promise
   const departments = await departmentsFor(f);
   const totals: OvertimeReportDto['totals'] = { requests: 0, approvedRequests: 0, approvedMinutes: 0, byDayType: { WORKDAY: 0, OFF_DAY: 0, HOLIDAY: 0 } };
   const byDepartment: NonNullable<Sections['overtime']>['byDepartment'] = [];
-  let note: string = 'Minutes and multipliers only — this release calculates no monetary overtime.';
+  const note = 'Minutes and multipliers only — this release calculates no monetary overtime.';
   for (const d of departments) {
-    const r = await overtimeService.report(auth, { from: f.from, to: f.to, departmentId: d.id });
-    note = r.note;
-    if (r.rows.length === 0) continue;
+    const r = await overtimeService.summary(auth, { from: f.from, to: f.to, departmentId: d.id });
+    if (r.totalEmployees === 0) continue;
     totals.requests += r.totals.requests; totals.approvedRequests += r.totals.approvedRequests; totals.approvedMinutes += r.totals.approvedMinutes;
     totals.byDayType.WORKDAY += r.totals.byDayType.WORKDAY; totals.byDayType.OFF_DAY += r.totals.byDayType.OFF_DAY; totals.byDayType.HOLIDAY += r.totals.byDayType.HOLIDAY;
     byDepartment.push({ departmentName: d.name, requests: r.totals.requests, approvedMinutes: r.totals.approvedMinutes });
@@ -151,22 +151,11 @@ async function performanceAggregate(f: AnalyticsFilter): Promise<Sections['perfo
 }
 
 async function payrollAggregate(f: AnalyticsFilter): Promise<PayrollAggregateDto> {
+  // Task 48 (T44-P2-15): payroll's own currency-keyed source. Before, every closed run was added into one total and
+  // labelled with a single run's currency (THB + USD shown as "USD").
   const [fy, fm] = f.from.split('-').map(Number);
   const [ty, tm] = f.to.split('-').map(Number);
-  const runs = await prisma.payrollRun.findMany({
-    where: { status: 'CLOSED', period: { organizationId: f.organizationId, OR: [{ year: { gt: fy! } }, { year: fy!, month: { gte: fm! } }], AND: [{ OR: [{ year: { lt: ty! } }, { year: ty!, month: { lte: tm! } }] }] } },
-    select: { id: true, period: { select: { year: true, month: true, currencyCode: true } } },
-    orderBy: [{ period: { year: 'asc' } }, { period: { month: 'asc' } }],
-  });
-  const summaries = await Promise.all(runs.map((r) => payrollRunService.summary(r.id)));
-  const add = (a: string, b: string) => new Prisma.Decimal(a).plus(b).toFixed(2);
-  let gross = '0.00', ded = '0.00', net = '0.00', employees = 0;
-  for (const s of summaries) { gross = add(gross, s.grossTotal); ded = add(ded, s.deductionTotal); net = add(net, s.netTotal); employees += s.employeeCount; }
-  return {
-    currencyCode: runs[0]?.period.currencyCode ?? null, runs: runs.length, employeesPaid: employees, grossTotal: gross, deductionTotal: ded, netTotal: net,
-    byPeriod: summaries.map((s) => ({ periodLabel: s.periodLabel, employees: s.employeeCount, grossTotal: s.grossTotal, netTotal: s.netTotal })),
-    note: 'Organization-level totals across closed runs. No department split is offered here: in a small department a total would reveal an individual salary.',
-  };
+  return payrollRunService.closedTotals({ organizationId: f.organizationId, from: { year: fy!, month: fm! }, to: { year: ty!, month: tm! } });
 }
 
 export const executiveAnalyticsService = {

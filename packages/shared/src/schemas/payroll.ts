@@ -294,6 +294,8 @@ export interface PayrollResultItemDto {
   referenceType: string | null;
   referenceId: string | null;
   isManual: boolean;
+  /** Task 48: a reimbursement handed over by benefits or expense — immutable in payroll (never removable here). */
+  sourceLinked: boolean;
 }
 
 export interface PayrollResultDto {

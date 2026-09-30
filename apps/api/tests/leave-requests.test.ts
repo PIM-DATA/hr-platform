@@ -474,3 +474,21 @@ describe('L. transactional rollback', () => {
     await reconciled(entId());
   });
 });
+
+describe('Task 48 (T44-P1-16) — payroll freeze', () => {
+  it('a leave inside an approved payroll period cannot be approved: it stays pending with its reservation; once payroll is not frozen it can', async () => {
+    const day = f.wd(40);
+    const r = await submitted(f.s.emp, { leaveTypeId: f.types.ANNUAL, startDate: day });
+    const org = (await prisma.employee.findUniqueOrThrow({ where: { id: f.employees.EMP }, select: { organizationId: true } })).organizationId;
+    // Before Task 48: 200 — an approved (unpaid/paid) leave day landed inside payroll that had already been approved.
+    const frozen = await prisma.payrollPeriod.create({ data: { organizationId: org, year: Number(day.slice(0, 4)), month: Number(day.slice(5, 7)), periodStart: `${day.slice(0, 7)}-01`, periodEnd: day, attendanceFrom: day, attendanceTo: day, currencyCode: 'THB', status: 'APPROVED' } });
+    try {
+      expect(err(await act(f.s.mgr, r.workflowInstanceId, 'APPROVE'))).toBe('409 PAYROLL_PERIOD_LOCKED');
+      expect((await get(f.s.emp, r.id)).body.data.status).toBe('PENDING');
+      expect(await prisma.leaveLedger.count({ where: { referenceId: r.id, entryType: 'USE' } })).toBe(0);
+    } finally {
+      await prisma.payrollPeriod.delete({ where: { id: frozen.id } });
+    }
+    expect((await act(f.s.mgr, r.workflowInstanceId, 'APPROVE')).status).toBe(200);
+  });
+});

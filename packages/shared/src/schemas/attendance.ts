@@ -4,7 +4,7 @@ import {
 } from '../enums';
 import { isBusinessDate, WEEKDAYS } from '../business-date';
 import { isClockTime } from '../attendance';
-import { paginationQuerySchema } from './common';
+import { paginationQuerySchema, reportPage, reportPageSize, type ApiListMeta } from './common';
 
 /**
  * Attendance contracts (Task 20). Shared by the API and the UI so a rule exists once: shift times are `HH:mm` wall
@@ -233,8 +233,12 @@ export const attendanceReportQuerySchema = z.object({
   to: businessDate,
   departmentId: z.string().min(1).optional(),
   employeeId: z.string().min(1).optional(),
+  // Task 48 (T44-P1-13): rows are paged; totals always cover every employee in scope.
+  page: reportPage,
+  pageSize: reportPageSize,
 }).refine((v) => v.from <= v.to, { message: 'The end date cannot be before the start date', path: ['to'] });
-export type AttendanceReportQuery = z.infer<typeof attendanceReportQuerySchema>;
+/** Internal callers (executive, Employee 360) may omit paging: page 1, 50 rows. */
+export type AttendanceReportQuery = Omit<z.infer<typeof attendanceReportQuerySchema>, 'page' | 'pageSize'> & { page?: number; pageSize?: number };
 
 export interface AttendanceReportRowDto {
   employee: { id: string; employeeCode: string; firstName: string; lastName: string; department: { id: string; name: string } | null };
@@ -251,6 +255,10 @@ export interface AttendanceReportRowDto {
 export interface AttendanceReportDto {
   from: string;
   to: string;
+  /** One page of employees (`meta`). */
   rows: AttendanceReportRowDto[];
+  /** Every employee in scope, aggregated in SQL — never the sum of the visible page (Task 48, T44-P1-13). */
   totals: Omit<AttendanceReportRowDto, 'employee'>;
+  totalEmployees: number;
+  meta: ApiListMeta;
 }
