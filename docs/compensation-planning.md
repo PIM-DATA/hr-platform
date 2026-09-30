@@ -121,11 +121,12 @@ Finalize freezes the approved plan. **No salary changes at finalization.** Apply
 | `compensation_planning.apply` | apply (plus `payroll.manage`) | HR_ADMIN |
 | `compensation_planning.view_reports` | aggregate reports and the Report Center dataset | HR, HR_ADMIN, EXECUTIVE |
 
-EMPLOYEE has none. Services check permissions and scope, not role names. **SYSTEM_ADMIN** keeps every permission
-(including these): user administration refuses to grant a role holding a permission the granter lacks, so an
-administrator without them could not grant MANAGER / HR / HR_ADMIN / EXECUTIVE. A customer who wants salary review
-hidden from IT administration should run a narrower administrator role. No `view_own` permission exists: employees
-see nothing of planning in this release.
+EMPLOYEE has none. Services check permissions and scope, not role names. **SYSTEM_ADMIN holds none of these**
+(separation of duties: administering RBAC is not salary authority). It still assigns MANAGER / HR / HR_ADMIN /
+EXECUTIVE through `roles.manage` — the role-grant guard lets a `roles.manage` holder grant business permissions it does
+not hold, never administration ones or a role that itself carries `roles.manage` (README, "Authorization"). Granting
+compensation permissions to an administrator is a deliberate, audited change on the Roles page. No `view_own`
+permission exists: employees see nothing of planning in this release.
 
 ## 11. Confidentiality and visibility
 

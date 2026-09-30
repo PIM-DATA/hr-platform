@@ -277,9 +277,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     name: 'System Admin',
     description: 'Full system access',
     dataScope: DATA_SCOPES.ALL,
-    // Every permission, compensation planning included (Task 43): user administration refuses to grant a role holding a
-    // permission the granter lacks, so a system administrator without them could no longer grant MANAGER, HR, HR_ADMIN
-    // or EXECUTIVE. A customer that wants salary review hidden from IT administration should use a narrower admin role.
-    permissions: Object.values(P),
+    // Every permission except the compensation-planning ones (Task 43 separation of duties): administering RBAC is
+    // not salary authority. SYSTEM_ADMIN still grants MANAGER / HR / HR_ADMIN / EXECUTIVE through roles.manage (see
+    // blockingGrantPermissions); a deliberate grant is an audited role-permission change.
+    permissions: Object.values(P).filter((p) => !p.startsWith('compensation_planning.')),
   },
 ];

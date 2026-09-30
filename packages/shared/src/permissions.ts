@@ -356,6 +356,28 @@ export const CRITICAL_PERMISSIONS: PermissionCode[] = [
   PERMISSIONS.ROLES_MANAGE,
 ];
 
+/**
+ * Role-grant rule (users.create / users.update). Returns the permissions of a role that block the actor from granting
+ * it; empty means the grant is allowed (the separate data-scope rule still applies).
+ *
+ *  - Default: a role may be granted only if its permissions ⊆ the actor's (no escalation beyond your own authority).
+ *  - RBAC administration: an actor holding `roles.manage` — who can already change any role's permission mapping —
+ *    may grant a role holding business permissions they do not exercise themselves (e.g. SYSTEM_ADMIN grants
+ *    MANAGER without holding compensation_planning.plan). Granting is not using: the actor gains nothing.
+ *  - Never bypassed: user/role administration permissions the actor lacks (CRITICAL_PERMISSIONS), and every
+ *    permission of a role that itself carries `roles.manage` — the highest administrative role still needs the full
+ *    subset, so RBAC authority cannot mint a wider administrator.
+ *
+ * `roles.manage` answers only this question; no business-domain check treats it as a grant of anything else.
+ */
+export function blockingGrantPermissions(actorPermissions: readonly string[], rolePermissions: readonly string[]): string[] {
+  const mine = new Set(actorPermissions);
+  const missing = rolePermissions.filter((p) => !mine.has(p));
+  if (missing.length === 0 || !mine.has(PERMISSIONS.ROLES_MANAGE) || rolePermissions.includes(PERMISSIONS.ROLES_MANAGE)) return missing;
+  const administrative = new Set<string>(CRITICAL_PERMISSIONS);
+  return missing.filter((p) => administrative.has(p));
+}
+
 /** Human labels for the action part of a permission code, used by the Roles UI. */
 export const PERMISSION_ACTION_LABELS: Record<string, string> = {
   view: 'View',

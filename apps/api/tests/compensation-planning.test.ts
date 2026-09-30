@@ -83,8 +83,24 @@ describe('access', () => {
     for (const s of [exec, mgrA, emp]) expect(err(await as(s, 'get', `${C}/cycles`))).toBe('403 FORBIDDEN');
     expect(err(await as(emp, 'get', `${C}/my/cycles`))).toBe('403 FORBIDDEN');
     expect(err(await as(hrAdmin, 'get', `${C}/cycles`))).toBe('200');
-    // SYSTEM_ADMIN keeps every permission: the role-grant escalation guard needs it to grant MANAGER / HR / HR_ADMIN / EXECUTIVE.
-    expect(err(await as(sysAdmin, 'get', `${C}/cycles`))).toBe('200');
+    // Separation of duties: administering RBAC is not salary authority. SYSTEM_ADMIN holds no compensation permission.
+    expect((sysAdmin.user as unknown as { permissions: string[] }).permissions.filter((p: string) => p.startsWith('compensation_planning.'))).toEqual([]);
+    for (const url of ['/cycles', '/my/cycles', '/reports/cycles', '/options']) expect(err(await as(sysAdmin, 'get', `${C}${url}`))).toBe('403 FORBIDDEN');
+    expect(err(await as(sysAdmin, 'post', `${C}/cycles`).send({ code: 'SYS1', name: 'x', organizationId: orgId, effectiveDate: '2027-01-01', currency: 'THB' }))).toBe('403 FORBIDDEN');
+  });
+
+  it('SYSTEM_ADMIN still grants MANAGER / HR / HR_ADMIN / EXECUTIVE through RBAC administration, without gaining their permissions', async () => {
+    const target = await createUser({ email: 'grantee@c43.local', password: PW, role: 'EMPLOYEE' });
+    for (const role of ['MANAGER', 'HR', 'HR_ADMIN', 'EXECUTIVE']) {
+      const r = await as(sysAdmin, 'patch', `/api/v1/users/${target.id}/roles`).send({ roleCodes: [role] });
+      expect(`${role} ${err(r)}`).toBe(`${role} 200`);
+    }
+    expect(err(await as(sysAdmin, 'patch', `/api/v1/users/${target.id}/roles`).send({ roleCodes: ['MANAGER', 'HR_ADMIN'] }))).toBe('200');
+    const grantee = await loginAs(app, 'grantee@c43.local', PW);
+    expect((grantee.user as unknown as { permissions: string[] }).permissions).toEqual(expect.arrayContaining(['compensation_planning.apply', 'compensation_planning.plan']));
+    const me = await as(sysAdmin, 'get', '/api/v1/auth/me');
+    expect(JSON.stringify(me.body)).not.toContain('compensation_planning.');
+    await prisma.user.update({ where: { id: target.id }, data: { isActive: false } });
   });
 });
 
@@ -212,6 +228,9 @@ describe('apply', () => {
   it('needs compensation_planning.apply AND payroll.manage', async () => {
     expect(err(await as(hr, 'post', `${C}/cycles/${cycleId}/apply`))).toBe('403 FORBIDDEN');
     expect(err(await as(clerk, 'post', `${C}/cycles/${cycleId}/apply`))).toBe('403 FORBIDDEN');
+    const before = await prisma.employeeCompensation.count();
+    for (const url of ['apply', 'finalize', 'apply-preview']) expect(err(await as(sysAdmin, url === 'apply-preview' ? 'get' : 'post', `${C}/cycles/${cycleId}/${url}`))).toBe('403 FORBIDDEN');
+    expect(await prisma.employeeCompensation.count()).toBe(before);
     expect((await as(hrAdmin, 'get', `${C}/cycles/${cycleId}/apply-preview`)).body.data).toEqual({ toApply: 2, noChange: 1, alreadyApplied: false, blockers: [] });
   });
 

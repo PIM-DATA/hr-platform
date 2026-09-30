@@ -291,6 +291,108 @@ describe('data scope escalation guard', () => {
   });
 });
 
+describe('RBAC administration vs business authority (Task 43 separation of duties)', () => {
+  // Custom roles (removed afterwards). The acting users hold user administration; only RBAC_ADMIN_LITE holds roles.manage.
+  //   USER_ADMIN_ONLY : users.* + roles.view, scope ALL, NO roles.manage      → ordinary user administrator
+  //   RBAC_ADMIN_LITE : users.* + roles.view + roles.manage, scope ALL        → RBAC authority, few business permissions
+  //   PARTIAL_ADMIN   : users.view + dashboard.view + roles.manage            → holds roles.manage, so a "highest-role" target
+  //   USER_ACTIVATOR  : users.activate                                         → an administration permission
+  let userAdmin: { cookie: string; csrf: string; user: { id: string } };
+  let rbacAdmin: { cookie: string; csrf: string; user: { id: string } };
+  const USERS_ALL = ['users.view', 'users.create', 'users.update', 'users.activate', 'roles.view'];
+  beforeAll(async () => {
+    const perm = async (code: string) => (await prisma.permission.findUniqueOrThrow({ where: { code } })).id;
+    const mk = (code: string, codes: string[]) =>
+      Promise.all(codes.map(perm)).then((ids) => prisma.role.create({ data: { code, name: code, dataScope: 'ALL', rolePermissions: { create: ids.map((permissionId) => ({ permissionId })) } } }));
+    await mk('USER_ADMIN_ONLY', [...USERS_ALL, 'dashboard.view']);
+    await mk('RBAC_ADMIN_LITE', [...USERS_ALL, 'roles.manage', 'dashboard.view']);
+    await mk('PARTIAL_ADMIN', ['users.view', 'dashboard.view', 'roles.manage']);
+    await mk('USER_ACTIVATOR', ['users.activate']);
+    await createUser({ email: 'useradmin@users.local', password: PW, role: 'USER_ADMIN_ONLY' });
+    await createUser({ email: 'rbacadmin@users.local', password: PW, role: 'RBAC_ADMIN_LITE' });
+    await createUser({ email: 'rbac-target@users.local', password: PW, role: 'EMPLOYEE' });
+    userAdmin = await loginAs(app, 'useradmin@users.local', PW);
+    rbacAdmin = await loginAs(app, 'rbacadmin@users.local', PW);
+  });
+  afterAll(async () => {
+    await prisma.userRole.deleteMany({ where: { role: { code: { in: ['USER_ADMIN_ONLY', 'RBAC_ADMIN_LITE', 'PARTIAL_ADMIN', 'USER_ACTIVATOR'] } } } });
+    await prisma.role.deleteMany({ where: { code: { in: ['USER_ADMIN_ONLY', 'RBAC_ADMIN_LITE', 'PARTIAL_ADMIN', 'USER_ACTIVATOR'] } } });
+  });
+  // Reset the target to EMPLOYEE only: roles a user already holds are exempt from the guard (edits never "re-grant").
+  const target = async () => {
+    const t = await prisma.user.findUniqueOrThrow({ where: { email: 'rbac-target@users.local' } });
+    await prisma.userRole.deleteMany({ where: { userId: t.id } });
+    await prisma.userRole.create({ data: { userId: t.id, roleId: (await prisma.role.findUniqueOrThrow({ where: { code: 'EMPLOYEE' } })).id } });
+    return t;
+  };
+
+  it('SYSTEM_ADMIN holds no compensation permission yet assigns MANAGER; the grantee gets the role, the admin gains nothing; audited', async () => {
+    const me = await authed('get', '/api/v1/auth/me');
+    expect(JSON.stringify(me.body)).not.toContain('compensation_planning.');
+    const t = await target();
+    const res = await authed('patch', `/api/v1/users/${t.id}/roles`).send({ roleCodes: ['MANAGER'] });
+    expect(res.status).toBe(200);
+    const grantee = await loginAs(app, 'rbac-target@users.local', PW);
+    expect(grantee.user).toMatchObject({ permissions: expect.arrayContaining(['compensation_planning.plan', 'compensation_planning.view_team']) });
+    expect(JSON.stringify((await authed('get', '/api/v1/auth/me')).body)).not.toContain('compensation_planning.');
+    const audit = await prisma.auditLog.findFirst({ where: { action: 'UPDATE_USER_ROLES', recordId: t.id }, orderBy: { createdAt: 'desc' } });
+    expect(audit).toMatchObject({ userId: admin.user.id, module: 'users' });
+    expect(JSON.parse(audit!.newValue!)).toEqual({ roles: ['MANAGER'] });
+    const create = await authed('post', '/api/v1/users').send({ email: 'sys-grants@users.local', password: PW, roleCodes: ['HR_ADMIN', 'EXECUTIVE'] });
+    expect(create.status).toBe(201);
+  });
+
+  it('an ordinary user administrator (no roles.manage) still cannot grant beyond their own permissions — to others or themselves', async () => {
+    const t = await target();
+    for (const roleCodes of [['MANAGER'], ['HR_ADMIN'], ['SYSTEM_ADMIN']]) {
+      const res = await authed('patch', `/api/v1/users/${(await target()).id}/roles`, userAdmin).send({ roleCodes });
+      expect(`${roleCodes} ${res.status} ${res.body.error?.code}`).toBe(`${roleCodes} 403 ROLE_ESCALATION_NOT_ALLOWED`);
+    }
+    const self = await authed('patch', `/api/v1/users/${userAdmin.user.id}/roles`, userAdmin).send({ roleCodes: ['USER_ADMIN_ONLY', 'RBAC_ADMIN_LITE'] });
+    expect(self.body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
+    const create = await authed('post', '/api/v1/users', userAdmin).send({ email: 'ua-esc@users.local', password: PW, roleCodes: ['HR'] });
+    expect(create.status).toBe(403);
+    expect(await prisma.user.findUnique({ where: { email: 'ua-esc@users.local' } })).toBeNull();
+  });
+
+  it('HR_ADMIN (users.* but no roles.manage) keeps the subset rule: HR/MANAGER/EXECUTIVE yes, SYSTEM_ADMIN no', async () => {
+    const hrAdmin = await loginAs(app, 'hradmin@users.local', PW);
+    const t = await target();
+    expect((await authed('patch', `/api/v1/users/${t.id}/roles`, hrAdmin).send({ roleCodes: ['HR', 'MANAGER', 'EXECUTIVE'] })).status).toBe(200);
+    const sys = await authed('patch', `/api/v1/users/${(await target()).id}/roles`, hrAdmin).send({ roleCodes: ['SYSTEM_ADMIN'] });
+    expect(sys.body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
+  });
+
+  it('roles.manage lets an RBAC administrator grant business roles, but never administration permissions it lacks or a wider administrator', async () => {
+    const t = await target();
+    // business roles: allowed although RBAC_ADMIN_LITE holds none of their business permissions
+    expect((await authed('patch', `/api/v1/users/${t.id}/roles`, rbacAdmin).send({ roleCodes: ['MANAGER', 'HR'] })).status).toBe(200);
+    // a role carrying roles.manage needs the full subset — SYSTEM_ADMIN and PARTIAL_ADMIN (dashboard/users.view are held; nothing else) differ
+    const sys = await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['SYSTEM_ADMIN'] });
+    expect(sys.body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
+    expect((await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['PARTIAL_ADMIN'] })).status).toBe(200);
+    // HR_ADMIN carries users.* (held) and no roles.manage → grantable; a role with an administration permission the actor lacks is not
+    expect((await authed('patch', `/api/v1/users/${(await target()).id}/roles`, rbacAdmin).send({ roleCodes: ['HR_ADMIN'] })).status).toBe(200);
+    await prisma.userRole.deleteMany({ where: { userId: rbacAdmin.user.id } });
+    await prisma.userRole.create({ data: { userId: rbacAdmin.user.id, roleId: (await prisma.role.findUniqueOrThrow({ where: { code: 'PARTIAL_ADMIN' } })).id } });
+    await prisma.role.update({ where: { code: 'PARTIAL_ADMIN' }, data: { rolePermissions: { create: [{ permissionId: (await prisma.permission.findUniqueOrThrow({ where: { code: 'users.update' } })).id }] } } });
+    const narrow = await loginAs(app, 'rbacadmin@users.local', PW);
+    const act = await authed('patch', `/api/v1/users/${(await target()).id}/roles`, narrow).send({ roleCodes: ['USER_ACTIVATOR'] });
+    expect(act.body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED'); // users.activate is administration: never bypassed
+    const hrA = await authed('patch', `/api/v1/users/${(await target()).id}/roles`, narrow).send({ roleCodes: ['HR_ADMIN'] });
+    expect(hrA.body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED'); // HR_ADMIN carries users.create / users.activate
+    expect((await authed('patch', `/api/v1/users/${(await target()).id}/roles`, narrow).send({ roleCodes: ['EXECUTIVE'] })).status).toBe(200);
+    // and self-escalation to SYSTEM_ADMIN is refused
+    expect((await authed('patch', `/api/v1/users/${narrow.user.id}/roles`, narrow).send({ roleCodes: ['PARTIAL_ADMIN', 'SYSTEM_ADMIN'] })).body.error?.code).toBe('ROLE_ESCALATION_NOT_ALLOWED');
+  });
+
+  it('roles.manage does not satisfy any business permission check', async () => {
+    for (const url of ['/api/v1/compensation-planning/cycles', '/api/v1/payroll/compensations', '/api/v1/employees']) {
+      expect(`${url} ${(await authed('get', url, rbacAdmin)).status}`).toBe(`${url} 403`);
+    }
+  });
+});
+
 describe('password recovery (Task 18 requirement change)', () => {
   // An administrator may no longer choose a user's password: POST /users/:id/reset-password was removed and replaced
   // by a one-time reset link (POST /admin/users/:id/password-reset). The link flow itself is covered in

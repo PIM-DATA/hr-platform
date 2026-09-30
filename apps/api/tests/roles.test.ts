@@ -4,6 +4,8 @@ import { CRITICAL_PERMISSIONS, PERMISSION_DEFINITIONS, ROLE_DEFINITIONS } from '
 
 const ALL_PERMISSIONS = PERMISSION_DEFINITIONS.length; // permission catalogue grows per phase; tests derive from the shared source of truth
 const rolePerms = (code: string) => [...ROLE_DEFINITIONS.find((r) => r.code === code)!.permissions].sort();
+// Every permission except compensation planning (Task 43 separation of duties: RBAC administration is not salary authority).
+const SYSTEM_ADMIN_PERMISSIONS = rolePerms('SYSTEM_ADMIN').length;
 import { prisma } from '../src/lib/prisma';
 import { cleanUsers, createTestServer, createUser, ensureRoles, loginAs, resetDatabase, resetRolePermissions } from './helpers';
 
@@ -36,7 +38,8 @@ describe('view roles / permissions', () => {
     expect(roles.body.data.map((r: { code: string }) => r.code).sort()).toEqual(['EMPLOYEE', 'EXECUTIVE', 'HR', 'HR_ADMIN', 'MANAGER', 'SYSTEM_ADMIN']);
     const sys = roles.body.data.find((r: { code: string }) => r.code === 'SYSTEM_ADMIN');
     expect(sys.isSystem).toBe(true);
-    expect(sys.permissionCodes).toHaveLength(ALL_PERMISSIONS);
+    expect(sys.permissionCodes).toHaveLength(SYSTEM_ADMIN_PERMISSIONS);
+    expect(sys.permissionCodes.some((p: string) => p.startsWith('compensation_planning.'))).toBe(false);
     expect(sys.userCount).toBe(1);
 
     const perms = await authed(hrAdmin, 'get', '/api/v1/permissions');
@@ -107,7 +110,7 @@ describe('update role permissions', () => {
     const res = await authed(sysadmin, 'patch', `/api/v1/roles/${id}/permissions`).send({ permissionCodes: ['dashboard.view'] });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CRITICAL_PERMISSION_REQUIRED');
-    expect((await authed(sysadmin, 'get', `/api/v1/roles/${id}`)).body.data.permissionCodes).toHaveLength(ALL_PERMISSIONS);
+    expect((await authed(sysadmin, 'get', `/api/v1/roles/${id}`)).body.data.permissionCodes).toHaveLength(SYSTEM_ADMIN_PERMISSIONS);
 
     // keeping the critical set (and dropping something else) is allowed
     const ok = await authed(sysadmin, 'patch', `/api/v1/roles/${id}/permissions`).send({ permissionCodes: [...CRITICAL_PERMISSIONS, 'dashboard.view'] });

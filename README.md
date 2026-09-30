@@ -166,6 +166,13 @@ Every response carries `x-request-id`; the same id appears in the API log line f
   (`SELF_ROLE_REMOVAL_NOT_ALLOWED`), the last active SYSTEM_ADMIN cannot be deactivated or demoted (`LAST_SYSTEM_ADMIN`),
   and nobody can grant a role whose permissions exceed their own (`ROLE_ESCALATION_NOT_ALLOWED`)
   or whose data scope is wider than their own (`ROLE_SCOPE_ESCALATION_NOT_ALLOWED`).
+- **RBAC administration ≠ business authority** (Task 43 correction, `blockingGrantPermissions` in
+  `packages/shared/src/permissions.ts`): a holder of `roles.manage` may grant a role whose *business* permissions it does
+  not hold itself (SYSTEM_ADMIN assigns MANAGER without holding `compensation_planning.plan`); it never bypasses the
+  user/role administration permissions (`CRITICAL_PERMISSIONS`) it lacks, nor any permission of a role that itself
+  carries `roles.manage` (so it cannot mint a wider administrator). Without `roles.manage` the full subset rule applies.
+  `roles.manage` satisfies no business permission check. SYSTEM_ADMIN holds every permission **except**
+  `compensation_planning.*` (removed from existing databases by migration `20260930120000_…`).
 - **Frontend** (`usePermission`, `<PermissionGuard>`, `<RequirePermission>` → 403 page, permission-aware sidebar) is UX only.
 
 | Users API | Permission |

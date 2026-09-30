@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { PASSWORD_MIN_LENGTH, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
+import { PASSWORD_MIN_LENGTH, blockingGrantPermissions, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -30,11 +30,11 @@ export function UserFormModal({ open, onClose, roles, user }: UserFormModalProps
   const isEdit = !!user;
   const { user: me } = useAuth();
   const { create, update, setRoles } = useUserMutations();
-  // Mirrors the API rule: you can only grant roles whose permissions you hold yourself (roles the user already has stay editable).
+  // Mirrors the API rule (blockingGrantPermissions + data scope); roles the user already has stay editable.
   const SCOPE_RANK: Record<string, number> = { SELF: 0, TEAM: 1, ALL: 2 };
   const canGrant = (r: RoleDto) =>
     (user?.roles.some((ur) => ur.code === r.code) ?? false) ||
-    (r.permissionCodes.every((p) => me?.permissions.includes(p)) && (SCOPE_RANK[r.dataScope] ?? 0) <= (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0));
+    (blockingGrantPermissions(me?.permissions ?? [], r.permissionCodes).length === 0 && (SCOPE_RANK[r.dataScope] ?? 0) <= (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0));
   const [serverError, setServerError] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const debouncedSearch = useDebounce(employeeSearch);

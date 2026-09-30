@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import {
+  blockingGrantPermissions,
   AUDIT_ACTIONS, ROLES,
   type CreateUserInput, type EmployeeOption, type UpdateUserInput, type UpdateUserRolesInput,
   type UserDto, type UserListQuery,
@@ -52,7 +53,8 @@ async function findOrThrow(tx: Tx | typeof prisma, id: string) {
 
 /**
  * Validates role codes and blocks privilege escalation. A role may be granted only when BOTH hold:
- *   1. its permissions ⊆ the actor's effective permissions      → else ROLE_ESCALATION_NOT_ALLOWED
+ *   1. no permission blocks it (blockingGrantPermissions: its permissions ⊆ the actor's, except that a `roles.manage`
+ *      holder may grant business permissions it lacks — never administration ones) → else ROLE_ESCALATION_NOT_ALLOWED
  *   2. its data scope ≤ the actor's effective data scope         → else ROLE_SCOPE_ESCALATION_NOT_ALLOWED
  * (no role-name checks). Roles the target already holds are exempt, so an admin can edit a user without "re-granting" them.
  */
@@ -64,8 +66,7 @@ async function resolveRoles(tx: Tx | typeof prisma, roleCodes: string[], actor: 
     const missing = codes.filter((c) => !found.has(c));
     throw new AppError(400, 'INVALID_ROLE', `Unknown role(s): ${missing.join(', ')}`, missing.map((m) => ({ field: 'roleCodes', message: `Unknown role ${m}` })));
   }
-  const mine = new Set(actor.auth.permissions);
-  const escalating = roles.filter((r) => !alreadyHeld.includes(r.code) && r.rolePermissions.some((rp) => !mine.has(rp.permission.code)));
+  const escalating = roles.filter((r) => !alreadyHeld.includes(r.code) && blockingGrantPermissions(actor.auth.permissions, r.rolePermissions.map((rp) => rp.permission.code)).length > 0);
   if (escalating.length > 0) {
     throw new AppError(403, 'ROLE_ESCALATION_NOT_ALLOWED', `You cannot grant roles with permissions you do not have: ${escalating.map((r) => r.code).join(', ')}`);
   }
