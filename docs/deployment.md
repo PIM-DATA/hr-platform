@@ -68,11 +68,15 @@ the outputs and that no source map is published).
 ## 5. Migrations — before every start of a new version
 
 ```sh
-set -a; . /etc/hr-platform/api.env; set +a    # the Prisma CLI reads DATABASE_URL from the environment
-npm run db:deploy                              # prisma migrate deploy — never migrate dev / reset / db push
+# the Prisma CLI reads DATABASE_URL from the environment; the subshell keeps it out of your login shell
+( set -a; . /etc/hr-platform/api.env; set +a; npm run db:deploy )   # prisma migrate deploy — never migrate dev / reset / db push
 ```
 
 Order is **build → migrate → start**. A failed migration aborts the release.
+
+> Variables exported in your shell **override** `ENV_FILE` (real environment always wins). Do not leave a
+> `DATABASE_URL` exported from another environment in the shell you deploy from — the Task 46 drill showed that a
+> bootstrap then silently targets the database that was exported, not the one in `ENV_FILE`.
 
 ## 6. Bootstrap (first install only)
 
