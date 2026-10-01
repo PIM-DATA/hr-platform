@@ -53,8 +53,8 @@ export function LetterSheet({ letter }: { letter: HrLetterDto }) {
 
 /** Tabs by capability. The queue and the catalogue need an organization-wide scope; the employee tabs need a record. */
 export function useServiceTabs() {
-  const { hasPermission, user } = useAuth();
-  const admin = (hasPermission(PERMISSIONS.SERVICE_REQUEST_VIEW) || hasPermission(PERMISSIONS.SERVICE_REQUEST_FULFILL) || hasPermission(PERMISSIONS.SERVICE_REQUEST_MANAGE)) && user?.dataScope === 'ALL';
+  const { hasPermission, user, scopeOf } = useAuth();
+  const admin = scopeOf(PERMISSIONS.SERVICE_REQUEST_VIEW, PERMISSIONS.SERVICE_REQUEST_FULFILL, PERMISSIONS.SERVICE_REQUEST_MANAGE) === 'ALL';
   const letters = hasPermission(PERMISSIONS.HR_LETTER_ISSUE) || hasPermission(PERMISSIONS.HR_LETTER_MANAGE_TEMPLATES);
   const reportsTab = hasPermission(PERMISSIONS.HR_LETTER_VIEW_REPORTS) || hasPermission(PERMISSIONS.SERVICE_REQUEST_MANAGE);
   return [

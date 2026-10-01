@@ -90,7 +90,7 @@ export const authService = {
       employee: user.employee,
       roles: user.userRoles.map((ur) => ur.role),
       permissions: auth.permissions,
-      dataScope: auth.dataScope,
+      permissionScopes: auth.permissionScopes,
       csrfToken: auth.csrfToken,
     };
   },

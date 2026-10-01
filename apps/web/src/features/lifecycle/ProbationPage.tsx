@@ -21,9 +21,9 @@ import { useLifecycleMutations, useLifecycleOptions, useProbationCase, useProbat
 import { LifecycleBadge, SnapshotVsCurrent, titleCase } from './lifecycle-ui';
 
 export function ProbationPage() {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, scopeOf } = useAuth();
   const manage = hasPermission(PERMISSIONS.PROBATION_MANAGE);
-  const team = user?.dataScope === 'TEAM';
+  const team = scopeOf(PERMISSIONS.PROBATION_VIEW, PERMISSIONS.PROBATION_MANAGE) === 'TEAM';
   const [params, setParams] = useSearchParams();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);

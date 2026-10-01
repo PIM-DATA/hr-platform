@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { PASSWORD_MIN_LENGTH, blockingGrantPermissions, selfEscalation, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
+import { PASSWORD_MIN_LENGTH, PERMISSIONS, blockingGrantPermissions, selfEscalation, createUserSchema, type RoleDto, type UserDto } from '@hr/shared';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -28,21 +28,26 @@ interface UserFormModalProps {
 
 export function UserFormModal({ open, onClose, roles, user }: UserFormModalProps) {
   const isEdit = !!user;
-  const { user: me } = useAuth();
+  const { user: me, scopeOf } = useAuth();
   const { create, update, setRoles } = useUserMutations();
   // Mirrors the API rules (blockingGrantPermissions + data scope, and no self-escalation); roles the user already has
-  // stay editable.
+  // stay editable. Task 50: scopes are per permission — the grant limit is the actor's scope for the user-administration
+  // permission being exercised, and self-escalation compares each permission's scope.
   const SCOPE_RANK: Record<string, number> = { SELF: 0, TEAM: 1, ALL: 2 };
+  const grantScope = scopeOf(isEdit ? PERMISSIONS.USERS_UPDATE : PERMISSIONS.USERS_CREATE) ?? 'SELF';
   const isSelf = !!user && user.id === me?.id;
   const widensSelf = (r: RoleDto) => {
-    const e = selfEscalation({ permissions: me?.permissions ?? [], dataScope: me?.dataScope ?? 'SELF' }, { permissions: [...(me?.permissions ?? []), ...r.permissionCodes], dataScope: (SCOPE_RANK[r.dataScope] ?? 0) > (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0) ? r.dataScope : me?.dataScope ?? 'SELF' });
+    const before = { permissions: me?.permissions ?? [], permissionScopes: me?.permissionScopes ?? {} };
+    const after = { permissions: [...before.permissions, ...r.permissionCodes], permissionScopes: { ...before.permissionScopes } };
+    for (const p of r.permissionCodes) if ((SCOPE_RANK[r.dataScope] ?? 0) > (SCOPE_RANK[after.permissionScopes[p] ?? ''] ?? -1)) after.permissionScopes[p] = r.dataScope as 'SELF' | 'TEAM' | 'ALL';
+    const e = selfEscalation(before, after);
     return e.gained.length > 0 || e.scopeWidened;
   };
   const held = (r: RoleDto) => user?.roles.some((ur) => ur.code === r.code) ?? false;
   const blockReason = (r: RoleDto): string | null => {
     if (held(r)) return null;
     if (isSelf && widensSelf(r)) return 'would widen your own access — another administrator must assign it';
-    if (blockingGrantPermissions(me?.permissions ?? [], r.permissionCodes).length > 0 || (SCOPE_RANK[r.dataScope] ?? 0) > (SCOPE_RANK[me?.dataScope ?? 'SELF'] ?? 0)) return 'requires higher privileges';
+    if (blockingGrantPermissions(me?.permissions ?? [], r.permissionCodes).length > 0 || (SCOPE_RANK[r.dataScope] ?? 0) > (SCOPE_RANK[grantScope] ?? 0)) return 'requires higher privileges';
     return null;
   };
   const canGrant = (r: RoleDto) => blockReason(r) === null;

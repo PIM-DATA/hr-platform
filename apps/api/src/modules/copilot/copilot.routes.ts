@@ -6,7 +6,7 @@ import { requireAuth } from '../../middleware/auth';
 import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
 import { requestMeta } from '../../services/audit/audit.service';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import { copilotOrchestrator } from './orchestrator';
 import { copilotStatus } from './provider';
 import { mayRollup } from '../analytics/domain-rollups';
@@ -44,7 +44,7 @@ export function suggestionsFor(auth: AuthContext): CopilotSuggestionDto[] {
     if (has(PERMISSIONS.COMPETENCY_VIEW)) out.push({ text: 'Skill gap ของฉันมีอะไรบ้าง', group: 'ของฉัน' });
     if (has(PERMISSIONS.TRAINING_VIEW)) out.push({ text: 'Training ที่กำลังจะถึงของฉัน', group: 'ของฉัน' });
   }
-  if (auth.dataScope === 'TEAM' && auth.employeeId && (has(PERMISSIONS.LEAVE_VIEW) || has(PERMISSIONS.ATTENDANCE_VIEW))) {
+  if (scopeFor(auth, PERMISSIONS.LEAVE_VIEW, PERMISSIONS.ATTENDANCE_VIEW) === 'TEAM' && auth.employeeId) {
     out.push({ text: 'วันนี้ทีมฉันมีใครลา และ attendance เป็นยังไง', group: 'ทีม' });
     if (has(PERMISSIONS.PERFORMANCE_VIEW)) out.push({ text: 'ทีมมี Performance review ค้างที่ฉันต้องทำกี่คน', group: 'ทีม' });
     if (has(PERMISSIONS.TRAINING_VIEW)) out.push({ text: 'Training และ development ของทีมเป็นยังไง', group: 'ทีม' });

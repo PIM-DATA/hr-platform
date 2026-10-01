@@ -20,8 +20,11 @@ export interface AuthUser {
   } | null;
   roles: { code: string; name: string }[];
   permissions: string[];
-  /** Widest data scope across the user's roles: SELF | TEAM | ALL */
-  dataScope: string;
+  /**
+   * Task 50 (T44-P1-21): permission → data scope (widest among the roles that grant THAT permission). There is no
+   * user-wide scope: a UI decision about a module reads the scope of that module's permission (`scopeOf`).
+   */
+  permissionScopes: Record<string, 'SELF' | 'TEAM' | 'ALL'>;
   /** Synchronizer CSRF token bound to the current session; send as `x-csrf-token` on mutations. */
   csrfToken: string;
 }

@@ -9,8 +9,8 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { hashPassword } from '../../lib/password';
 import { auditService, diffFields } from '../../services/audit/audit.service';
-import { computeEffectivePermissions, isScopeWithin, resolveDataScope } from '../../services/authorization/authorization.service';
-import { assertCanAdministerAccount, assertNoSelfEscalation } from './account-guard';
+import { isScopeWithin } from '../../services/authorization/authorization.service';
+import { accessOf, assertCanAdministerAccount, assertNoSelfEscalation } from './account-guard';
 import type { AuthContext } from '../auth/auth.types';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
@@ -231,7 +231,7 @@ export const usersService = {
       }
       // roles.manage administers OTHER people's access: an assignment to yourself may never add a permission or widen scope.
       if (id === actor.auth.userId) {
-        assertNoSelfEscalation(actor, { permissions: computeEffectivePermissions(roles), dataScope: resolveDataScope(roles) }, 'SELF_ROLE_ASSIGNMENT');
+        assertNoSelfEscalation(actor, accessOf(roles), 'SELF_ROLE_ASSIGNMENT');
       }
 
       await tx.userRole.deleteMany({ where: { userId: id } });

@@ -30,9 +30,9 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
 export const HIGH_IMPACT_NOTE = 'People decide every salary here. The system shows the facts, derives the increase from the number a person entered and checks the budget — it never suggests, ranks or scores anyone.';
 
 export function useCompAccess() {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, scopeOf } = useAuth();
   const P = PERMISSIONS;
-  const hr = user?.dataScope === 'ALL' && [P.COMP_PLAN_REVIEW, P.COMP_PLAN_MANAGE_CYCLES, P.COMP_PLAN_MANAGE_BUDGET, P.COMP_PLAN_FINALIZE, P.COMP_PLAN_APPLY].some((p) => hasPermission(p));
+  const hr = scopeOf(P.COMP_PLAN_REVIEW, P.COMP_PLAN_MANAGE_CYCLES, P.COMP_PLAN_MANAGE_BUDGET, P.COMP_PLAN_FINALIZE, P.COMP_PLAN_APPLY) === 'ALL';
   const planner = hasPermission(P.COMP_PLAN_VIEW_TEAM) || hasPermission(P.COMP_PLAN_PLAN);
   const reports = hasPermission(P.COMP_PLAN_VIEW_REPORTS) || hr;
   return { hr, planner, reports, manage: hr && hasPermission(P.COMP_PLAN_MANAGE_CYCLES), budget: hr && hasPermission(P.COMP_PLAN_MANAGE_BUDGET), review: hr && hasPermission(P.COMP_PLAN_REVIEW), finalize: hr && hasPermission(P.COMP_PLAN_FINALIZE), apply: hr && hasPermission(P.COMP_PLAN_APPLY) && hasPermission(P.PAYROLL_MANAGE), plan: hasPermission(P.COMP_PLAN_PLAN) };

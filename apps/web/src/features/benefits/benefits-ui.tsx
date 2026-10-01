@@ -27,8 +27,8 @@ export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).
 
 /** Tabs by capability. Administration needs the benefits permissions; the employee tab needs only an employee record. */
 export function useBenefitsTabs() {
-  const { hasPermission, user } = useAuth();
-  const admin = (hasPermission(PERMISSIONS.BENEFITS_VIEW) || hasPermission(PERMISSIONS.BENEFITS_MANAGE)) && user?.dataScope === 'ALL';
+  const { hasPermission, user, scopeOf } = useAuth();
+  const admin = scopeOf(PERMISSIONS.BENEFITS_VIEW, PERMISSIONS.BENEFITS_MANAGE) === 'ALL';
   const reports = hasPermission(PERMISSIONS.BENEFITS_VIEW_REPORTS) || hasPermission(PERMISSIONS.BENEFITS_MANAGE);
   return [
     (!!user?.employee && hasPermission(PERMISSIONS.BENEFITS_VIEW_OWN)) && { label: 'My benefits', to: '/hrm/benefits', end: true },

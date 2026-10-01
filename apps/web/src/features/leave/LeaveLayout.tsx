@@ -10,9 +10,9 @@ import { useAuth } from '@/hooks/useAuth';
  * These are UX hints only — every endpoint enforces the same rules server-side.
  */
 export function useLeaveTabs() {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, scopeOf } = useAuth();
   const canView = hasPermission(PERMISSIONS.LEAVE_VIEW);
-  const scope = user?.dataScope;
+  const scope = scopeOf(PERMISSIONS.LEAVE_VIEW);
   return [
     canView && !!user?.employee && { label: 'My leave', to: '/hrm/leave', end: true },
     hasPermission(PERMISSIONS.WORKFLOW_APPROVE) && { label: 'Approvals', to: '/hrm/leave/approvals' },

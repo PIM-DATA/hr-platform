@@ -3,7 +3,7 @@ import { AUDIT_ACTIONS, PERMISSIONS, REPORT_LIMITS, csvLine, reportDefinitionSch
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 import { getDataset, listDatasets, validateDefinition, type FieldDef, type ReportDataset } from './registry';
 import './datasets';
@@ -21,6 +21,18 @@ export function datasetAccess(auth: AuthContext, d: ReportDataset): boolean {
   if (!hasPermission(auth, PERMISSIONS.REPORTS_VIEW)) return false;
   if (!d.aggregateOnly && !hasPermission(auth, PERMISSIONS.REPORTS_VIEW_INDIVIDUAL)) return false;
   return d.requiredPermissions.some((p) => hasPermission(auth, p));
+}
+/**
+ * Task 50 (T44-P1-21): the scope a dataset runs with. It is the scope of the dataset's SOURCE permission, and never wider
+ * than the caller's scope for `reports.view` — or, for an individual-row dataset, for `reports.view_individual`. The
+ * Report Center opens a door; it never widens what the source permission allows (MANAGER/TEAM + EXECUTIVE/ALL running
+ * the employee directory sees the team only). Saved/shared reports run with the RUNNER's scope — sharing confers none.
+ */
+const RANK = { SELF: 0, TEAM: 1, ALL: 2 } as const;
+export function datasetAuth(auth: AuthContext, d: ReportDataset): AuthContext {
+  const parts = [scopeFor(auth, ...d.requiredPermissions), scopeFor(auth, PERMISSIONS.REPORTS_VIEW), ...(d.aggregateOnly ? [] : [scopeFor(auth, PERMISSIONS.REPORTS_VIEW_INDIVIDUAL)])];
+  const narrowest = parts.reduce<'SELF' | 'TEAM' | 'ALL'>((acc, s) => (s === null ? 'SELF' : RANK[s] < RANK[acc] ? s : acc), 'ALL');
+  return { ...auth, dataScope: narrowest };
 }
 export const visibleFields = (auth: AuthContext, d: ReportDataset): FieldDef[] => d.fields.filter((f) => !f.requiredPermission || hasPermission(auth, f.requiredPermission));
 const datasetDto = (auth: AuthContext, d: ReportDataset): ReportDatasetDto => ({
@@ -41,7 +53,7 @@ export const reportsService = {
     const d = requireDataset(auth, datasetId);
     const fields = visibleFields(auth, d);
     validateDefinition(d, definition, fields);
-    const result = await d.run({ auth, definition, page, pageSize: definition.pageSize });
+    const result = await d.run({ auth: datasetAuth(auth, d), definition, page, pageSize: definition.pageSize });
     return { datasetId, columns: columnsOf(d, definition, fields), rows: result.rows, meta: { page, pageSize: definition.pageSize, total: result.total, grouped: definition.groupBy.length > 0 || definition.aggregations.length > 0 }, suppression: result.suppression ?? null };
   },
 
@@ -50,9 +62,9 @@ export const reportsService = {
     const d = requireDataset(actor.auth, datasetId);
     const fields = visibleFields(actor.auth, d);
     validateDefinition(d, definition, fields);
-    const probe = await d.run({ auth: actor.auth, definition, page: 1, pageSize: 1 });
+    const probe = await d.run({ auth: datasetAuth(actor.auth, d), definition, page: 1, pageSize: 1 });
     if (probe.total > REPORT_LIMITS.exportRows) throw new AppError(413, 'REPORT_EXPORT_TOO_LARGE', `This report has ${probe.total} rows; exports are limited to ${REPORT_LIMITS.exportRows}. Narrow the filters.`);
-    const result = await d.runAll({ auth: actor.auth, definition }, REPORT_LIMITS.exportRows);
+    const result = await d.runAll({ auth: datasetAuth(actor.auth, d), definition }, REPORT_LIMITS.exportRows);
     const columns = columnsOf(d, definition, fields);
     const lines = [csvLine(columns.map((c) => c.label)), ...result.rows.map((r) => csvLine(columns.map((c) => r[c.id] ?? null)))];
     // Withheld small groups are stated in the file too — never silently missing, never exported with their values.

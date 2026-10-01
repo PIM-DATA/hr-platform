@@ -15,11 +15,11 @@ export const SUPPRESSED_TEXT = 'ผลลัพธ์ถูกซ่อนเพ
 
 /** Tabs follow capability. Everyone with respond sees "My surveys"; results readers see the aggregate screens; managers see their team. */
 export function useEngagementTabs() {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, scopeOf } = useAuth();
   const respond = hasPermission(PERMISSIONS.ENGAGEMENT_RESPOND) && !!user?.employee;
   const manage = hasPermission(PERMISSIONS.ENGAGEMENT_MANAGE);
   const view = hasPermission(PERMISSIONS.ENGAGEMENT_VIEW_RESULTS) || manage;
-  const team = view && user?.dataScope === 'TEAM';
+  const team = view && scopeOf(PERMISSIONS.ENGAGEMENT_VIEW_RESULTS, PERMISSIONS.ENGAGEMENT_MANAGE) === 'TEAM';
   return [
     respond && { label: 'My surveys', to: '/hrod/engagement', end: true },
     team && { label: 'Team engagement', to: '/hrod/engagement/team' },

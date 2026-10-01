@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, CalendarOff } from 'lucide-react';
-import { LEAVE_BLOCKING_STATUSES, type LeaveCalendarEntryDto } from '@hr/shared';
+import { PERMISSIONS, LEAVE_BLOCKING_STATUSES, type LeaveCalendarEntryDto } from '@hr/shared';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -32,7 +32,7 @@ const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${pad
  * summary projection inside the caller's data scope — never reasons, attachments, policy internals or ledger figures.
  */
 export function TeamLeavePage() {
-  const { user } = useAuth();
+  const { scopeOf } = useAuth();
   const [month, setMonth] = useState(thisMonth);
   const [status, setStatus] = useState('');
   const [leaveTypeId, setLeaveTypeId] = useState('');
@@ -68,7 +68,7 @@ export function TeamLeavePage() {
             options={LEAVE_BLOCKING_STATUSES.map((s) => ({ value: s, label: s.charAt(0) + s.slice(1).toLowerCase() }))} />
           <Select aria-label="Filter by leave type" className="w-full sm:w-44" placeholder="All leave types" value={leaveTypeId} onChange={(e) => setLeaveTypeId(e.target.value)}
             options={(types.data ?? []).map((t) => ({ value: t.id, label: t.name }))} />
-          {user?.dataScope === 'ALL' && <SearchInput className="w-full sm:w-52" placeholder="Search employee…" value={search} onChange={setSearch} />}
+          {scopeOf(PERMISSIONS.LEAVE_VIEW) === 'ALL' && <SearchInput className="w-full sm:w-52" placeholder="Search employee…" value={search} onChange={setSearch} />}
         </div>
         {q.isError && <Alert className="m-4">Could not load the team calendar.</Alert>}
         {q.isLoading ? (

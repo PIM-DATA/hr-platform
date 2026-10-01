@@ -23,9 +23,9 @@ const PAGE_SIZE = 20;
  * through the shared workflow endpoint, so the inbox, the timeline and the notification all behave like Leave.
  */
 export function CorrectionsPage() {
-  const { hasPermission, user } = useAuth();
+  const { scopeOf } = useAuth();
   const canApprove = usePermission(PERMISSIONS.WORKFLOW_APPROVE);
-  const canSeeAll = user?.dataScope === 'ALL' && hasPermission(PERMISSIONS.ATTENDANCE_VIEW);
+  const canSeeAll = scopeOf(PERMISSIONS.ATTENDANCE_VIEW) === 'ALL';
   const views = [
     { key: 'mine', label: 'My requests' },
     ...(canApprove ? [{ key: 'inbox', label: 'Waiting for me' }] : []),

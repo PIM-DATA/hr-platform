@@ -190,7 +190,8 @@ describe('RBAC separation of duties: roles.manage is not self-service authority'
       expect(r.status).toBe(403);
       expect(['SELF_PRIVILEGE_ESCALATION_NOT_ALLOWED', 'ROLE_SCOPE_ESCALATION_NOT_ALLOWED']).toContain(r.body.error.code);
     }
-    expect((await as(rbacOnly, 'get', '/api/v1/auth/me')).body.data.dataScope).toBe('SELF');
+    // Task 50 — BEFORE: me.dataScope === 'SELF'. AFTER: every permission the actor holds is still at SELF.
+    expect(Object.values((await as(rbacOnly, 'get', '/api/v1/auth/me')).body.data.permissionScopes as Record<string, string>).every((s) => s === 'SELF')).toBe(true);
     expect(await rolesOf(ids.rbacOnly)).toEqual(['RBAC_ONLY']);
     // a self-assignment that adds nothing new is not an escalation
     expect(err(await as(rbacOnly, 'patch', `${U}/${ids.rbacOnly}/roles`).send({ roleCodes: ['RBAC_ONLY', 'PLAIN_VIEWER'] }))).toBe('200');

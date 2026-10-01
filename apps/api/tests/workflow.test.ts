@@ -25,7 +25,7 @@ async function mkEmployee(code: string, departmentId: string, managerId: string 
   const org = (await prisma.department.findUniqueOrThrow({ where: { id: departmentId } })).organizationId;
   return (await prisma.employee.create({ data: { employeeCode: code, firstName: code, lastName: 'Wf', email: `${code.toLowerCase()}@wf.local`, hireDate: new Date('2020-01-01'), organizationId: org, departmentId, positionId: pos.id, managerId, employmentStatus: status, positionHistory: { create: { positionId: pos.id, departmentId, startDate: new Date('2020-01-01') } }, managerHistory: managerId ? { create: { managerId, startDate: new Date('2020-01-01') } } : undefined } })).id;
 }
-const actorOf = (s: Session): Actor => ({ auth: { userId: s.user.id, email: '', employeeId: s.user.employee?.id ?? null, roles: [], permissions: [], dataScope: 'SELF', sessionId: 's', csrfToken: 'c' }, ipAddress: null, userAgent: null });
+const actorOf = (s: Session): Actor => ({ auth: { userId: s.user.id, email: '', employeeId: s.user.employee?.id ?? null, roles: [], permissions: [], permissionScopes: {}, dataScope: 'SELF', sessionId: 's', csrfToken: 'c' }, ipAddress: null, userAgent: null });
 /** Submits inside a transaction, like a business module would. */
 const submit = (code: string, requesterEmployeeId: string, s: Session, entityId = newEntityId()) =>
   prisma.$transaction((tx) => workflowEngine.submit({ definitionCode: code, module: 'test', entityType: 'TestRequest', entityId, requesterEmployeeId }, actorOf(s), tx));

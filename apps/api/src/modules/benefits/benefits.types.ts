@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type BenefitSnapshotDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 
 export type Tx = Prisma.TransactionClient;
@@ -54,7 +54,7 @@ export const snapshotDto = (r: { employeeCodeSnapshot: string; employeeNameSnaps
  * scope never opens a subordinate's claims, balances or receipts. Only the organization-wide administrative
  * permissions (`benefits.view` / manage / review / record_payment) held with an ALL data scope see other people.
  */
-export const adminScope = (auth: AuthContext): boolean => auth.dataScope === 'ALL' && has(auth, P.BENEFITS_VIEW, P.BENEFITS_MANAGE, P.BENEFITS_REVIEW_CLAIMS, P.BENEFITS_RECORD_PAYMENT);
+export const adminScope = (auth: AuthContext): boolean => scopeFor(auth, P.BENEFITS_VIEW, P.BENEFITS_MANAGE, P.BENEFITS_REVIEW_CLAIMS, P.BENEFITS_RECORD_PAYMENT) === 'ALL' /* Task 50: the scope of these permissions, not of any role */;
 /** A where clause on `employeeId`: everyone for administrators, otherwise exactly the caller's own record. */
 export const visibleEmployeeWhere = (auth: AuthContext): { employeeId?: string } => (adminScope(auth) ? {} : { employeeId: auth.employeeId ?? '__none__' });
 export const canSeeEmployee = (auth: AuthContext, employeeId: string): boolean => adminScope(auth) || (!!auth.employeeId && auth.employeeId === employeeId);

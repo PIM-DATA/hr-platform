@@ -83,6 +83,7 @@ What stands between this system and real use:
 | T44-P2-20 backup umask / restore target | partly — Task 49 | Ops commands set `umask 077` and build sets in a `0700` partial directory; restore drill (`--verify-only`) still needs `CREATEDB` — recommended on a separate verification host (runbook §4.2) |
 | T44-P2-22 RPO/RTO | partly — Task 49 | Stated factually with measured drill durations (docs/backup-restore.md §10); no target is promised — agreeing targets is a customer decision; release engineering untouched |
 | Found and fixed in Task 49 | fixed | Ops commands imported `@prisma/client` before the application's `ENV_FILE` loader; Prisma loaded the repository `.env` first, so a backup run with `ENV_FILE` silently dumped the `.env` database (caught in the drill by the new document cross-check: 203 objects "missing"). Every ops entry point now loads `ENV_FILE` first; regression test spawns a command with `ENV_FILE` and proves it targets that database. Also: macOS `openrsync` lacks `--chmod` — the shipped hook no longer uses it (`-a` preserves the 0600/0700 modes) |
+| T44-P1-21 scope per permission | **RESOLVED — Task 50** | Reproduced first (`permission-scope.test.ts` on the old code: MANAGER+EXECUTIVE read another department's private and public documents by URL `200`, the individual employee directory dataset returned all employees, CSV export and a shared saved report likewise; "employees.view SELF + leave.view ALL" listed every employee; organization reports accepted an unrelated ALL; an RBAC manager with an unrelated ALL role could self-assign a wider leave scope; Copilot `report_query` returned other departments — 9 tests failed). Now scope is resolved per permission from the roles that grant it (`@hr/shared` `computePermissionScopes`, same on the web); no user-wide scope (SELF until a guard names a permission); Employee 360 sections, Copilot tools, Report Center (`datasetAuth`), documents, organization reports and module admin checks use their own permission's scope; SoD compares per permission. Same-permission union, manager TEAM, HR ALL unchanged; no migration. Also fixed: a `documents.view` ALL viewer without `documents.manage` got an empty list (`ownerEmployee: {}`) |
 | All other findings | open | — |
 
 The classifications above are unchanged by these fixes; the remaining Pilot blockers are listed in §27.
@@ -257,7 +258,7 @@ recruitment offer figures hidden from hiring managers and interviewers; employee
 Gaps: compensation self-approval (override/approve/applier = finalizer; planner reassignment onto own row); payroll
 self-dealing (own compensation, own adjustments); ER case subject not excluded (can read/edit own case; workflow
 self-check ignores the subject); salary HR letters (body + `salaryAmount`) visible to any ALL-scope service fulfiller
-without payroll authority; scope is the widest across roles, not per permission (a MANAGER+EXECUTIVE user gets ALL-scope
+without payroll authority; scope is the widest across roles, not per permission — resolved in Task 50 — (a MANAGER+EXECUTIVE user gets ALL-scope
 documents and individual reports); `POST /documents/:id/links` does not check access to the source document; manage-level
 document update can reclassify RESTRICTED→PUBLIC_INTERNAL; talent 9-box cell reveals potential to team managers; workflow
 definitions whose steps are all SKIP auto-approve (live definitions **UNVERIFIED**).
@@ -582,7 +583,7 @@ copilot prompts, browser walk) were run from the session scratch area against th
 | T44-P1-18 ✅ resolved (Task 47) | Sensitive text in append-only audit | Leave reason/comments, ER comments/title, termination reason, payroll notes | Health/disciplinary text readable by every `audit.view` holder forever | Switch to the existing length/changed pattern | yes / yes / yes |
 | T44-P1-19 | Self-approval / self-dealing | Compensation override/approve/apply chain; payroll own compensation/adjustments; ER subject; service fulfiller own ticket/letter | One person can raise and pay their own salary or handle their own case | Subject ≠ actor checks; maker ≠ checker on money steps | conditional (small trusted HR team) / yes / yes |
 | T44-P1-20 ✅ resolved (Task 47) | Salary letters exposure | `letter.service.ts:188-198` returns body + salary to ALL-scope fulfillers | Salaries visible without payroll authority | Redact salary-bearing letters unless owner or `payroll.manage` | yes / yes / yes |
-| T44-P1-21 | Scope per permission | `authorization.service.ts:19-33` widest scope across roles | MANAGER+EXECUTIVE user reads all private documents and individual reports | Resolve scope per permission or forbid mixed-scope combinations | conditional (avoid combos) / yes / yes |
+| T44-P1-21 ✅ resolved (Task 50) | Scope per permission | `authorization.service.ts:19-33` widest scope across roles | MANAGER+EXECUTIVE user reads all private documents and individual reports | Resolve scope per permission or forbid mixed-scope combinations | conditional (avoid combos) / yes / yes |
 | T44-P1-22 | Copilot high-impact | Notice only; tools unrestricted; history not classified | A real model can still rank or recommend with a disclaimer | Server-side factual-only template or tool restriction for high-impact; classify history | conditional (keep copilot off) / yes / yes |
 | T44-P1-23 | Timezone | Hard-coded Bangkok/UTC in 7+ modules; UTC in reports/documents/copilot/360 | Wrong expiry/SLA/probation dates outside Bangkok; modules disagree 7 h/day | One helper using `Organization.timezone` | no (Bangkok pilot) / yes / yes |
 | T44-P1-24 ✅ resolved (Task 47) | Payroll CSV audit | `payroll.routes.ts:85-96` not audited | Bulk salary export leaves no trace | Audit every payroll export | yes / yes / yes |
@@ -651,8 +652,8 @@ Blockers (must be fixed or explicitly accepted before a real customer pilot):
 Beyond the pilot blockers, production requires the remaining P1 items: ~~RBAC SoD enforced (P1-01), small-group
 suppression in analytics and Report Center (P1-07)~~ (resolved in Tasks 45 / 47), document and off-host backups automated with alerting (P1-10/11),
 monitoring and supervision (P1-12), ~~attendance/OT truncation (P1-13), payroll currency, handoff and post-approval
-integrity (P1-14/15/16)~~ (resolved in Task 48), ~~complete privacy export (P1-17)~~ (Task 47), maker-checker and subject exclusion (P1-19), per-permission
-scope (P1-21), copilot high-impact restriction if enabled (P1-22), organization timezone everywhere (P1-23), plus defined
+integrity (P1-14/15/16)~~ (resolved in Task 48), ~~complete privacy export (P1-17)~~ (Task 47), maker-checker and subject exclusion (P1-19), ~~per-permission
+scope (P1-21)~~ (Task 50), copilot high-impact restriction if enabled (P1-22), organization timezone everywhere (P1-23), plus defined
 RPO/RTO and MFA for privileged roles.
 
 ## 29. Enterprise classification — **NO**
@@ -668,7 +669,7 @@ engineering (tags, changelog, reproducible versioned builds).
    backup + consistency + honest readiness~~ (Task 49); P1-11/12 application side shipped in Task 49 (backup schedule
    examples, off-host hooks, monitor check, supervisor unit, emitted events) — external destination and alerting per deployment;
    doc drift (P2-21).
-3. **Confidentiality (pilot):** P1-05, P1-06, P1-18, P1-20, P1-24; then P1-07 and P1-21.
+3. **Confidentiality (pilot):** ~~P1-05, P1-06, P1-18, P1-20, P1-24; then P1-07~~ (Task 47) and ~~P1-21~~ (Task 50).
 4. **Data correctness (production):** ~~P1-13, P1-14, P1-15, P1-16~~ and ~~P2-15~~ resolved in Task 48; P1-23; P2-16/17.
 5. **Governance and privacy (production):** P1-17, P1-19, P1-22; P2-07/08/09/10; MFA for privileged roles (P2-25).
 6. **Hardening (production):** remaining P2 items.

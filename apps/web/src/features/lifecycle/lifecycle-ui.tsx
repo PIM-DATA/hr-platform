@@ -27,13 +27,14 @@ export function SnapshotVsCurrent({ snapshot, current }: { snapshot: { departmen
 
 /** Tabs by capability. Managers get their team screens; HR the administration; employees their own lifecycle. */
 export function useLifecycleTabs() {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, scopeOf } = useAuth();
   const P = PERMISSIONS;
   const manage = hasPermission(P.ONBOARDING_MANAGE) || hasPermission(P.PROBATION_MANAGE) || hasPermission(P.OFFBOARDING_MANAGE);
   const view = manage || hasPermission(P.ONBOARDING_VIEW) || hasPermission(P.PROBATION_VIEW) || hasPermission(P.OFFBOARDING_VIEW);
   const reports = hasPermission(P.LIFECYCLE_VIEW_REPORTS) || manage;
-  const team = view && user?.dataScope === 'TEAM';
-  const selfOnly = view && user?.dataScope === 'SELF';
+  const lifecycleScope = scopeOf(P.ONBOARDING_VIEW, P.PROBATION_VIEW, P.OFFBOARDING_VIEW, P.ONBOARDING_MANAGE, P.PROBATION_MANAGE, P.OFFBOARDING_MANAGE);
+  const team = view && lifecycleScope === 'TEAM';
+  const selfOnly = view && lifecycleScope === 'SELF';
   return [
     (selfOnly || team) && !!user?.employee && { label: 'My lifecycle', to: '/hrm/lifecycle', end: true },
     (manage || (view && !selfOnly)) && { label: team ? 'Team' : 'Dashboard', to: '/hrm/lifecycle/dashboard' },

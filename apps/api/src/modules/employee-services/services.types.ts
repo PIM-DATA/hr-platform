@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type ServiceHistoryDto, type ServiceSnapshotDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 
 export type Tx = Prisma.TransactionClient;
@@ -62,8 +62,8 @@ export const snapshotDto = (r: { employeeCodeSnapshot: string; employeeNameSnaps
  * the queue; everybody else sees exactly their own requests and letters. A manager's TEAM scope opens nothing:
  * a manager reaches a subordinate's request only as an approver on its workflow, through the review view.
  */
-export const fulfillerScope = (auth: AuthContext): boolean => auth.dataScope === 'ALL' && has(auth, P.SERVICE_REQUEST_VIEW, P.SERVICE_REQUEST_FULFILL, P.SERVICE_REQUEST_MANAGE);
-export const letterAdminScope = (auth: AuthContext): boolean => auth.dataScope === 'ALL' && has(auth, P.HR_LETTER_ISSUE, P.HR_LETTER_MANAGE_TEMPLATES, P.SERVICE_REQUEST_VIEW, P.SERVICE_REQUEST_FULFILL);
+export const fulfillerScope = (auth: AuthContext): boolean => scopeFor(auth, P.SERVICE_REQUEST_VIEW, P.SERVICE_REQUEST_FULFILL, P.SERVICE_REQUEST_MANAGE) === 'ALL' /* Task 50: the scope of these permissions, not of any role */;
+export const letterAdminScope = (auth: AuthContext): boolean => scopeFor(auth, P.HR_LETTER_ISSUE, P.HR_LETTER_MANAGE_TEMPLATES, P.SERVICE_REQUEST_VIEW, P.SERVICE_REQUEST_FULFILL) === 'ALL' /* Task 50: the scope of these permissions, not of any role */;
 export const visibleRequestWhere = (auth: AuthContext): { employeeId?: string } => (fulfillerScope(auth) ? {} : { employeeId: auth.employeeId ?? '__none__' });
 export const visibleLetterWhere = (auth: AuthContext): { employeeId?: string } => (letterAdminScope(auth) ? {} : { employeeId: auth.employeeId ?? '__none__' });
 export const isOwner = (auth: AuthContext, employeeId: string): boolean => !!auth.employeeId && auth.employeeId === employeeId;

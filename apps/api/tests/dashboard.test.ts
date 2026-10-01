@@ -115,7 +115,7 @@ describe('data scope', () => {
 describe('new employees — last 30 days (hireDate, UTC day boundaries, injectable now)', () => {
   const now = new Date('2026-09-22T15:30:00Z');
   const ctx = (scope: 'SELF' | 'TEAM' | 'ALL', employeeId: string | null): AuthContext =>
-    ({ userId: 'u', email: 'x', employeeId, roles: [], permissions: ['dashboard.view'], dataScope: scope, sessionId: 's', csrfToken: 'c' });
+    ({ userId: 'u', email: 'x', employeeId, roles: [], permissions: ['dashboard.view'], permissionScopes: { 'dashboard.view': scope }, dataScope: scope, sessionId: 's', csrfToken: 'c' });
   it('window start = startOfDay(today − 29)', () => {
     expect(windowStartIncludingToday(30, now).toISOString()).toBe('2026-08-24T00:00:00.000Z');
   });
@@ -150,7 +150,7 @@ describe('departments represented (distinct)', () => {
   it('23. three employees in one department → 1 (TEAM view of a single-department team)', async () => {
     // EMP manages IND; give EMP a second report in DATA → EMP + IND + X all in DATA
     const x = await mkEmployee('X', deptData, EMP, new Date('2020-01-01'));
-    const teamOfEmp: AuthContext = { userId: 'u', email: 'x', employeeId: EMP, roles: [], permissions: ['dashboard.view'], dataScope: 'TEAM', sessionId: 's', csrfToken: 'c' };
+    const teamOfEmp: AuthContext = { userId: 'u', email: 'x', employeeId: EMP, roles: [], permissions: ['dashboard.view'], permissionScopes: { 'dashboard.view': 'TEAM' }, dataScope: 'TEAM', sessionId: 's', csrfToken: 'c' };
     const d = await getDashboardSummary(teamOfEmp);
     expect(d.employees.total).toBe(3);
     expect(d.departments.represented).toBe(1);

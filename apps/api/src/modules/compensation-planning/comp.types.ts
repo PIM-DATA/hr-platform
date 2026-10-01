@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type CompPerformanceContextDto, type CompRowDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 import { ROUNDING, dec, money, toMoneyString } from '../payroll/money';
 
@@ -30,7 +30,7 @@ export const notFound = (what: string) => new AppError(404, `${what.toUpperCase(
  * TEAM scope, the org chart or being someone's current manager opens nothing by itself.
  */
 export const hrScope = (auth: AuthContext): boolean =>
-  auth.dataScope === 'ALL' && has(auth, P.COMP_PLAN_REVIEW, P.COMP_PLAN_MANAGE_CYCLES, P.COMP_PLAN_MANAGE_BUDGET, P.COMP_PLAN_FINALIZE, P.COMP_PLAN_APPLY);
+  scopeFor(auth, P.COMP_PLAN_REVIEW, P.COMP_PLAN_MANAGE_CYCLES, P.COMP_PLAN_MANAGE_BUDGET, P.COMP_PLAN_FINALIZE, P.COMP_PLAN_APPLY) === 'ALL' /* Task 50: the scope of these permissions, not of any role */;
 export const plannerCapable = (auth: AuthContext): boolean => has(auth, P.COMP_PLAN_VIEW_TEAM, P.COMP_PLAN_PLAN);
 export const requireHr = (auth: AuthContext) => { if (!hrScope(auth)) throw AppError.forbidden('Compensation planning administration needs an organization-wide data scope'); };
 

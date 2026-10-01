@@ -131,8 +131,8 @@ export function DevelopmentActionModal({ open, onClose, employeeId, employeeName
 
 /** Tab visibility follows capability, never a role name. The API enforces the same rules. */
 export function useTalentTabs() {
-  const { user, hasPermission } = useAuth();
-  const teamScope = user?.dataScope === 'TEAM' || user?.dataScope === 'ALL';
+  const { user, hasPermission, scopeOf } = useAuth();
+  const teamScope = ['TEAM', 'ALL'].includes(scopeOf(PERMISSIONS.TALENT_VIEW, PERMISSIONS.TALENT_MANAGE) ?? '');
   const talentView = hasPermission(PERMISSIONS.TALENT_VIEW) || hasPermission(PERMISSIONS.TALENT_MANAGE);
   return [
     hasPermission(PERMISSIONS.CAREER_VIEW) && !!user?.employee && { label: 'My career', to: '/hrd/career', end: true },

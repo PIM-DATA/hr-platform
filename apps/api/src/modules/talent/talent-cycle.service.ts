@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import {
-  AUDIT_ACTIONS, NINE_BOX_CELLS, NOTIFICATION_TYPES, bucketFor, careerReadinessStatus, nineBoxCell, validateBucketRules,
+  AUDIT_ACTIONS, NINE_BOX_CELLS, PERMISSIONS, NOTIFICATION_TYPES, bucketFor, careerReadinessStatus, nineBoxCell, validateBucketRules,
   type AssignTalentReviewsInput, type CreateTalentCycleInput, type NineBoxDto, type SetBucketRulesInput, type SubmitPotentialInput, type TalentBucket,
   type TalentCycleDto, type TalentCycleListQuery, type TalentReviewContextDto, type TalentReviewDto, type TalentReviewListQuery, type UpdateTalentCycleInput,
 } from '@hr/shared';
@@ -11,6 +11,7 @@ import { notificationService } from '../../services/notification';
 import type { AuthContext } from '../auth/auth.types';
 import { skillGapService } from '../competency/skill-gap.service';
 import { canManageTalent, developmentContext, lockRow, notFound, talentAudit, textAudit, type Actor, type Db, type Tx } from './talent.types';
+import { scopeFor } from '../../services/authorization/authorization.service';
 
 /**
  * Talent review cycles, potential assessment and the 9-box.
@@ -83,7 +84,7 @@ const reviewScope = (auth: AuthContext, view: 'mine' | 'team' | 'all'): Prisma.T
   if (view === 'mine') return { reviewerUserId: auth.userId };
   if (canManageTalent(auth) && view === 'all') return {};
   const me = auth.employeeId ?? '__none__';
-  const team: Prisma.TalentReviewWhereInput = auth.dataScope === 'ALL' || auth.dataScope === 'TEAM' ? { employee: { managerId: me } } : { id: '__none__' };
+  const team: Prisma.TalentReviewWhereInput = ['TEAM', 'ALL'].includes(scopeFor(auth, PERMISSIONS.TALENT_VIEW) ?? '') ? { employee: { managerId: me } } : { id: '__none__' }; // Task 50
   return { OR: [{ reviewerUserId: auth.userId }, team] };
 };
 

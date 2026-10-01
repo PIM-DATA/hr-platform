@@ -1,9 +1,9 @@
 import type { Prisma } from '@prisma/client';
-import { PERMISSIONS, isPrivilegedAccount, selfEscalation, type DataScope } from '@hr/shared';
+import { PERMISSIONS, isPrivilegedAccount, selfEscalation, type DataScope, type PermissionScopes } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
-import { computeEffectivePermissions, resolveDataScope, type RoleWithPermissions } from '../../services/authorization/authorization.service';
+import { computeEffectivePermissions, resolveDataScope, resolvePermissionScopes, type RoleWithPermissions } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 
 /**
@@ -27,12 +27,15 @@ const log = logger.child({ module: 'account-guard' });
 const rolesInclude = { userRoles: { include: { role: { include: { rolePermissions: { include: { permission: { select: { code: true } } } } } } } } } satisfies Prisma.UserInclude;
 
 /** Effective permissions and scope of a stored account, from its roles as they are in the database now. */
-export async function effectiveAccess(db: Db, userId: string): Promise<{ permissions: string[]; dataScope: DataScope } | null> {
+export async function effectiveAccess(db: Db, userId: string): Promise<{ permissions: string[]; permissionScopes: PermissionScopes; dataScope: DataScope; roles: RoleWithPermissions[] } | null> {
   const user = await db.user.findUnique({ where: { id: userId }, include: rolesInclude });
   if (!user) return null;
   const roles: RoleWithPermissions[] = user.userRoles.map((ur) => ur.role);
-  return { permissions: computeEffectivePermissions(roles), dataScope: resolveDataScope(roles) };
+  return { permissions: computeEffectivePermissions(roles), permissionScopes: resolvePermissionScopes(roles), dataScope: resolveDataScope(roles), roles };
 }
+
+/** Effective access a set of roles would give (permissions + per-permission scope). */
+export const accessOf = (roles: RoleWithPermissions[]) => ({ permissions: computeEffectivePermissions(roles), permissionScopes: resolvePermissionScopes(roles) });
 
 export const privilegedAccountRefused = () =>
   new AppError(403, 'PRIVILEGED_ACCOUNT_PROTECTED', 'This is a privileged administrator account. Only a privileged-account administrator can change it.');
@@ -52,13 +55,18 @@ export async function assertCanAdministerAccount(db: Db, actor: Actor, targetUse
   throw privilegedAccountRefused();
 }
 
-export const selfEscalationRefused = (gained: string[], scopeWidened: boolean) =>
-  new AppError(403, 'SELF_PRIVILEGE_ESCALATION_NOT_ALLOWED', `You cannot widen your own access${scopeWidened ? ' (data scope)' : ''}${gained.length ? `: ${gained.slice(0, 5).join(', ')}${gained.length > 5 ? ', …' : ''}` : ''}. Another administrator must make this change.`);
+export const selfEscalationRefused = (gained: string[], widened: string[]) => {
+  const listed = [...gained, ...widened.map((p) => `${p} (wider scope)`)];
+  return new AppError(403, 'SELF_PRIVILEGE_ESCALATION_NOT_ALLOWED', `You cannot widen your own access${listed.length ? `: ${listed.slice(0, 5).join(', ')}${listed.length > 5 ? ', …' : ''}` : ''}. Another administrator must make this change.`);
+};
 
-/** Refuses a change to the actor's own access that would add permissions or widen scope. */
-export function assertNoSelfEscalation(actor: Actor, after: { permissions: readonly string[]; dataScope: string }, context: string): void {
-  const { gained, scopeWidened } = selfEscalation({ permissions: actor.auth.permissions, dataScope: actor.auth.dataScope }, after);
+/**
+ * Refuses a change to the actor's own access that would add a permission or widen the scope of one they hold
+ * (Task 50: compared per permission — not one user-wide scope).
+ */
+export function assertNoSelfEscalation(actor: Actor, after: { permissions: readonly string[]; permissionScopes: PermissionScopes }, context: string): void {
+  const { gained, scopeWidened, widened } = selfEscalation({ permissions: actor.auth.permissions, permissionScopes: actor.auth.permissionScopes }, after);
   if (gained.length === 0 && !scopeWidened) return;
-  log.warn({ event: 'self_escalation_refused', context, actorUserId: actor.auth.userId, gainedCount: gained.length, scopeWidened }, 'self escalation refused');
-  throw selfEscalationRefused(gained, scopeWidened);
+  log.warn({ event: 'self_escalation_refused', context, actorUserId: actor.auth.userId, gainedCount: gained.length, widenedCount: widened.length }, 'self escalation refused');
+  throw selfEscalationRefused(gained, widened);
 }

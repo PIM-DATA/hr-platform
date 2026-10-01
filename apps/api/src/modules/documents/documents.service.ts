@@ -7,7 +7,7 @@ import {
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, narrowAuth, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 import { employeeScopeWhere } from '../employees/employees.scope';
 import { documentStorage } from './storage';
@@ -63,8 +63,10 @@ export function canAccessDocument(auth: AuthContext, doc: Pick<Row, 'classificat
   const manage = hasPermission(auth, PERMISSIONS.DOCUMENTS_MANAGE);
   const view = hasPermission(auth, PERMISSIONS.DOCUMENTS_VIEW);
   const isOwner = !!auth.employeeId && doc.ownerEmployeeId === auth.employeeId && hasPermission(auth, PERMISSIONS.DOCUMENTS_VIEW_OWN);
-  const hrScope = view && auth.dataScope === 'ALL';
-  const inEmployeeScope = view && (!doc.ownerEmployeeId || auth.dataScope === 'ALL' || (auth.dataScope === 'TEAM' && doc.ownerEmployee?.managerId === auth.employeeId) || doc.ownerEmployeeId === auth.employeeId);
+  // Task 50 (T44-P1-21): the scope of documents.view itself — not of the route guard, not of any other role.
+  const viewScope = scopeFor(auth, PERMISSIONS.DOCUMENTS_VIEW);
+  const hrScope = view && viewScope === 'ALL';
+  const inEmployeeScope = view && (!doc.ownerEmployeeId || viewScope === 'ALL' || (viewScope === 'TEAM' && doc.ownerEmployee?.managerId === auth.employeeId) || doc.ownerEmployeeId === auth.employeeId);
 
   let classificationOk: boolean;
   switch (doc.classification) {
@@ -91,7 +93,7 @@ async function assertLinkAuthority(tx: Db, auth: AuthContext, entityType: Docume
   switch (entityType) {
     case 'EMPLOYEE': {
       need(PERMISSIONS.DOCUMENTS_MANAGE);
-      const e = await tx.employee.findFirst({ where: { AND: [{ id: entityId }, employeeScopeWhere(auth)] }, select: { employeeCode: true, firstName: true, lastName: true } });
+      const e = await tx.employee.findFirst({ where: { AND: [{ id: entityId }, employeeScopeWhere(narrowAuth(auth, PERMISSIONS.DOCUMENTS_MANAGE))] }, select: { employeeCode: true, firstName: true, lastName: true } });
       if (!e) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
       return `${e.firstName} ${e.lastName} (${e.employeeCode})`;
     }
@@ -306,7 +308,11 @@ export const documentService = {
     // classification and domain rules are then applied per row, which is why the page is read a little wide.
     if (!hasPermission(auth, PERMISSIONS.DOCUMENTS_MANAGE)) {
       const own = auth.employeeId ? [{ ownerEmployeeId: auth.employeeId }] : [];
-      where.AND = [{ OR: [...own, ...(hasPermission(auth, PERMISSIONS.DOCUMENTS_VIEW) ? [{ ownerEmployeeId: null }, { ownerEmployee: employeeScopeWhere(auth) }] : [])] }];
+      // Task 50: narrowed by documents.view's own scope. (ALL: "has an owner" — `ownerEmployee: {}` matched no row,
+      // which hid an ALL-scope viewer's whole list.)
+      const viewAuth = narrowAuth(auth, PERMISSIONS.DOCUMENTS_VIEW);
+      const owned: Prisma.DocumentWhereInput = viewAuth.dataScope === 'ALL' ? { ownerEmployeeId: { not: null } } : { ownerEmployee: employeeScopeWhere(viewAuth) };
+      where.AND = [{ OR: [...own, ...(hasPermission(auth, PERMISSIONS.DOCUMENTS_VIEW) ? [{ ownerEmployeeId: null }, owned] : [])] }];
     }
     const rows = await prisma.document.findMany({ where, include, orderBy: { createdAt: 'desc' }, take: 1000 });
     const allowed = rows.filter((r) => canAccessDocument(auth, r));
@@ -332,7 +338,7 @@ export const documentService = {
     const category = await prisma.documentCategory.findUnique({ where: { id: input.categoryId } });
     if (!category || !category.isActive) throw new AppError(404, 'DOCUMENT_CATEGORY_NOT_FOUND', 'Category not found or inactive');
     assertUploadFitsCategory(upload, category);
-    if (input.ownerEmployeeId && !(await prisma.employee.findFirst({ where: { AND: [{ id: input.ownerEmployeeId }, employeeScopeWhere(actor.auth)] }, select: { id: true } }))) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
+    if (input.ownerEmployeeId && !(await prisma.employee.findFirst({ where: { AND: [{ id: input.ownerEmployeeId }, employeeScopeWhere(narrowAuth(actor.auth, PERMISSIONS.DOCUMENTS_MANAGE))] }, select: { id: true } }))) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
     if (input.organizationId && !(await prisma.organization.findUnique({ where: { id: input.organizationId }, select: { id: true } }))) throw new AppError(404, 'ORGANIZATION_NOT_FOUND', 'Organization not found');
     const id = await prisma.$transaction(async (tx) => {
       const documentNumber = await nextNumber(tx);

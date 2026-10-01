@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatLeaveUnits, type LeaveReportOverviewDto } from '@hr/shared';
+import { PERMISSIONS, formatLeaveUnits, type LeaveReportOverviewDto } from '@hr/shared';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -25,7 +25,8 @@ const defaultFilters = (): Filters => {
  * drafts — the wording on screen says so, because a request spanning a month boundary counts in its start month.
  */
 export function ReportsPage() {
-  const { user } = useAuth();
+  const { scopeOf } = useAuth();
+  const leaveAll = scopeOf(PERMISSIONS.LEAVE_VIEW) === 'ALL';
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [applied, setApplied] = useState<Filters>(defaultFilters);
   const options = useLeaveReportOptions();
@@ -33,7 +34,7 @@ export function ReportsPage() {
   const navigate = useNavigate();
   const set = (key: keyof Filters, value: string) => setFilters((f) => ({ ...f, [key]: value }));
   const data = report.data as LeaveReportOverviewDto | undefined;
-  const showOrganization = user?.dataScope === 'ALL' && (options.data?.organizations.length ?? 0) > 1;
+  const showOrganization = leaveAll && (options.data?.organizations.length ?? 0) > 1;
 
   return (
     <div className="space-y-5">
@@ -72,7 +73,7 @@ export function ReportsPage() {
               { label: 'Pending requests', value: String(data.summary.pendingRequests), hint: 'Waiting for a decision', to: '/hrm/leave/requests?status=PENDING' },
               { label: 'Pending days', value: formatLeaveUnits(data.summary.pendingUnits), hint: 'Reserved, not yet approved' },
             ].map((kpi) => (
-              <Card key={kpi.label} className={cn('p-4', kpi.to && user?.dataScope === 'ALL' && 'cursor-pointer hover:border-brand-300')} onClick={kpi.to && user?.dataScope === 'ALL' ? () => navigate(kpi.to!) : undefined}>
+              <Card key={kpi.label} className={cn('p-4', kpi.to && leaveAll && 'cursor-pointer hover:border-brand-300')} onClick={kpi.to && leaveAll ? () => navigate(kpi.to!) : undefined}>
                 <div className="text-xs uppercase tracking-wide text-slate-500">{kpi.label}</div>
                 <div className="mt-1 text-3xl font-semibold tabular-nums text-slate-900">{kpi.value}</div>
                 <div className="mt-1 text-xs text-slate-500">{kpi.hint}</div>

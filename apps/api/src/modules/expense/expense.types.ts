@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type ExpenseHistoryDto, type ExpenseSnapshotDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 
 export type Tx = Prisma.TransactionClient;
@@ -52,7 +52,7 @@ export const snapshotDto = (r: { employeeCodeSnapshot: string; employeeNameSnaps
  * permission) see everyone; everybody else sees exactly their own rows. A manager's TEAM scope opens nothing here;
  * a manager reaches a subordinate's report only as an approver on its workflow, through the review view.
  */
-export const adminScope = (auth: AuthContext): boolean => auth.dataScope === 'ALL' && has(auth, P.EXPENSE_VIEW, P.EXPENSE_MANAGE, P.EXPENSE_REVIEW, P.EXPENSE_RECORD_PAYMENT);
+export const adminScope = (auth: AuthContext): boolean => scopeFor(auth, P.EXPENSE_VIEW, P.EXPENSE_MANAGE, P.EXPENSE_REVIEW, P.EXPENSE_RECORD_PAYMENT) === 'ALL' /* Task 50: the scope of these permissions, not of any role */;
 export const visibleEmployeeWhere = (auth: AuthContext): { employeeId?: string } => (adminScope(auth) ? {} : { employeeId: auth.employeeId ?? '__none__' });
 export const canSeeEmployee = (auth: AuthContext, employeeId: string): boolean => adminScope(auth) || (!!auth.employeeId && auth.employeeId === employeeId);
 export async function userNames(db: Db, ids: (string | null | undefined)[]): Promise<Map<string, string>> {

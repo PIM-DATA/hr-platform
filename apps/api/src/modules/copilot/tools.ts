@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ANALYTICS_METRICS, COPILOT_LIMITS, PERMISSIONS, reportDefinitionSchema, type CopilotSourceDto } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, narrowAuth, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 import { employee360Service } from '../analytics/employee360.service';
 import { executiveAnalyticsService } from '../analytics/executive-analytics.service';
@@ -191,13 +191,13 @@ const tools: CopilotTool[] = [
       const sources: CopilotSourceDto[] = [];
       const data: Record<string, unknown> = { teamSize: team.length, date: t };
       if (hasPermission(auth, PERMISSIONS.LEAVE_VIEW)) {
-        const leave = await leaveRequestsService.list(auth, { status: 'APPROVED', from: t, to: t, page: 1, pageSize: 100 });
+        const leave = await leaveRequestsService.list(narrowAuth(auth, PERMISSIONS.LEAVE_VIEW), { status: 'APPROVED', from: t, to: t, page: 1, pageSize: 100 });
         data.onLeaveToday = leave.data.filter((r) => ids.has(r.employee.id)).map((r) => ({ employeeCode: r.employee.employeeCode, firstName: r.employee.firstName, leaveType: r.leaveType.name, until: r.endDate }));
         sources.push(src(`Team leave · ${t}`, 'leave', asOfNow(), link(auth, PERMISSIONS.LEAVE_VIEW, '/hrm/leave')));
       }
       if (hasPermission(auth, PERMISSIONS.ATTENDANCE_VIEW)) {
         // The team's own rows (Task 48: the report is paged, so filtering its first page would miss people).
-        const rows = await attendanceRecordsService.rowsFor(auth, { from: t, to: t }, [...ids]);
+        const rows = await attendanceRecordsService.rowsFor(narrowAuth(auth, PERMISSIONS.ATTENDANCE_VIEW), { from: t, to: t }, [...ids]);
         data.attendanceToday = { present: rows.reduce((n, r) => n + r.presentDays, 0), late: rows.filter((r) => r.lateDays > 0).map((r) => r.employee.employeeCode), absent: rows.filter((r) => r.absentDays > 0).map((r) => r.employee.employeeCode), incomplete: rows.filter((r) => r.incompleteDays > 0).map((r) => r.employee.employeeCode), noRecordYet: team.length - rows.length };
         sources.push(src(`Team attendance · ${t}`, 'attendance', asOfNow(), link(auth, PERMISSIONS.ATTENDANCE_VIEW, '/hrm/attendance')));
       }
@@ -207,7 +207,7 @@ const tools: CopilotTool[] = [
         sources.push(src('Performance reviews awaiting you', 'performance', asOfNow(), link(auth, PERMISSIONS.PERFORMANCE_VIEW, '/hrm/performance')));
       }
       if (hasPermission(auth, PERMISSIONS.TRAINING_VIEW)) {
-        const td = await trainingReportService.teamDevelopment(auth);
+        const td = await trainingReportService.teamDevelopment(narrowAuth(auth, PERMISSIONS.TRAINING_VIEW));
         data.training = { openNeeds: td.openNeeds, activeIdps: td.activeIdps, upcomingSessions: td.upcomingSessions, completedTraining: td.completedTraining };
         sources.push(src('Team development', 'training', asOfNow(), link(auth, PERMISSIONS.TRAINING_VIEW, '/hrd/training/team')));
       }
@@ -307,7 +307,7 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังดูรายงาน skill gap…', inputSchema: z.object({ organizationId: z.string().min(1).optional(), departmentId: z.string().min(1).optional(), jobId: z.string().min(1).optional() }).strict(), requiredPermissions: [PERMISSIONS.COMPETENCY_VIEW_REPORTS], sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Competency report',
     async handler(args, ctx) {
       // Task 47: same authority as the REST report (reporting permission + organization-wide scope); small groups arrive suppressed.
-      if (ctx.auth.dataScope !== 'ALL') throw AppError.forbidden();
+      if (scopeFor(ctx.auth, PERMISSIONS.COMPETENCY_VIEW_REPORTS) !== 'ALL') throw AppError.forbidden(); // Task 50: that permission's own scope
       const r = await skillGapService.gapReport(args as { organizationId?: string; departmentId?: string; jobId?: string });
       return { data: { coverage: r.coverage, totals: r.totals, topGaps: r.topGaps.slice(0, 10), byDepartment: r.byDepartment.slice(0, 15) }, sources: [src('Skill gap report', 'competency', asOfNow(), link(ctx.auth, PERMISSIONS.COMPETENCY_VIEW, '/hrd/competency/reports'))], consulted: 'รายงาน skill gap' };
     },

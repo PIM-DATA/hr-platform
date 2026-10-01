@@ -20,7 +20,7 @@ let n = 0;
 const calls = { approved: 0, rejected: 0, cancelled: 0 };
 let failNextApproved: (() => Promise<void>) | null = null;
 
-const actorOf = (s: Session): Actor => ({ auth: { userId: s.user.id, email: '', employeeId: s.user.employee?.id ?? null, roles: [], permissions: [], dataScope: 'SELF', sessionId: 's', csrfToken: 'c' }, ipAddress: null, userAgent: null });
+const actorOf = (s: Session): Actor => ({ auth: { userId: s.user.id, email: '', employeeId: s.user.employee?.id ?? null, roles: [], permissions: [], permissionScopes: {}, dataScope: 'SELF', sessionId: 's', csrfToken: 'c' }, ipAddress: null, userAgent: null });
 const submit = (code: string, requester = EMP) => prisma.$transaction((tx) => workflowEngine.submit({ definitionCode: code, module: 'ctest', entityType: 'TestRequest', entityId: `e-${++n}`, requesterEmployeeId: requester }, actorOf(empS), tx));
 const act = (s: Session, id: string, action: 'APPROVE' | 'REJECT') => as(s, `/api/v1/workflow/instances/${id}/actions`).send({ action });
 const cancel = (id: string) => prisma.$transaction((tx) => workflowEngine.cancel(id, actorOf(empS), tx));

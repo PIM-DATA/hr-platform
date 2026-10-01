@@ -54,9 +54,9 @@ export function ProgressBar({ percent }: { percent: number }) {
 
 /** Tab visibility follows capability, never a role name. The API enforces the same rules. */
 export function useTrainingTabs() {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, scopeOf } = useAuth();
   const manage = hasPermission(PERMISSIONS.TRAINING_MANAGE);
-  const teamScope = user?.dataScope === 'TEAM' || user?.dataScope === 'ALL';
+  const teamScope = ['TEAM', 'ALL'].includes(scopeOf(PERMISSIONS.TRAINING_VIEW) ?? '');
   return [
     !!user?.employee && hasPermission(PERMISSIONS.TRAINING_VIEW) && { label: 'My development', to: '/hrd/training', end: true },
     hasPermission(PERMISSIONS.TRAINING_VIEW) && teamScope && !manage && { label: 'Team development', to: '/hrd/training/team' },

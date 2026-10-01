@@ -2,7 +2,7 @@ import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTi
 import { prisma } from '../../lib/prisma';
 import { balanceDto, sumsOf } from '../benefits/benefit-ledger';
 import { logger } from '../../lib/logger';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, narrowAuth, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 import { employeesService } from '../employees/employees.service';
 import { entitlementsService } from '../leave/entitlements.service';
@@ -32,8 +32,14 @@ type Activity = Employee360Dto['activity'][number];
  */
 const log = logger.child({ module: 'employee360' });
 const has = (auth: AuthContext, p: string) => hasPermission(auth, p);
-const inScope = (auth: AuthContext, employeeId: string, managerId: string | null) =>
-  auth.dataScope === 'ALL' || employeeId === auth.employeeId || (auth.dataScope === 'TEAM' && !!auth.employeeId && managerId === auth.employeeId);
+/**
+ * Task 50 (T44-P1-21): every section is judged with the scope of ITS OWN permission — the widest among the roles that
+ * grant that permission — never with the scope of whatever opened the 360 page or of an unrelated role.
+ */
+const inScopeFor = (auth: AuthContext, employeeId: string, managerId: string | null, ...perms: string[]) => {
+  const s = scopeFor(auth, ...perms);
+  return s === 'ALL' || (s !== null && employeeId === auth.employeeId) || (s === 'TEAM' && !!auth.employeeId && managerId === auth.employeeId);
+};
 
 async function section<T>(name: string, run: () => Promise<T>): Promise<T | null> {
   try { return await run(); } catch (e) { log.warn({ section: name, error: e instanceof Error ? e.message : String(e) }, 'employee 360 section failed'); return null; }
@@ -59,11 +65,13 @@ export const employee360Service = {
   async getOverview({ employeeId, actor }: { employeeId: string; actor: Actor }): Promise<Employee360Dto> {
     const { auth } = actor;
     // The employee master decides whether the caller may see this person at all (404 outside the scope).
-    const profile = await employeesService.getById(auth, employeeId);
+    // (the 360 route's own guard has narrowed `auth` to employee360.view; the profile is the employee master's call)
+    const profile = await employeesService.getById(narrowAuth(auth, PERMISSIONS.EMPLOYEES_VIEW), employeeId);
     const self = auth.employeeId === employeeId;
     const managerId = profile.manager?.id ?? null;
-    const scoped = inScope(auth, employeeId, managerId);
-    const isManagerOf = auth.dataScope === 'TEAM' && managerId === auth.employeeId && !self;
+    const scoped = (...perms: string[]) => inScopeFor(auth, employeeId, managerId, ...perms);
+    const isManagerOf = (...perms: string[]) => scopeFor(auth, ...perms) === 'TEAM' && managerId === auth.employeeId && !self;
+    const as = (...perms: string[]) => narrowAuth(auth, ...perms);
     const year = new Date().getUTCFullYear();
     const today = new Date().toISOString().slice(0, 10);
     const monthStart = `${today.slice(0, 7)}-01`;
@@ -73,26 +81,27 @@ export const employee360Service = {
     // ---- which sections may this caller see? (source-module rules, restated, never widened) ----
     const may = {
       employment: true,
-      leave: self || (has(auth, PERMISSIONS.LEAVE_VIEW) && scoped),
-      attendance: self || (has(auth, PERMISSIONS.ATTENDANCE_VIEW) && scoped),
-      overtime: self || (has(auth, PERMISSIONS.OT_VIEW) && scoped),
+      leave: self || scoped(PERMISSIONS.LEAVE_VIEW),
+      attendance: self || scoped(PERMISSIONS.ATTENDANCE_VIEW),
+      overtime: self || scoped(PERMISSIONS.OT_VIEW),
       payroll: (self && has(auth, PERMISSIONS.PAYROLL_VIEW_OWN)) || (!self && has(auth, PERMISSIONS.PAYROLL_MANAGE)),
-      performance: self || has(auth, PERMISSIONS.PERFORMANCE_MANAGE_CYCLES) || (has(auth, PERMISSIONS.PERFORMANCE_VIEW) && scoped),
-      competency: self || has(auth, PERMISSIONS.COMPETENCY_MANAGE) || (has(auth, PERMISSIONS.COMPETENCY_VIEW) && isManagerOf),
-      development: self || has(auth, PERMISSIONS.TRAINING_MANAGE) || (has(auth, PERMISSIONS.TRAINING_VIEW) && isManagerOf),
+      performance: self || has(auth, PERMISSIONS.PERFORMANCE_MANAGE_CYCLES) || scoped(PERMISSIONS.PERFORMANCE_VIEW),
+      competency: self || has(auth, PERMISSIONS.COMPETENCY_MANAGE) || isManagerOf(PERMISSIONS.COMPETENCY_VIEW),
+      development: self || has(auth, PERMISSIONS.TRAINING_MANAGE) || isManagerOf(PERMISSIONS.TRAINING_VIEW),
       employeeRelations: !self && (has(auth, PERMISSIONS.EMPLOYEE_RELATIONS_VIEW) || has(auth, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE)),
       recruitment: !self && has(auth, PERMISSIONS.RECRUITMENT_MANAGE),
-      career: self ? has(auth, PERMISSIONS.CAREER_VIEW) : has(auth, PERMISSIONS.CAREER_MANAGE) || has(auth, PERMISSIONS.TALENT_MANAGE) || (has(auth, PERMISSIONS.TALENT_VIEW) && isManagerOf),
-      talent: !self && (has(auth, PERMISSIONS.TALENT_MANAGE) || has(auth, PERMISSIONS.SUCCESSION_MANAGE) || (has(auth, PERMISSIONS.TALENT_VIEW) && isManagerOf)),
+      career: self ? has(auth, PERMISSIONS.CAREER_VIEW) : has(auth, PERMISSIONS.CAREER_MANAGE) || has(auth, PERMISSIONS.TALENT_MANAGE) || isManagerOf(PERMISSIONS.TALENT_VIEW),
+      talent: !self && (has(auth, PERMISSIONS.TALENT_MANAGE) || has(auth, PERMISSIONS.SUCCESSION_MANAGE) || isManagerOf(PERMISSIONS.TALENT_VIEW)),
       // Lifecycle (Task 34): statuses and dates only, under each process's own view permission. Never a note, a comment or a reason note.
       // Benefits (Task 36): the subject's own view, or an organization-wide benefits administrator. A manager's TEAM scope never opens it.
-      benefits: self ? has(auth, PERMISSIONS.BENEFITS_VIEW_OWN) : auth.dataScope === 'ALL' && (has(auth, PERMISSIONS.BENEFITS_VIEW) || has(auth, PERMISSIONS.BENEFITS_MANAGE)),
-      lifecycle: has(auth, PERMISSIONS.ONBOARDING_VIEW) || has(auth, PERMISSIONS.PROBATION_VIEW) || has(auth, PERMISSIONS.OFFBOARDING_VIEW) || has(auth, PERMISSIONS.ONBOARDING_MANAGE) || has(auth, PERMISSIONS.PROBATION_MANAGE) || has(auth, PERMISSIONS.OFFBOARDING_MANAGE),
+      benefits: self ? has(auth, PERMISSIONS.BENEFITS_VIEW_OWN) : scopeFor(auth, PERMISSIONS.BENEFITS_VIEW, PERMISSIONS.BENEFITS_MANAGE) === 'ALL',
+      // Task 50: within the lifecycle permissions' own scope (before: any holder saw anybody whose profile was visible)
+      lifecycle: scoped(PERMISSIONS.ONBOARDING_VIEW, PERMISSIONS.PROBATION_VIEW, PERMISSIONS.OFFBOARDING_VIEW, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PROBATION_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE),
     };
 
     const [employment, leave, attendance, overtime, payroll, performance, competency, development, employeeRelations, recruitment, career, talent, lifecycle, benefits] = await Promise.all([
       section('employment', async () => {
-        const [positions, managers] = await Promise.all([employeesService.positionHistory(auth, employeeId), employeesService.managerHistory(auth, employeeId)]);
+        const [positions, managers] = await Promise.all([employeesService.positionHistory(as(PERMISSIONS.EMPLOYEES_VIEW), employeeId), employeesService.managerHistory(as(PERMISSIONS.EMPLOYEES_VIEW), employeeId)]);
         const timeline = timelineFrom(positions, managers, profile.hireDate, profile.terminationDate, profile.employmentStatus);
         for (const t of timeline.filter((e) => e.type !== 'JOINED')) activity.push({ date: t.date, domain: 'employment', title: t.title, detail: t.detail });
         return { positions, managers, timeline };
@@ -100,7 +109,7 @@ export const employee360Service = {
       may.leave ? section('leave', async () => {
         const [balances, requests] = await Promise.all([
           entitlementsService.list({ employeeId, year, page: 1, pageSize: 20 }),
-          leaveRequestsService.list(auth, { employeeId, from: `${year}-01-01`, to: `${year}-12-31`, page: 1, pageSize: 100 }),
+          leaveRequestsService.list(as(PERMISSIONS.LEAVE_VIEW), { employeeId, from: `${year}-01-01`, to: `${year}-12-31`, page: 1, pageSize: 100 }),
         ]);
         const rows = requests.data;
         const approved = rows.filter((r) => r.status === 'APPROVED');
@@ -108,15 +117,15 @@ export const employee360Service = {
         return { year, balances: balances.data, summary: { requests: rows.filter((r) => r.status !== 'DRAFT').length, approved: approved.length, pending: rows.filter((r) => r.status === 'PENDING').length, approvedUnits: approved.reduce((n, r) => n + r.units, 0) }, recent: rows.slice(0, 5) };
       }) : null,
       may.attendance ? section('attendance', async () => {
-        const report = await attendanceRecordsService.report(auth, { from: monthStart, to: today, employeeId });
+        const report = await attendanceRecordsService.report(as(PERMISSIONS.ATTENDANCE_VIEW), { from: monthStart, to: today, employeeId });
         const totals = report.rows[0] ? (({ employee: _e, ...rest }) => rest)(report.rows[0]) : null;
         const recent = await prisma.attendanceRecord.findMany({ where: { employeeId }, select: { attendanceDate: true, dayType: true, status: true, workMinutes: true, lateMinutes: true }, orderBy: { attendanceDate: 'desc' }, take: 10 });
         return { from: monthStart, to: today, totals, recent: recent.map((r) => ({ date: r.attendanceDate, dayType: r.dayType, status: r.status, workMinutes: r.workMinutes, lateMinutes: r.lateMinutes })) };
       }) : null,
       may.overtime ? section('overtime', async () => {
         const [report, recent] = await Promise.all([
-          overtimeService.report(auth, { from: `${year}-01-01`, to: today, employeeId }),
-          overtimeService.list(auth, { employeeId, view: self ? 'mine' : 'all', page: 1, pageSize: 5 }),
+          overtimeService.report(as(PERMISSIONS.OT_VIEW), { from: `${year}-01-01`, to: today, employeeId }),
+          overtimeService.list(as(PERMISSIONS.OT_VIEW), { employeeId, view: self ? 'mine' : 'all', page: 1, pageSize: 5 }),
         ]);
         const row = report.rows[0];
         return { from: `${year}-01-01`, to: today, requests: row?.requests ?? 0, approvedRequests: row?.approvedRequests ?? 0, approvedMinutes: row?.approvedMinutes ?? 0, recent: recent.data, note: report.note };

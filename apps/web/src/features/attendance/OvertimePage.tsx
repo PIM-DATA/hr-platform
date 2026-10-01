@@ -38,10 +38,10 @@ export const OvertimeStatusBadge = ({ status }: { status: string }) => (
  * recomputes any of it, and nothing here turns minutes into money: that is payroll's job and it does not exist yet.
  */
 export function OvertimePage() {
-  const { user } = useAuth();
+  const { user, scopeOf } = useAuth();
   const canRequest = usePermission(PERMISSIONS.OT_REQUEST);
   const canApprove = usePermission(PERMISSIONS.WORKFLOW_APPROVE);
-  const scope = user?.dataScope;
+  const scope = scopeOf(PERMISSIONS.OT_VIEW);
   const views = [
     { key: 'mine', label: 'My overtime' },
     ...(canApprove ? [{ key: 'inbox', label: 'Waiting for me' }] : []),

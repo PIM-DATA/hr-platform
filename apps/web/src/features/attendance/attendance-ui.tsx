@@ -56,9 +56,9 @@ export const formatMinutes = (minutes: number | null | undefined) => (minutes ? 
 
 /** Tab visibility follows capability, never a role name. The API enforces the same rules. */
 export function useAttendanceTabs() {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, scopeOf } = useAuth();
   const canView = hasPermission(PERMISSIONS.ATTENDANCE_VIEW);
-  const scope = user?.dataScope;
+  const scope = scopeOf(PERMISSIONS.ATTENDANCE_VIEW);
   const teamOrAll = scope === 'TEAM' || scope === 'ALL';
   return [
     hasPermission(PERMISSIONS.ATTENDANCE_CLOCK) && !!user?.employee && { label: 'My attendance', to: '/hrm/attendance', end: true },

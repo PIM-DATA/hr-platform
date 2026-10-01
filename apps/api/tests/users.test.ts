@@ -265,7 +265,8 @@ describe('data scope escalation guard', () => {
     await createUser({ email: 'teamadmin@users.local', password: PW, role: 'TEAM_USER_ADMIN' });
     await createUser({ email: 'scope-target@users.local', password: PW, role: 'EMPLOYEE' });
     teamAdmin = await loginAs(app, 'teamadmin@users.local', PW);
-    expect(teamAdmin.user).toMatchObject({ dataScope: 'TEAM' });
+    // Task 50 — BEFORE: { dataScope: 'TEAM' } (one user-wide scope). AFTER: per permission.
+    expect((teamAdmin.user as unknown as { permissionScopes: Record<string, string> }).permissionScopes).toMatchObject({ 'users.update': 'TEAM', 'users.create': 'TEAM' });
   });
   afterAll(async () => {
     await prisma.role.deleteMany({ where: { code: { in: ['TEAM_USER_ADMIN', 'TEAM_VIEWER', 'ALL_VIEWER'] } } });

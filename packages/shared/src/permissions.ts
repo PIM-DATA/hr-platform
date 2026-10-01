@@ -425,9 +425,36 @@ export function blockingRoleEditPermissions(actorPermissions: readonly string[],
  * hold): the permissions the actor would gain and whether their data scope widens. Anything non-empty is refused —
  * `roles.manage` administers other people's access, never the holder's own.
  */
-export function selfEscalation(before: { permissions: readonly string[]; dataScope: string }, after: { permissions: readonly string[]; dataScope: string }): { gained: string[]; scopeWidened: boolean } {
+export function selfEscalation(before: { permissions: readonly string[]; permissionScopes: PermissionScopes }, after: { permissions: readonly string[]; permissionScopes: PermissionScopes }): { gained: string[]; scopeWidened: boolean; widened: string[] } {
   const had = new Set(before.permissions);
-  return { gained: [...new Set(after.permissions)].filter((p) => !had.has(p)).sort(), scopeWidened: scopeRank(after.dataScope) > scopeRank(before.dataScope) };
+  // Task 50: compared per permission — a wider scope on any permission already held is an escalation, even when the
+  // user's widest scope (from some unrelated permission) does not change.
+  const widened = [...new Set(after.permissions)].filter((p) => had.has(p) && scopeRank(after.permissionScopes[p] ?? 'SELF') > scopeRank(before.permissionScopes[p] ?? 'SELF')).sort();
+  return { gained: [...new Set(after.permissions)].filter((p) => !had.has(p)).sort(), scopeWidened: widened.length > 0, widened };
+}
+
+/**
+ * Task 50 (T44-P1-21) — data scope belongs to a permission, not to a user.
+ *
+ * A role carries one data scope for every permission it grants. A user's scope for permission P is the widest scope
+ * among the roles that GRANT P (same-permission union: SELF + TEAM for P = TEAM); a role that does not grant P never
+ * contributes (MANAGER/TEAM + EXECUTIVE/ALL exercising `documents.view`, which only MANAGER grants = TEAM).
+ * Absent permission → no scope at all (`null`), never a default.
+ */
+export type PermissionScopes = Record<string, 'SELF' | 'TEAM' | 'ALL'>;
+export function computePermissionScopes(roles: readonly { dataScope: string; permissions: readonly string[] }[]): PermissionScopes {
+  const out: PermissionScopes = {};
+  for (const role of roles) {
+    const scope = (role.dataScope in SCOPE_RANK ? role.dataScope : 'SELF') as 'SELF' | 'TEAM' | 'ALL';
+    for (const p of role.permissions) if (!(p in out) || scopeRank(scope) > scopeRank(out[p]!)) out[p] = scope;
+  }
+  return out;
+}
+/** Widest scope among the given permissions the user actually holds; `null` when they hold none of them. */
+export function scopeForPermissions(scopes: PermissionScopes, permissions: readonly string[]): 'SELF' | 'TEAM' | 'ALL' | null {
+  let best: 'SELF' | 'TEAM' | 'ALL' | null = null;
+  for (const p of permissions) { const s = scopes[p]; if (s && (best === null || scopeRank(s) > scopeRank(best))) best = s; }
+  return best;
 }
 
 /** Human labels for the action part of a permission code, used by the Roles UI. */

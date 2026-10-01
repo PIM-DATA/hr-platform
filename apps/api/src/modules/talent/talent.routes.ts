@@ -12,7 +12,7 @@ import { validate } from '../../middleware/validate';
 import { requestMeta } from '../../services/audit/audit.service';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import { careerService } from './career.service';
 import { talentCycleService } from './talent-cycle.service';
 import { talentPoolService } from './talent-pool.service';
@@ -48,7 +48,7 @@ async function assertMayReadEmployee(req: Request, employeeId: string) {
   const auth = req.auth!;
   if (employeeId === auth.employeeId) return;
   if (hasPermission(auth, PERMISSIONS.TALENT_MANAGE) || hasPermission(auth, PERMISSIONS.SUCCESSION_MANAGE) || hasPermission(auth, PERMISSIONS.CAREER_MANAGE)) return;
-  if (hasPermission(auth, PERMISSIONS.TALENT_VIEW) && auth.employeeId && (auth.dataScope === 'TEAM' || auth.dataScope === 'ALL')) {
+  if (auth.employeeId && ['TEAM', 'ALL'].includes(scopeFor(auth, PERMISSIONS.TALENT_VIEW) ?? '')) { // Task 50: talent.view's own scope
     const report = await prisma.employee.findFirst({ where: { id: employeeId, managerId: auth.employeeId }, select: { id: true } });
     if (report) return;
   }

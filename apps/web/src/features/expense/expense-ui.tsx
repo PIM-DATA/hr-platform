@@ -28,8 +28,8 @@ export function History({ rows }: { rows: { from: string | null; to: string; act
 
 /** Tabs by capability. Administration needs the expense permissions and an organization-wide scope; the employee tab needs only an employee record. */
 export function useExpenseTabs() {
-  const { hasPermission, user } = useAuth();
-  const admin = (hasPermission(PERMISSIONS.EXPENSE_VIEW) || hasPermission(PERMISSIONS.EXPENSE_MANAGE)) && user?.dataScope === 'ALL';
+  const { hasPermission, user, scopeOf } = useAuth();
+  const admin = scopeOf(PERMISSIONS.EXPENSE_VIEW, PERMISSIONS.EXPENSE_MANAGE) === 'ALL';
   const reports = hasPermission(PERMISSIONS.EXPENSE_VIEW_REPORTS) || hasPermission(PERMISSIONS.EXPENSE_MANAGE);
   return [
     (!!user?.employee && hasPermission(PERMISSIONS.EXPENSE_VIEW_OWN)) && { label: 'My expenses', to: '/hrm/expenses', end: true },

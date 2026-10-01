@@ -105,3 +105,56 @@ Successful issuance, role changes, role-permission changes and (de)activation st
 passwords are never logged or audited. Refusals are 403 with a stable code, write no audit row (existing policy: denied
 requests appear in the request log), and add a structured warning (`privileged_account_action_refused`,
 `self_escalation_refused`) with actor and target ids only.
+
+## 6. Permission-scoped data access (Task 50, T44-P1-21)
+
+**Before.** A user's data scope was the widest scope across *all* their roles, applied to every permission. A
+MANAGER (TEAM) who was also EXECUTIVE (ALL) exercised `documents.view` and `reports.view_individual` — granted only by
+MANAGER — at ALL: every employee's documents by URL, every row of the individual Report Center datasets, every
+employee for a custom "employees.view SELF + leave.view ALL" user (reproduced first in
+`apps/api/tests/permission-scope.test.ts`, 9 failing tests on the old code).
+
+**Now.** A role still carries one data scope for every permission it grants (no schema change, no migration). The scope
+of permission *P* is the widest scope among the roles that **grant P** (`computePermissionScopes`, `@hr/shared` — the
+same function the web uses):
+
+| Roles | `employees.view` | `leave.view` | `documents.view` |
+|---|---|---|---|
+| EMPLOYEE_VIEW SELF + LEAVE_VIEW ALL | SELF | ALL | — |
+| MANAGER (TEAM) + EXECUTIVE (ALL) | ALL (both grant it) | ALL (both) | TEAM (MANAGER only) |
+| SELF + TEAM, both granting `employees.view` | TEAM | — | — |
+| LEAVE_VIEW ALL only | — (403) | ALL | — |
+
+- **Permission union is unchanged**: a user holds every permission of every role.
+- **No user-wide scope.** `AuthContext.permissionScopes` holds the map; `AuthContext.dataScope` is the scope of the
+  permission being exercised — `requirePermission(...)` sets it from the permissions it guards (widest of those the user
+  holds), `narrowAuth(auth, …)` does it where one request touches several modules. Until a guard names a permission it
+  is SELF: a code path that forgets fails closed (under-exposes), never open. An absent permission never yields a scope.
+- `/auth/me` returns `permissionScopes` (no `dataScope`); the web reads a module's scope with `scopeOf(<permission>)`.
+- Where one request spans modules, each part uses its own permission's scope: Employee 360 sections (leave, attendance,
+  overtime, performance, competency, development, talent, benefits, **lifecycle** — which previously showed anybody whose
+  profile was visible), Copilot tools (each runs with `narrowAuth(auth, …tool.requiredPermissions)`; the team tool narrows
+  per source call — `copilot.use` lends no scope), the Report Center (`datasetAuth`: the narrowest of the source
+  dataset's permission, `reports.view`, and — for individual rows — `reports.view_individual`; a shared report runs with
+  the runner's scope), documents (`documents.view` / `documents.manage` scope explicitly), organization reports
+  (`performance.view_reports` / `competency.view_reports` must themselves be ALL), module admin checks (benefits, expense,
+  services, letters, compensation planning: the scope of those modules' own permissions).
+- A guard listing several permissions of **one** module family (learning, lifecycle, services, talent) gives that family's
+  widest scope; guards mixing `workflow.approve` with a module permission rely on purpose-bound approver assignment and the
+  module's explicit checks, not on the scope.
+
+**Source-domain rules stay stricter** — scope never overrides them: payroll confidentiality (`payroll.manage`), managers
+never browse subordinates' benefits / expenses (module admin checks require ALL of those modules' permissions), ER and
+talent restrictions, services requester/assignee boundaries, document classification and linked-module authority,
+engagement anonymity and the small-group rules (Task 47). **Purpose-bound access** (assigned approver, interviewer,
+compensation planner, reviewer) is unchanged and never becomes module-wide TEAM/ALL access.
+
+**Separation of duties (Task 45) per permission.** Self-assignment and editing a held role are refused when any held
+permission's scope would widen (not only the widest scope) — e.g. an RBAC manager who already holds some ALL role may not
+self-assign a role that takes `leave.view` from TEAM to ALL (allowed before). Granting a role to someone else is limited
+by the scope of the user-administration permission being exercised (`users.create` / `users.update`):
+`ROLE_SCOPE_ESCALATION_NOT_ALLOWED`. SYSTEM_ADMIN still holds no compensation-planning permission, so no scope gives it
+any.
+
+Tested in `apps/api/tests/permission-scope.test.ts` (direct API: list, detail, crafted filters, CSV export, shared saved
+report, organization reports, Copilot tool, SoD) plus the existing RBAC / privileged-account / privacy suites.

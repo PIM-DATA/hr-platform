@@ -35,7 +35,8 @@ describe('POST /auth/login', () => {
   it('1. login success returns user payload + session cookie and never leaks secrets', async () => {
     const res = await login();
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({ email: ADMIN, isActive: true, employee: null, dataScope: 'ALL' });
+    // Task 50 — BEFORE: dataScope: 'ALL' (user-wide). AFTER: per permission.
+    expect(res.body.data).toMatchObject({ email: ADMIN, isActive: true, employee: null, permissionScopes: expect.objectContaining({ 'users.view': 'ALL' }) });
     expect(res.body.data.roles).toEqual([{ code: 'SYSTEM_ADMIN', name: 'System Admin' }]);
     expect(res.body.data.permissions).toContain('employees.view');
     expect(typeof res.body.data.csrfToken).toBe('string');

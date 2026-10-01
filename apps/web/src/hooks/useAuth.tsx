@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AuthUser, LoginInput, PermissionCode } from '@hr/shared';
+import { scopeForPermissions, type AuthUser, type LoginInput, type PermissionCode } from '@hr/shared';
 import { ApiClientError, setCsrfToken, setUnauthorizedHandler } from '@/lib/api-client';
 import { authApi } from '@/features/auth/auth.api';
 
@@ -13,6 +13,12 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   hasPermission: (permission: PermissionCode) => boolean;
+  /**
+   * Task 50: the data scope of a permission (widest among the roles that grant it) — or of the widest of several, as a
+   * route guard sees it; `null` when the user holds none. Same function as the API (`@hr/shared`). UI only: the API
+   * enforces the same rule on every request.
+   */
+  scopeOf: (...permissions: PermissionCode[]) => 'SELF' | 'TEAM' | 'ALL' | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -86,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refresh,
       hasPermission: (permission) => user?.permissions.includes(permission) ?? false,
+      scopeOf: (...permissions) => (user ? scopeForPermissions(user.permissionScopes, permissions) : null),
     }),
     [status, user, login, logout, refresh],
   );

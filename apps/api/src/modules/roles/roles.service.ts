@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
 import type { AuthContext } from '../auth/auth.types';
-import { assertNoSelfEscalation } from '../users/account-guard';
+import { accessOf, assertNoSelfEscalation, effectiveAccess } from '../users/account-guard';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 
@@ -74,7 +74,10 @@ export const rolesService = {
       //  - any other role may gain business permissions (governance of other users), never administration permissions
       //    the actor lacks, and a role carrying roles.manage must stay within the actor's own permissions.
       if (actor.auth.roles.includes(before.code)) {
-        assertNoSelfEscalation(actor, { permissions: [...actor.auth.permissions, ...codes], dataScope: actor.auth.dataScope }, 'ROLE_EDIT_HELD_ROLE');
+        // the actor's access as it would be after the edit: their roles, with this role's permissions replaced
+        const mine = await effectiveAccess(tx, actor.auth.userId);
+        const after = (mine?.roles ?? []).map((r) => (r.code === before.code ? { ...r, rolePermissions: codes.map((code) => ({ permission: { code } })) } : r));
+        assertNoSelfEscalation(actor, accessOf(after), 'ROLE_EDIT_HELD_ROLE');
       } else {
         const blocking = blockingRoleEditPermissions(actor.auth.permissions, oldCodes, codes);
         if (blocking.length > 0) {

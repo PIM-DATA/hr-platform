@@ -12,7 +12,7 @@ import { requirePermission } from '../../middleware/permission';
 import { validate } from '../../middleware/validate';
 import { AppError } from '../../lib/errors';
 import { requestMeta } from '../../services/audit/audit.service';
-import { hasPermission } from '../../services/authorization/authorization.service';
+import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import { competencyCategoryService, competencyScaleService, competencyService } from './competency-framework.service';
 import { jobProfileService } from './job-profile.service';
 import { competencyAssessmentService, competencyCycleService } from './competency-assessment.service';
@@ -97,7 +97,7 @@ competencyRouter.get('/profile/:employeeId', view, async (req, res) => {
  * suppressed in the service.
  */
 competencyRouter.get('/reports/gaps', requirePermission(PERMISSIONS.COMPETENCY_VIEW_REPORTS), validate(gapReportQuerySchema, 'query'), async (req, res: Response) => {
-  if (req.auth!.dataScope !== 'ALL') throw AppError.forbidden('Organization competency reports need an organization-wide scope');
+  if (scopeFor(req.auth!, PERMISSIONS.COMPETENCY_VIEW_REPORTS) !== 'ALL') throw AppError.forbidden('Organization competency reports need an organization-wide scope'); // Task 50: that permission's own scope
   res.json({ data: await skillGapService.gapReport(res.locals.query) });
 });
 

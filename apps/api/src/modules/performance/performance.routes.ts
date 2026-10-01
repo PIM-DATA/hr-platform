@@ -13,6 +13,7 @@ import { requestMeta } from '../../services/audit/audit.service';
 import { kpiService, performanceCycleService } from './performance-master.service';
 import { performancePlanService } from './performance-plan.service';
 import { performanceReportService } from './performance-report.service';
+import { scopeFor } from '../../services/authorization/authorization.service';
 
 /**
  * Performance (Task 23).
@@ -76,6 +77,7 @@ performanceRouter.post('/plans/:id/submit-manager', review, async (req, res) => 
 // your own plan (performance.view) is not a licence to read everyone's results.
 const reports = requirePermission(PERMISSIONS.PERFORMANCE_VIEW_REPORTS);
 performanceRouter.get('/cycles/:id/report', reports, validate(cycleReportQuerySchema, 'query'), async (req, res: Response) => {
-  if (req.auth!.dataScope !== 'ALL') throw AppError.forbidden('Organization performance reports need an organization-wide scope');
+  // Task 50: the scope of performance.view_reports itself — an ALL role that does not grant it never counts
+  if (scopeFor(req.auth!, PERMISSIONS.PERFORMANCE_VIEW_REPORTS) !== 'ALL') throw AppError.forbidden('Organization performance reports need an organization-wide scope');
   res.json({ data: await performanceReportService.cycleReport(id(req), res.locals.query.departmentId) });
 });

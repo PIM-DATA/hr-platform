@@ -23,14 +23,14 @@ const QUICK_ACTIONS: { label: string; description: string; to: string; icon: Luc
 
 
 export function DashboardPage() {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, scopeOf } = useAuth();
   const summary = useDashboardSummary();
   const actions = QUICK_ACTIONS.filter((a) => hasPermission(a.permission));
   const copilot = useCopilotStatus();
   // Every module the caller may open, from the same definition as the sidebar: no card leads anywhere its reader cannot go.
   const allowed = (p?: PermissionCode | PermissionCode[]) => !p || (Array.isArray(p) ? p.some(hasPermission) : hasPermission(p));
   const modules = MENU.filter((g) => g.label && g.label !== 'Administration').map((g) => ({ label: g.label!, items: g.items.filter((i) => allowed(i.permission) && (!i.feature || (i.feature === 'copilot' && copilot.data?.enabled === true))) })).filter((g) => g.items.length > 0);
-  const scopeLabel = DATA_SCOPE_LABELS[summary.data?.scope ?? user?.dataScope ?? ''] ?? '';
+  const scopeLabel = DATA_SCOPE_LABELS[summary.data?.scope ?? scopeOf(PERMISSIONS.EMPLOYEES_VIEW) ?? ''] ?? '';
 
   const stats: { label: string; value: number | undefined; icon: LucideIcon; hint: string; title: string }[] = [
     { label: 'Total employees', value: summary.data?.employees.total, icon: Users, hint: 'Visible in your access scope', title: 'Employee records within your data scope, any employment status' },

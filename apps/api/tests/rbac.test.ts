@@ -85,11 +85,16 @@ describe('data scope', () => {
     expect(resolveDataScope([])).toBe('SELF');
     expect(resolveDataScope([{ dataScope: 'BOGUS' }])).toBe('SELF');
   });
-  it('is computed by the backend and exposed on /auth/me (HR + MANAGER → ALL)', async () => {
+  // Task 50 (T44-P1-21) — BEFORE: /auth/me exposed one user-wide `dataScope` (HR + MANAGER → ALL for everything).
+  // AFTER: a scope per permission, from the roles that grant it: employees.view (both roles) → ALL; performance.review
+  // (MANAGER only) → TEAM.
+  it('is computed by the backend per permission and exposed on /auth/me (HR + MANAGER)', async () => {
     const { user } = await loginAs(app, 'multi@rbac.local', PW);
-    expect(user.dataScope).toBe('ALL');
+    expect(user.permissionScopes['employees.view']).toBe('ALL');
+    expect(user.permissionScopes['performance.review']).toBe('TEAM');
+    expect(user).not.toHaveProperty('dataScope');
     const emp = await loginAs(app, 'employee@rbac.local', PW);
-    expect(emp.user.dataScope).toBe('SELF');
+    expect(emp.user.permissionScopes['employees.view']).toBe('SELF');
   });
 });
 
