@@ -1,0 +1,24 @@
+# Process supervision for the API (Task 49, T44-P1-12). Restarts on crash; `npm start` = NODE_ENV=production node dist.
+# Install: copy to /etc/systemd/system/, adjust paths/user, `systemctl daemon-reload && systemctl enable --now hr-api`.
+[Unit]
+Description=HR Enterprise Platform API
+After=network-online.target
+Wants=network-online.target
+OnFailure=hr-alert@%n.service
+
+[Service]
+Type=simple
+User=hr
+WorkingDirectory=/opt/hr-platform
+Environment=ENV_FILE=/etc/hr-platform/api.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+# repeated crashes within 10 minutes stop restarting and trigger OnFailure (alert) instead of looping forever
+StartLimitIntervalSec=600
+StartLimitBurst=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

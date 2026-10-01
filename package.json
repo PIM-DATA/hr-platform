@@ -29,6 +29,12 @@
     "ops:check": "npm run ops:check -w apps/api",
     "ops:revoke-sessions": "npm run ops:revoke-sessions -w apps/api",
     "ops:cleanup-reset-tokens": "npm run ops:cleanup-reset-tokens -w apps/api",
+    "ops:backup": "npm run ops:backup -w apps/api",
+    "ops:backup:verify": "npm run ops:backup:verify -w apps/api --",
+    "ops:restore": "npm run ops:restore -w apps/api --",
+    "ops:integrity": "npm run ops:integrity -w apps/api --",
+    "ops:preflight": "npm run ops:preflight -w apps/api",
+    "ops:monitor-check": "npm run ops:monitor-check -w apps/api",
     "codegen": "npm run codegen -w apps/api",
     "verify:clean-build": "node scripts/verify-clean-build.mjs",
     "ops:verify-web": "node scripts/verify-web-headers.mjs"

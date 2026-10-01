@@ -7,6 +7,9 @@
  * Deletes session rows only — no user, role, permission or password data is touched. There is deliberately no HTTP
  * endpoint for this: it is a privileged operational action, not an application feature.
  */
+// Must be the first import: it loads ENV_FILE. @prisma/client loads apps/api/.env when it is imported, and the first
+// loader wins — an ops command would otherwise silently act on the repository's .env database (found in the Task 49 drill).
+import '../src/config/env';
 import { PrismaClient } from '@prisma/client';
 import { env } from '../src/config/env';
 import { opsLog, parseConnection, safeTarget } from './lib/pg-tools';

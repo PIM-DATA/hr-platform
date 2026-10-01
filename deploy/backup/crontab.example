@@ -1,0 +1,5 @@
+# EXAMPLE crontab for hosts without systemd (user hr). cron mails non-empty output on failure only if MAILTO works;
+# prefer wrapping each line with your monitoring tool's "check-in" so a non-zero exit (or a missing run) alerts.
+MAILTO=ops@example.com
+30 1 * * *  cd /opt/hr-platform && ENV_FILE=/etc/hr-platform/api.env && set -a && . /etc/hr-platform/backup.env && set +a && npm run -s ops:backup >> /var/log/hr/backup.log 2>&1 || echo "hr backup FAILED (exit $?)"
+*/5 * * * * cd /opt/hr-platform && ENV_FILE=/etc/hr-platform/api.env && set -a && . /etc/hr-platform/backup.env && set +a && npm run -s ops:monitor-check >> /var/log/hr/monitor.log 2>&1 || echo "hr monitor check FAILED"

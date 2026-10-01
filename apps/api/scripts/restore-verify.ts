@@ -1,3 +1,6 @@
+// Must be the first import: it loads ENV_FILE. @prisma/client loads apps/api/.env when it is imported, and the first
+// loader wins — an ops command would otherwise silently act on the repository's .env database (found in the Task 49 drill).
+import '../src/config/env';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';

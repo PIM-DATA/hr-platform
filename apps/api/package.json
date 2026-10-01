@@ -23,6 +23,12 @@
     "ops:check": "tsx scripts/ops-check.ts",
     "ops:revoke-sessions": "tsx scripts/revoke-sessions.ts",
     "ops:cleanup-reset-tokens": "tsx scripts/cleanup-reset-tokens.ts",
+    "ops:backup": "tsx scripts/ops-backup.ts",
+    "ops:backup:verify": "tsx scripts/ops-backup-verify.ts",
+    "ops:restore": "tsx scripts/ops-restore.ts",
+    "ops:integrity": "tsx scripts/ops-integrity.ts",
+    "ops:preflight": "tsx scripts/ops-preflight.ts",
+    "ops:monitor-check": "tsx scripts/ops-monitor-check.ts",
     "codegen": "prisma generate",
     "db:generate": "prisma generate"
   },

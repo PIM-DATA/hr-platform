@@ -76,6 +76,13 @@ What stands between this system and real use:
 | T44-P2-15 remaining cross-currency sums | **RESOLVED — Task 48** | Reproduced first (executive payroll: THB 152,000.50 + USD 16,500.25 shown as "168500.75 USD"). One payroll source `closedTotals` keyed by currency (executive, CSV, copilot); Report Center payroll money declares `currencyField`; travel estimate total removed, `byMonth` keyed by currency. The same source applies the Task 47 small-group rule to payroll totals (runs < 5 employees withheld) — a one-employee run total was shown to executives and the copilot before |
 | T44-P1-19 self-approval (re-evaluated in Task 48) | open — deferred | The payroll evidence (own compensation / own adjustments) is pre-approval maker-checker governance, not the post-approval drift of P1-16; a proper fix spans compensation, pay items, adjustments, compensation planning, ER and services (subject ≠ actor, maker ≠ checker). The workflow engine already refuses requester self-approval of the payroll run itself |
 | Also fixed in Task 48 | fixed | Payroll system-component cache was process-wide: a refused first calculation on a fresh database cached ids from a rolled-back transaction and broke every later calculation (FK error) — now per transaction. Report Center in-memory DECIMAL filters compared with `Number()` — now Decimal (tested beyond float precision) |
+| T44-P1-10 document backup | **RESOLVED — Task 49** | Reproduced first (Task 44: database restored without files → ready "ok", downloads 404; readiness re-created the missing root). Now `ops:backup` writes database + documents as one set (manifest, SHA256SUMS, every referenced object present with its sha256 or the run fails `INCOMPLETE`); `ops:restore` restores the pair from the same set into a new database + empty directory and verifies every object (deep); readiness never re-creates a root once documents exist (`ROOT_MISSING`, `ROOT_EMPTY_BUT_DOCUMENTS_EXIST`, reason logged); `ops:integrity` reports missing/mismatched/orphan objects. Full drill on the production build: 6/6 downloads byte-identical after restore |
+| T44-P1-11 backups off-host / scheduled / alerted | **APPLICATION SIDE READY — Task 49; EXTERNAL NOT CONFIGURED** | Off-host hook contract (copy + remote verification, required in production, failure = run fails, set kept `LOCAL_ONLY`), shipped rsync-over-SSH and rclone hooks (rsync pair exercised end to end with an SSH shim, remote tamper detected), retention (never deletes the newest valid set), freshness (`last-success.json`, `backup_freshness`), systemd timer / cron examples with `OnFailure` alert hook. **Not done, per deployment:** a real off-host destination, its encryption at rest (the application does not encrypt sets — stated in docs/backup-restore.md §5), alert delivery. Remains open until a deployment configures and proves them |
+| T44-P1-12 monitoring / supervision | **APPLICATION SIDE READY — Task 49; EXTERNAL ALERTING NOT CONFIGURED** | Runbook events now emitted (`app_started`, `app_shutdown`, `app_fatal_error`, `db_readiness_failed`, `document_storage_unavailable`, backup/restore/monitor events); `ops:monitor-check` (API live/ready, document storage + free space, backup freshness + free space; exit 1 names the failed checks — each failure demonstrated on the production build); supervisor unit `hr-api.service` (restart, crash-loop limit, `OnFailure`); external alert contract in docs/operations-monitoring.md. PostgreSQL disk is not observable from the application (provider responsibility, stated). **No alert is delivered** until an operator wires `hr-alert@.service` / an uptime monitor |
+| T44-P2-19 readiness blind spots | **RESOLVED — Task 49** | Unmounted/empty volume and missing root detected without re-creating it; disk-full/read-only → `NOT_WRITABLE` probe; reason code returned (path-free) and logged; free space in `ops:monitor-check` |
+| T44-P2-20 backup umask / restore target | partly — Task 49 | Ops commands set `umask 077` and build sets in a `0700` partial directory; restore drill (`--verify-only`) still needs `CREATEDB` — recommended on a separate verification host (runbook §4.2) |
+| T44-P2-22 RPO/RTO | partly — Task 49 | Stated factually with measured drill durations (docs/backup-restore.md §10); no target is promised — agreeing targets is a customer decision; release engineering untouched |
+| Found and fixed in Task 49 | fixed | Ops commands imported `@prisma/client` before the application's `ENV_FILE` loader; Prisma loaded the repository `.env` first, so a backup run with `ENV_FILE` silently dumped the `.env` database (caught in the drill by the new document cross-check: 203 objects "missing"). Every ops entry point now loads `ENV_FILE` first; regression test spawns a command with `ENV_FILE` and proves it targets that database. Also: macOS `openrsync` lacks `--chmod` — the shipped hook no longer uses it (`-a` preserves the 0600/0700 modes) |
 | All other findings | open | — |
 
 The classifications above are unchanged by these fixes; the remaining Pilot blockers are listed in §27.
@@ -396,6 +403,18 @@ failure alerting: **none** (exit code only). PITR: **not configured**; platform 
 is written with the default umask before `chmod 600`; `BACKUP_DIR` is created without an explicit mode;
 restore-verify needs `CREATEDB` for the application role and runs on the production server.
 
+**Task 49 drill (production build, isolated databases `hr_t49_drill_*`, removed afterwards).** Demo-seeded
+database, 6 documents uploaded through the API, a pre-backup session and an unused reset token; `ops:backup` with the
+shipped rsync-over-SSH hooks (SSH shim standing in for the remote host) → set 600 KB (dump 553 KB, 6 objects, 42 KB),
+**1.4 s**, remote copy re-hashed; a document and a session created after the backup; `ops:restore` into a new database +
+empty directory **1.4 s** (2 sessions and 1 reset token revoked, 30 migrations, deep document integrity); production API
+on the restored pair ready in **0.55 s**; pre-backup session **401**, fresh login **200**, downloads **6/6**
+byte-identical, post-backup document **404**, employee/payroll/leave counts equal to the backup; `ops:preflight` OK;
+monitor check: healthy 0, stale backup 1, missing backup 1, storage removed 1 (readiness `ROOT_MISSING`), API stopped 1;
+off-host destination unavailable → `offhost_copy_failed`, exit 1; an older set (28 migrations) restored and migrated to
+30. Development dataset (1,135 employees, 203 documents): backup 0.5 s, verify-only restore 1.8 s. Developer machine — not
+an RTO. Details: docs/backup-restore.md §10.
+
 ## 14. Documents
 
 Architecture (Task 30) verified: production refuses temp storage (see `/private/tmp` gap), opaque keys, traversal
@@ -460,6 +479,15 @@ error and stays down), log rotation/shipping.
 | Database storage full? | Nobody (readiness is `SELECT 1`) |
 | Backup failing for 3 days? | Nobody (no scheduler, no freshness check) |
 | Document storage unavailable? | `/health/ready` 503 if something polls it; an unmounted volume still reports ok |
+
+**After Task 49** (application side; delivery needs the operator's monitor — docs/operations-monitoring.md):
+
+| Question | Answer after Task 49 |
+|---|---|
+| API down at 02:00 — who knows? | the external uptime probe on `/health/live` and `ops:monitor-check` (`api_live`) fail → the configured alert hook; the supervisor restarts the process |
+| Database storage full? | still not observable from the application — database host / provider monitoring (stated) |
+| Backup failing for 3 days? | every failed run exits 1 (`backup_failed`, `OnFailure`), and `backup_freshness` fails after `BACKUP_MAX_AGE_HOURS` |
+| Document storage unavailable? | readiness 503 with a reason code (unmounted volume included), `document_storage` + free-space checks |
 
 ## 19. Deployment
 
@@ -543,9 +571,9 @@ copilot prompts, browser walk) were run from the session scratch area against th
 | T44-P1-07 ✅ resolved (Task 47) | Small-group disclosure in executive analytics and Report Center | `executive-analytics.service.ts:147-151,206-216`; `prisma-runner.ts:191` row-level "aggregate" datasets | Near-individual scores, ER actions, claims, salaries to executives (also via copilot) | Minimum cell size on department/job filters and aggregate datasets; force grouping | no / yes / yes |
 | T44-P1-08 ✅ resolved (Task 46) | Web security headers | No proxy config shipped; SPA/reset page headers operator-only; doc contradiction | A default deployment serves the SPA without CSP/clickjacking protection | Ship a tested reference proxy config (headers, HTTPS redirect) + go-live header check | yes (operator can add) / yes / yes |
 | T44-P1-09 ✅ resolved (Task 46) | Sensitive API caching | Live: no `Cache-Control` on `/auth/me`, users, compensations, privacy; payslip/letter/ER/talent JSON | Salary/HR JSON and CSRF token cacheable by browser/intermediaries | Global `Cache-Control: no-store` on `/api/v1` | yes / yes / yes |
-| T44-P1-10 | Document backup | No script covers `DOCUMENT_STORAGE_DIR`; live: DB restored without files → ready "ok", downloads 404 | Uploaded HR documents lost on disk loss or incomplete restore | Paired DB + document backup/restore command; consistency check in `ops:check`; readiness must not re-create the root | yes (if documents enabled) / yes / yes |
-| T44-P1-11 | Backups off-host / scheduled / alerted | Local directory only; no schedule, encryption, retention, freshness alert | Host loss destroys data and backups; silent backup failure | Reference encrypted off-host copy + schedule + retention + failure/freshness alert (operator runbook, not a product) | yes (operator commitment) / yes / yes |
-| T44-P1-12 | Monitoring / supervision | No alerting, no supervisor; runbook event names not emitted | Outages and disk-full go unnoticed; crashed API stays down | Emit the documented events; document supervisor unit and external uptime check on `/health/ready`; disk alerts | yes (uptime check) / yes / yes |
+| T44-P1-10 ✅ resolved (Task 49) | Document backup | No script covers `DOCUMENT_STORAGE_DIR`; live: DB restored without files → ready "ok", downloads 404 | Uploaded HR documents lost on disk loss or incomplete restore | Paired DB + document backup/restore command; consistency check in `ops:check`; readiness must not re-create the root | yes (if documents enabled) / yes / yes |
+| T44-P1-11 ◐ application side ready (Task 49), external not configured | Backups off-host / scheduled / alerted | Local directory only; no schedule, encryption, retention, freshness alert | Host loss destroys data and backups; silent backup failure | Reference encrypted off-host copy + schedule + retention + failure/freshness alert (operator runbook, not a product) | yes (operator commitment) / yes / yes |
+| T44-P1-12 ◐ application side ready (Task 49), external not configured | Monitoring / supervision | No alerting, no supervisor; runbook event names not emitted | Outages and disk-full go unnoticed; crashed API stays down | Emit the documented events; document supervisor unit and external uptime check on `/health/ready`; disk alerts | yes (uptime check) / yes / yes |
 | T44-P1-13 ✅ resolved (Task 48) | Attendance/OT truncation | Live 520-employee test: 500 rows, 500 totals, executive `employees: 500`; recalculation cap 2,000 | Silent under-reporting; stale payroll input past 2,000 | Paginate or aggregate in SQL without an employee cap; error instead of truncating | conditional (dept > 500) / yes / yes |
 | T44-P1-14 ✅ resolved (Task 48) | Payroll currency | `payroll-calculation.service.ts:263-303` never checks salary currency; handoffs unchecked | Non-THB salary/claim paid as THB | Block calculation/handoff on currency mismatch | no (single-currency pilot) / yes / yes |
 | T44-P1-15 ✅ resolved (Task 48) | Payroll handoff loss | `removeAdjustment`, recalculation re-creates lines (dangling ids, no FK) | Approved reimbursement never paid, silently | Protect handoff lines; link by (referenceType, referenceId); fail recalculation that drops them | conditional (if handoff used) / yes / yes |
@@ -581,7 +609,7 @@ copilot prompts, browser walk) were run from the session scratch area against th
 | T44-P2-16 | Other silent caps (inboxes 500, team calendar 500, documents 1,000 wrong total, team development 200) | Paginate or mark truncated |
 | T44-P2-17 | PostgreSQL: no `statement_timeout`/`lock_timeout`, default pool, `P2028` unmapped | Set timeouts/pool; map to 409/503 |
 | T44-P2-18 | Missing concurrency tests (attendance corrections, most numbering sequences); first-of-year upsert race UNVERIFIED | Add tests |
-| T44-P2-19 | Readiness blind spots (disk full, unmounted volume, reason not logged) | Marker file probe; log reason; external disk alerts |
+| T44-P2-19 ✅ resolved (Task 49) | Readiness blind spots (disk full, unmounted volume, reason not logged) | Marker file probe; log reason; external disk alerts |
 | T44-P2-20 | Backup partial file umask; restore-verify needs CREATEDB on production server | `umask 077`; separate verify target |
 | T44-P2-21 | Documentation drift: env inventory, `pilot-rc.md`, production-readiness §9, privacy-operations tables, hr-analytics copilot line | Rewrite for current state |
 | T44-P2-22 | No RPO/RTO; no tags/changelog; versions mismatched | Measure and agree targets; release engineering |
@@ -611,7 +639,9 @@ Blockers (must be fixed or explicitly accepted before a real customer pilot):
 4. ~~**T44-P1-01** RBAC SoD.~~ Resolved in Task 45.
 5. Operator commitments written into the pilot checklist: ~~correct `TRUST_PROXY` (T44-P1-04), proxy security headers
    (T44-P1-08)~~ (now enforced / shipped and verifiable — Task 46), scheduled off-host backups of the database **and** document directory with a restore drill
-   (**T44-P1-10/11**), an external uptime check and a process supervisor (**T44-P1-12**).
+   (**T44-P1-10/11** — tooling shipped in Task 49: `ops:backup`, off-host hooks, `ops:restore --verify-only`, timers; the
+   operator still configures the destination), an external uptime check, alert delivery and the process supervisor
+   (**T44-P1-12** — `ops:monitor-check`, `hr-api.service` and the alert contract shipped in Task 49; delivery is the operator's).
 6. Scope limits: Asia/Bangkok, copilot disabled or restricted to non-decision use, small trusted HR team aware of the
    self-approval gaps (**T44-P1-19/22/23**). ~~One currency (THB), departments ≤ 500 employees (T44-P1-13/14)~~ — no
    longer needed after Task 48: a mismatched currency is refused, not paid, and totals cover any department size.
@@ -634,8 +664,9 @@ engineering (tags, changelog, reproducible versioned builds).
 ## 30. Required remediation order
 
 1. **Security blockers (pilot):** P0-01; P1-01 (SoD); P1-03; P1-04; P1-09; P2-01 bootstrap guard.
-2. **Install and operations baseline (pilot):** P1-02 build; P1-08 reference proxy config; P1-10 document backup +
-   consistency + honest readiness; P1-11/12 backup schedule, off-host copy, uptime/supervisor guidance and emitted events;
+2. **Install and operations baseline (pilot):** ~~P1-02 build; P1-08 reference proxy config~~ (Task 46); ~~P1-10 document
+   backup + consistency + honest readiness~~ (Task 49); P1-11/12 application side shipped in Task 49 (backup schedule
+   examples, off-host hooks, monitor check, supervisor unit, emitted events) — external destination and alerting per deployment;
    doc drift (P2-21).
 3. **Confidentiality (pilot):** P1-05, P1-06, P1-18, P1-20, P1-24; then P1-07 and P1-21.
 4. **Data correctness (production):** ~~P1-13, P1-14, P1-15, P1-16~~ and ~~P2-15~~ resolved in Task 48; P1-23; P2-16/17.

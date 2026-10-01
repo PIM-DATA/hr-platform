@@ -5,6 +5,9 @@
  * hash is stored), but there is no reason to keep them once the operator's retention window has passed. How long that
  * is, is a customer policy decision — hence the flag, with a conservative default and no scheduler.
  */
+// Must be the first import: it loads ENV_FILE. @prisma/client loads apps/api/.env when it is imported, and the first
+// loader wins — an ops command would otherwise silently act on the repository's .env database (found in the Task 49 drill).
+import '../src/config/env';
 import { accountService } from '../src/modules/account/account.service';
 import { prisma } from '../src/lib/prisma';
 import { opsLog } from './lib/pg-tools';

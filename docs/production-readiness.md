@@ -223,9 +223,11 @@ real data produced no violation) and Zod runs `jitless`, so there is no eval pro
 
 ## 9. Known gaps
 
-- **Backup/restore**: `npm run db:backup` and `npm run db:restore:verify` exist and the restore drill passes
-  (see docs/operations-runbook.md). Still missing: an off-host copy of backups, encryption at rest for dump files,
-  automated scheduling/retention, backup-failure alerting and point-in-time recovery (WAL archiving).
+- **Backup/restore** (Task 49): complete recovery sets (database + documents), verified, copied off-host through
+  operator hooks, rotated, restorable into a new database with sessions/reset tokens revoked, freshness-monitored —
+  docs/backup-restore.md, docs/operations-monitoring.md. Still missing: application-level encryption of backup sets
+  (operator/provider responsibility, stated there), alert *delivery* (operator-configured), point-in-time recovery
+  (WAL archiving) and high availability.
 - **Monitoring**: `npm run ops:check` plus structured events give a monitor something to consume, but no metrics,
   alerting, uptime checks or external error tracking (Sentry/Datadog) are wired up; logs go to stdout only.
 - **Account recovery**: admin-assisted recovery is available (self-service password change, one-time reset links,

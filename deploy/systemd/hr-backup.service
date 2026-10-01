@@ -1,0 +1,16 @@
+# One complete backup set (database + documents, verified, copied off-host, retention). Non-zero exit = failure → alert.
+[Unit]
+Description=HR Enterprise Platform backup set
+OnFailure=hr-alert@%n.service
+
+[Service]
+Type=oneshot
+User=hr
+WorkingDirectory=/opt/hr-platform
+Environment=ENV_FILE=/etc/hr-platform/api.env
+# BACKUP_DIR, BACKUP_OFFHOST_* and off-host credentials come from this root-owned, mode 0600 file
+EnvironmentFile=/etc/hr-platform/backup.env
+ExecStart=/usr/bin/npm run ops:backup
+UMask=0077
+Nice=10
+IOSchedulingClass=idle

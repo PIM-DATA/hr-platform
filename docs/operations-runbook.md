@@ -12,11 +12,12 @@ Commercial model: **one customer = one deployment = one PostgreSQL database.** E
 | Check | Command / endpoint | Healthy |
 |---|---|---|
 | Process alive | `GET /api/v1/health/live` | 200 |
-| Ready to serve | `GET /api/v1/health/ready` | 200 (503 = database unreachable) |
-| Both, scriptable | `npm run ops:check` | exit code 0 |
+| Ready to serve | `GET /api/v1/health/ready` | 200 (503 = database unreachable or document storage unusable — see `documentStorageReason`) |
+| Everything the host can see | `npm run ops:monitor-check` | exit 0 (API ready, document storage + free space, fresh verified backup, backup free space) |
+| Last backup | `cat $BACKUP_DIR/last-success.json` | `completedAt` within your schedule |
 
-`ops:check` needs no credentials and prints one JSON line (`ops_check_healthy` / `ops_check_unhealthy`); point it at
-another host with `OPS_CHECK_URL`. Use it after every deploy and from whatever monitor you adopt.
+`ops:monitor-check` should already run every 5 minutes from a scheduler that alerts on a non-zero exit
+([operations-monitoring.md](operations-monitoring.md)). `ops:check` (probes only) remains for deploy pipelines.
 
 ## 2. Reading the logs
 
@@ -26,117 +27,113 @@ user report ("it failed at 14:03") maps to exact lines:
 ```bash
 grep '"requestId":"<id>"' app.log
 grep '"level":50' app.log        # errors
-grep '"event":"' app.log         # operational events (below)
+grep '"event":"' app.log         # operational events
 ```
 
-Stable event names: `app_started`, `app_shutdown`, `app_fatal_error`, `db_readiness_failed`, `backup_started`,
-`backup_completed`, `backup_failed`, `restore_verify_started`, `restore_verify_completed`, `restore_verify_failed`,
-`sessions_revoked`, `ops_check_healthy`, `ops_check_unhealthy`.
+Event names are listed in [operations-monitoring.md §4](operations-monitoring.md#4-events) (API: `app_started`,
+`app_shutdown`, `app_fatal_error`, `db_readiness_failed`, `document_storage_unavailable`; ops commands: `backup_*`,
+`offhost_copy_*`, `restore_*`, `sessions_revoked`, `integrity_check_*`, `preflight_*`, `monitor_check_*`).
 
 Logs never contain passwords, tokens, cookies, authorization headers, connection strings or request bodies — so a leave
 reason or attachment reference never reaches a log file. An inbound `x-request-id` is only echoed when it is short and
 printable; anything else is replaced by a generated id.
 
-## 3. Detecting trouble
+## 3. Detecting and handling trouble
 
-| Symptom | How it shows up | First response |
+| Symptom | How it shows up | What to do |
 |---|---|---|
-| API down | `ops:check` non-zero; `/health/live` unreachable | check the process/container is running, then §5 |
-| Database unavailable | `/health/ready` 503; `db_readiness_failed` in logs | check PostgreSQL and connectivity; the app recovers on its own once the database returns |
+| API down | uptime monitor / `api_live` fails | `systemctl status hr-api` (or the container); `journalctl -u hr-api -n 200` → the `app_fatal_error` line; a bad configuration exits **before** listening with a named reason; fix, then §5 |
+| Restart loop | repeated `app_started` without `app_shutdown`; systemd stops after 5 crashes in 10 min and fires `OnFailure` | read the fatal line; do not just restart again |
+| Database unavailable | readiness 503 with `"database":"unavailable"`; `db_readiness_failed` | check PostgreSQL (service, disk on the database host, connections); the API recovers by itself once the database returns — no restart needed |
+| Document storage unavailable | readiness 503, `documentStorageReason`; `document_storage` check fails | `ROOT_MISSING` / `ROOT_EMPTY_BUT_DOCUMENTS_EXIST`: the volume is not mounted or the wrong directory is configured — mount it, never create an empty directory in its place; `NOT_WRITABLE`/`NOT_READABLE`: ownership/permissions (service user, `0700`) or a full / read-only filesystem |
+| Disk filling | `document_storage_free_space` / `backup_free_space` fail (`MONITOR_MIN_FREE_MB`) | documents: grow the volume (objects are never deleted automatically); backups: lower `BACKUP_RETAIN_COUNT` or grow the volume — never delete the newest `COMPLETE` set by hand |
+| Backup failed | `ops:backup` exit 1, `backup_failed` with `reason`; `last-attempt.json` | §4.1 |
+| Backups stale | `backup_freshness` fails | the schedule did not run or every run failed: `systemctl list-timers hr-backup*`, `journalctl -u hr-backup`, then §4.1 |
 | Repeated 5xx | `"level":50` lines with distinct `requestId`s | take one `requestId`, read its error line; check database health and recent deploys |
-| Restart loop | repeated `app_started` without `app_shutdown`; `app_fatal_error` | read the fatal line; a bad configuration exits **before** listening with a named reason |
-| Backup failed | `backup_failed`, non-zero exit from `db:backup` | §4; check disk space and that the PostgreSQL client tools exist |
-| Disk filling | backup directory growth; write errors | move or delete old backups per the retention policy you set (§4) |
+| Integrity findings | `ops:integrity` / `ops:preflight` exit 1 | §6.2 — report only; reconcile by hand |
 
 ## 4. Backups
 
 ```bash
-BACKUP_DIR=/var/backups/hr npm run db:backup
+npm run ops:backup                     # normally run by hr-backup.timer, not by hand
 ```
 
-- Uses `pg_dump --format=custom` (compressed, restorable with `pg_restore`). The database stays online; the dump is a
-  consistent snapshot.
-- Credentials are passed to `pg_dump` through libpq environment variables — never on the command line, where `ps`
-  would expose them.
-- Writes `hr-enterprise-YYYYMMDD-HHmmss.dump` plus a `.manifest.json` holding format version, timestamps, PostgreSQL
-  and application versions, database name, size, **SHA-256** and the latest applied migration. No credentials.
-- The dump is written as `.dump.partial` and renamed only after it completed and was checksummed, so a truncated file
-  can never look like a usable backup. A failure deletes the partial, writes no manifest and exits non-zero.
-- Files are created `0600` (owner only): a dump contains every HR record in the system.
-- `BACKUP_DIR` is **required in production** (development falls back to a git-ignored folder in the repo).
+One run = one verified recovery set (database + documents + manifest + SHA256SUMS), copied off-host and confirmed,
+then retention. Details, formats and guarantees: [backup-restore.md](backup-restore.md).
 
-**Not yet solved — you must arrange these:**
+### 4.1 Investigating a failed backup
 
-- **Off-host copy.** A backup on the same machine does not survive losing that machine. Copy it to separate storage.
-- **Encryption.** `.dump` files are unencrypted. Storage must provide encryption at rest and transfers must use
-  encrypted transport. Do not invent your own encryption.
-- **Schedule and retention.** There is no scheduler in the application, by design. Have your platform's scheduler run
-  `npm run db:backup` and alert on a non-zero exit. Frequency and how long to keep backups are policy decisions per
-  customer contract — nothing is auto-deleted.
+Read the `reason` of `backup_failed` (also in `$BACKUP_DIR/last-attempt.json`):
+
+| Reason | Meaning | Action |
+|---|---|---|
+| `DATABASE_DUMP_FAILED` | pg_dump failed | PostgreSQL reachable? client tools ≥ server major version (`PG_BIN_DIR`)? disk space in `BACKUP_DIR`? |
+| `DOCUMENT_BACKUP_FAILED` | document root missing/unreadable, or an object could not be read | same as "document storage unavailable" (§3) |
+| `DOCUMENT_REFERENCES_MISSING` | the database references objects the store does not have | `npm run ops:integrity -- --deep` names the versions; restore those objects from the previous set or reconcile — the set is kept as `INCOMPLETE` |
+| `BACKUP_VERIFY_FAILED` | the written set does not verify (disk/filesystem fault) | check the backup volume; rerun |
+| `OFFHOST_COPY_FAILED` | copy or remote verification hook failed (the local set is fine, `LOCAL_ONLY`) | run the hook by hand: `deploy/backup/offhost-…sh <set dir> <set id>`; network, SSH key / rclone credentials, remote disk; rerun `ops:backup` |
+| `OFFHOST_NOT_CONFIGURED` | production without `BACKUP_OFFHOST_COMMAND` | configure it (backup-restore.md §4) |
+| `BACKUP_DIR_REQUIRED`, `BACKUP_CONFIG_INVALID` | configuration | fix `backup.env` |
+
+### 4.2 Verifying a backup by hand
+
+```bash
+npm run ops:backup:verify -- $BACKUP_DIR/hr-backup-YYYYMMDDTHHMMSSZ      # checksums, manifest, dump readable
+npm run ops:restore -- $BACKUP_DIR/hr-backup-YYYYMMDDTHHMMSSZ --verify-only   # full restore drill, cleaned up
+```
+
+Run the drill monthly and after configuration changes (it needs `CREATEDB` for the database role; on a production
+server prefer running it on a separate verification host with the set copied there — T44-P2-20).
 
 ## 5. Restarting safely
 
-1. `npm run db:backup` first if the restart follows a suspected data problem.
-2. Send `SIGTERM` (any platform stop does this): in-flight requests finish, Prisma disconnects, the process exits
-   (10s force timeout).
-3. Start again; confirm `app_started` shows the expected environment and version.
-4. `npm run ops:check` → exit 0, then sign in once and load the dashboard.
+1. If the restart follows a suspected data problem, `npm run ops:backup` first.
+2. `systemctl restart hr-api` (SIGTERM: in-flight requests finish within 10 s, the database pool is released).
+3. Confirm `app_started` with the expected version; `npm run ops:monitor-check` → exit 0; sign in once.
 
-## 6. Verifying a backup (do this regularly)
+## 6. Recovery
+
+### 6.1 Restore
+
+Follow [backup-restore.md §9](backup-restore.md#9-restore) exactly: verify the set → `ops:restore` into a **new**
+database and an **empty** directory (sessions and unused reset tokens are revoked inside the restore) → switch
+`DATABASE_URL` / `DOCUMENT_STORAGE_DIR` → start → `ops:preflight` and `ops:monitor-check` → sign in, open a document →
+tell users the lost window → back up immediately. Restoring over the live database is not possible with this tooling,
+on purpose. `npm run ops:revoke-sessions` remains available for any other "sign everyone out now" situation.
+
+### 6.2 Integrity and preflight
 
 ```bash
-npm run db:restore:verify -- /var/backups/hr/hr-enterprise-20260923-133302.manifest.json
+npm run ops:integrity               # documents ↔ database (size), financial handoff anomalies; exit 1 on findings
+npm run ops:integrity -- --deep     # also re-hashes every stored object
+npm run ops:preflight               # before deploying / migrating, and after a restore
 ```
 
-Checksum → create a throwaway `hr_restore_verify_<random>` database → `pg_restore` → verify tables, migration history,
-row counts and referential sanity → `prisma migrate deploy` (proving the restored copy can move to the current
-version) → revoke restored sessions → drop the temporary database. It refuses to target the development, test or
-source database, and a checksum mismatch stops it before anything is restored. Exit code 0 means recoverable.
+Report only — nothing is repaired, moved or deleted. Findings name record ids and opaque storage keys, never file names
+or amounts. Financial findings (e.g. a report `SENT_TO_PAYROLL` without its payroll line, Task 48) are reconciled by a
+payroll administrator, never by a script. Orphan objects are warnings (expected after a restore).
 
-A backup you have never restored is a hope, not a backup. Verify after configuration changes and on a schedule.
+### 6.3 Disaster scenarios
 
-## 7. Disaster recovery
+[backup-restore.md §11](backup-restore.md#11-disaster-scenarios).
 
-> Restoring **onto** a live database is deliberately not a command in this repository — a single mistyped argument
-> would destroy customer data. It is this controlled procedure instead.
+## 7. Alerting
 
-1. **Stop the application** (stop writes; keep the process down for the whole restore).
-2. **Preserve the damaged database** if it still exists — rename it or take a dump of it. It is evidence and may hold
-   data newer than the backup.
-3. **Provision an empty PostgreSQL database** for the restore target.
-4. **Verify the backup first**: `npm run db:restore:verify -- <manifest>` (never restore an unverified file).
-5. **Restore** into the empty target with the PostgreSQL tools directly, with credentials in the environment:
-   `PGHOST=… PGUSER=… PGPASSWORD=… pg_restore --no-owner --no-privileges --exit-on-error --dbname <target> <dump>`
-6. **`npm run db:deploy`** against the restored database (no-op if the backup matches the current version).
-7. **Check readiness**: point the application at the restored database and confirm `/health/ready` returns 200.
-8. **Revoke all sessions**: `npm run ops:revoke-sessions` — a dump contains the sessions that were valid when it was
-   taken, so without this, old logins come back to life. It deletes session rows only; accounts and passwords are
-   untouched. Everyone signs in again.
-9. **Start the application.**
-10. **Smoke test**: sign in, load the dashboard, open a leave request, check balances and notifications.
-11. **Inspect logs and the audit log** for the recovery window; tell users which period may have been lost.
-12. **Resume service**, then take a fresh backup immediately.
+What must page someone and who sets it up: [operations-monitoring.md §2](operations-monitoring.md#2-external-alert-contract-what-the-operator-must-set-up).
+The repository ships the signals and examples; delivering alerts is the operator's configuration.
 
-## 8. Alerting (categories, not vendors)
+## 8. Deploying a new release
 
-Alert on: readiness failing repeatedly; the process restarting repeatedly; sustained 5xx; `db:backup` exiting
-non-zero; no successful backup within the window your policy defines; disk usage approaching capacity; database
-connectivity failures. No monitoring vendor is integrated yet — the JSON logs, exit codes and probes are what any
-agent would consume.
+`npm ci && npm run build` → `npm run ops:backup` → `npm run ops:preflight` (pending migrations listed; a failed or
+unknown migration, unusable document storage or an integrity finding stops here) → `npm run db:deploy` → restart (§5) →
+`npm run ops:monitor-check`.
 
 ## 9. RPO and RTO
 
-Neither is a promise this system can make on its own:
-
-- **RPO** (how much data a failure may lose) = your backup frequency. With daily backups and no WAL archiving, the
-  worst case is a day of work. Point-in-time recovery would need WAL archiving, which is not configured.
-- **RTO** (how long recovery takes) = provisioning + restore + verification in *your* environment, driven by database
-  size and hardware.
-
-Measured locally during the Task 16 drill (development dataset, Postgres.app on a laptop): backup **131 ms** for a
-**116 KB** dump; full restore verification **1.2 s** (restore + integrity checks + migrate deploy + session
-revocation). These are development measurements on a tiny dataset — they are **not** production figures and must not
-be quoted as an SLA. Re-measure with real data volumes before agreeing RPO/RTO with a customer.
+Stated factually, with measurements and without promises, in
+[backup-restore.md §10](backup-restore.md#10-rpo-and-rto--what-is-actually-true). In short: RPO is bounded by the
+backup schedule you configure (not guaranteed); RTO was measured at seconds on small datasets on a developer machine —
+not an SLA.
 
 ## 10. Secrets and rotation
 
@@ -182,19 +179,9 @@ deletes business data on a schedule: retention policy is the customer's decision
   is unavailable, and infrastructure actions do not belong in a business audit trail.
 
 
-## Document storage (Task 30)
+## Document storage (Task 30, Task 49)
 
 The document center keeps file bytes **outside PostgreSQL**, in `DOCUMENT_STORAGE_DIR` (local filesystem adapter).
-From the moment it is used, the database backup described above is **not a complete backup**:
-
-- Back up `DOCUMENT_STORAGE_DIR` on the same schedule as the database, immediately after each dump, and keep the
-  pair together (same backup run, same retention).
-- Restore the pair together. A database restored without the matching storage produces documents whose objects
-  are missing (downloads answer `DOCUMENT_OBJECT_MISSING`); storage restored without the database produces orphaned
-  files. Neither is silently corrected.
-- `npm run ops:check` reports `copilot: disabled | configured` from configuration only (the AI provider is never called by readiness; a provider outage surfaces as 503 `COPILOT_UNAVAILABLE` on the copilot endpoints and nowhere else).
-- `npm run ops:check` reports `documentStorage: ok | disabled | unavailable` from the readiness probe; `unavailable`
-  (root missing or not writable) makes the API not ready. Production refuses to start with the document center
-  enabled and no `DOCUMENT_STORAGE_DIR`, or with a temporary path.
-- Files are stored as uploaded. No malware scanning is performed by the platform; add a scanner in the deployment
-  if policy requires one.
+Since Task 49 they are part of every backup set and every restore (backup-restore.md); readiness reports the store's
+usability with a reason code; `ops:integrity` compares objects with their database records. Files are stored as
+uploaded — no malware scanning is performed by the platform (audit T44-P2-11).

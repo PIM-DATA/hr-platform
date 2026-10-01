@@ -7,7 +7,7 @@ const app = createApp();
 const server = app.listen(env.PORT, () => {
   // Startup logs carry no connection string, host or credential — only what an operator needs to confirm the process.
   logger.info(
-    { port: env.PORT, env: env.NODE_ENV, version: env.APP_VERSION ?? 'unknown', trustProxy: env.trustProxyDescription, allowedOrigins: env.allowedOrigins.length },
+    { event: 'app_started', port: env.PORT, env: env.NODE_ENV, version: env.APP_VERSION ?? 'unknown', trustProxy: env.trustProxyDescription, allowedOrigins: env.allowedOrigins.length },
     'API started',
   );
   // Not an error: a single-host install is a supported topology. Said out loud so nobody deploys it by accident.
@@ -21,7 +21,7 @@ let shuttingDown = false;
 async function shutdown(reason: string, exitCode = 0) {
   if (shuttingDown) return; // a second signal must not race the first shutdown
   shuttingDown = true;
-  logger.info({ reason }, 'shutting down');
+  logger.info({ event: 'app_shutdown', reason }, 'shutting down');
 
   const force = setTimeout(() => {
     logger.error({ reason, graceMs: SHUTDOWN_GRACE_MS }, 'graceful shutdown timed out — forcing exit');
@@ -48,11 +48,11 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 // A process that has thrown out of band is in an unknown state: log it and shut down instead of limping on quietly.
 process.on('uncaughtException', (err) => {
-  logger.fatal({ err }, 'uncaught exception — shutting down');
+  logger.fatal({ event: 'app_fatal_error', err }, 'uncaught exception — shutting down');
   void shutdown('uncaughtException', 1);
 });
 process.on('unhandledRejection', (reason) => {
-  logger.fatal({ err: reason instanceof Error ? reason : new Error(String(reason)) }, 'unhandled rejection — shutting down');
+  logger.fatal({ event: 'app_fatal_error', err: reason instanceof Error ? reason : new Error(String(reason)) }, 'unhandled rejection — shutting down');
   void shutdown('unhandledRejection', 1);
 });
 

@@ -68,11 +68,31 @@ secret store, never in the repository.
 |---|---|---|---|
 | `ENV_FILE` | API and all scripts | no | Path of the configuration file (outside the repository in production). |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | `bootstrap:admin` | **yes** | First administrator; the password follows the 12-character policy and is never echoed. Pass for the one command only. |
-| `BACKUP_DIR` | `db:backup` | no | Backup directory (required in production). |
-| `PG_BIN_DIR` | `db:backup`, `db:restore:verify` | no | Where `pg_dump`/`pg_restore`/`psql` live if not on `PATH`. |
+| `PG_BIN_DIR` | `ops:backup`, `ops:restore`, `db:backup`, `db:restore:verify` | no | Where `pg_dump`/`pg_restore`/`psql`/`createdb`/`dropdb` live if not on `PATH`. |
 | `REVOKE_SESSIONS_DATABASE_URL` | `ops:revoke-sessions` | **yes** | Target a restored copy instead of `DATABASE_URL`. |
-| `OPS_CHECK_URL`, `OPS_CHECK_TIMEOUT_MS` | `ops:check` | no | Probe through the proxy or from another host. |
+| `OPS_CHECK_URL`, `OPS_CHECK_TIMEOUT_MS` | `ops:check`, `ops:monitor-check` | no | Probe through the proxy or from another host (default `http://127.0.0.1:$PORT`, 5000 ms). |
 | `RESET_TOKEN_RETENTION_DAYS` | `ops:cleanup-reset-tokens` | no | Retention for spent reset tokens. |
+
+## Backup, restore and monitoring (Task 49 — not read by the running API)
+
+Keep these in a separate root-owned `0600` file (e.g. `/etc/hr-platform/backup.env`) loaded by the backup and monitor
+units next to `ENV_FILE`. All ops commands load `ENV_FILE` **first**, so they act on the same database and document
+root as the API (see [backup-restore.md](backup-restore.md), [operations-monitoring.md](operations-monitoring.md)).
+
+| Variable | Req | Secret | Default | Production behaviour |
+|---|---|---|---|---|
+| `BACKUP_DIR` | P | no | dev: `apps/api/backups` (git-ignored) | Where recovery sets, `last-success.json` and `last-attempt.json` live. Required; never inside a web root; mode `0700`. Also `db:backup`. |
+| `BACKUP_RETAIN_COUNT` | — | no | `7` | Verified COMPLETE sets kept locally (1–1000). Never deletes the newest valid set. |
+| `BACKUP_OFFHOST_COMMAND` | P | no (the path) | — | Absolute path of the off-host copy hook, run without a shell as `<cmd> <set dir> <set id>`. Production fails the run (`OFFHOST_NOT_CONFIGURED`) without it. |
+| `BACKUP_OFFHOST_VERIFY_COMMAND` | P (with the above) | no (the path) | — | Absolute path of the hook that proves the remote copy matches (exit 0). Required with the copy hook in production. |
+| `BACKUP_OFFHOST_REQUIRED` | — | no | `true` in production, `false` otherwise | `false` in production = explicit, documented acceptance of local-only backups (not recommended). |
+| `BACKUP_OFFHOST_TIMEOUT_SECONDS` | — | no | `3600` | Per hook. A timeout is a failure. |
+| Hook settings: `OFFHOST_SSH_TARGET`, `OFFHOST_SSH_PATH`, `OFFHOST_SSH_KEY` (path) / `OFFHOST_RCLONE_REMOTE`, `OFFHOST_RCLONE_DOWNLOAD` | with the shipped hooks | no | — | Read by `deploy/backup/*.sh` only. |
+| Off-host credentials (SSH private key, `RCLONE_CONFIG_*` / rclone config) | with the shipped hooks | **yes** | — | In the service user's own configuration or the secret store — never in the repository, the manifest or any log. |
+| `BACKUP_MAX_AGE_HOURS` | — | no | `26` | `ops:monitor-check` fails `backup_freshness` when the newest COMPLETE set is older. Choose: schedule interval + margin. |
+| `MONITOR_MIN_FREE_MB` | — | no | `1024` | Free-space threshold for the document volume and `BACKUP_DIR`. |
+| `MONITOR_SKIP_API` | — | no | `false` | `true` on a host that runs the checks but not the API. |
+| `MONITOR_SKIP_BACKUP` | — | no | `false` | Development only; refused in production. |
 
 ## Web build
 

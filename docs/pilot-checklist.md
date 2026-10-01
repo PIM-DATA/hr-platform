@@ -85,9 +85,10 @@ npm run start          # node apps/api/dist/server.js, with ENV_FILE pointing at
 
 **Do not put real employee data in until all four are true.**
 
-- [ ] `BACKUP_DIR=… npm run db:backup` succeeds and writes a dump + manifest.
-- [ ] `npm run db:restore:verify -- <manifest>` succeeds (it restores into a throwaway database and proves the dump is
-      usable; it never touches the live one).
+- [ ] `npm run ops:backup` exits 0 and writes a COMPLETE recovery set (database **and** documents, checksummed, copied
+      off-host and confirmed) — docs/backup-restore.md. (`db:backup` alone is database-only and not enough.)
+- [ ] `npm run ops:restore -- <set> --verify-only` succeeds (restores database + documents into throwaway targets,
+      revokes sessions and reset tokens, verifies, removes them; it never touches the live system).
 - [ ] The operator knows where backups are, how often they run, and how long they are kept.
 - [ ] **OFF-HOST BACKUP DESTINATION REQUIRED** — a copy on another machine or object storage, encrypted at rest by
       whatever holds it. A backup on the same disk as the database survives nothing that matters.
@@ -121,7 +122,7 @@ npm run start          # node apps/api/dist/server.js, with ENV_FILE pointing at
 | "Why did this balance change?" | Leave → entitlement detail → **ledger**: every GRANT / RESERVE / USE / RELEASE / ADJUST entry with its reference. The cached summary is recomputed from the ledger in the same transaction. |
 | "Where did the import fail?" | Onboarding preview reports sheet/row/field; the error CSV is downloadable. A failed import creates nothing. |
 | "Is the database healthy?" | `npm run ops:check`; `/api/v1/health/ready` reports the database; PostgreSQL's own logs for anything deeper. |
-| "Can we still restore the latest backup?" | `npm run db:restore:verify -- <manifest>` — run it on a schedule, not only after an incident. |
+| "Can we still restore the latest backup?" | `npm run ops:restore -- <set> --verify-only` — run it on a schedule, not only after an incident; `ops:monitor-check` tells you when the last verified backup is too old. |
 | "A user forgot their password" | Administration → Users → key icon → generate a one-time link → hand it over through the agreed secure channel. Nobody can read or set a password (`docs/account-recovery.md`). |
 | "An employee asks for their data" | Administration → Privacy → record the request, then Data export for that employee (`docs/privacy-operations.md`). |
 | "Someone lost a laptop" | Administration → Users → sign-out icon (all sessions), then issue a reset link if the password may be known. |

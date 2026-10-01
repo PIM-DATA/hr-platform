@@ -1,0 +1,12 @@
+# Local monitoring signals (API ready, document storage + free space, backup freshness). Non-zero exit → alert.
+[Unit]
+Description=HR Enterprise Platform monitor check
+OnFailure=hr-alert@%n.service
+
+[Service]
+Type=oneshot
+User=hr
+WorkingDirectory=/opt/hr-platform
+Environment=ENV_FILE=/etc/hr-platform/api.env
+EnvironmentFile=/etc/hr-platform/backup.env
+ExecStart=/usr/bin/npm run ops:monitor-check

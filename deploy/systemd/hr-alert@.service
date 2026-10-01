@@ -1,0 +1,8 @@
+# Alert delivery is NOT part of the application. This template runs YOUR notification command when a unit fails
+# (%i = the failed unit). Replace ExecStart with your pager / chat / e-mail integration; nothing is configured by default.
+[Unit]
+Description=Alert: %i failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hr-notify "HR platform: %i failed on %H — see journalctl -u %i"

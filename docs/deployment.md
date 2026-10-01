@@ -48,8 +48,9 @@ unsafe (origins, reset URL, cookies, proxy trust, document storage, copilot) —
 install -d -m 700 -o hr /var/lib/hr/documents
 ```
 
-Persistent storage, never a temporary path. It must be backed up together with the database (backups are still an
-open production item — see the audit, T44-P1-10/11).
+Persistent storage, never a temporary path. Create it at install time (an empty root is accepted only while the
+database has no documents; afterwards a missing or empty root makes the API not ready instead of being re-created).
+It is backed up together with the database in every recovery set — [backup-restore.md](backup-restore.md).
 
 ## 4. Build (code generation included)
 
@@ -145,12 +146,28 @@ npm run ops:check                                 # liveness + readiness, exit 0
 ```
 
 `npm start` always runs production mode from the built files — it never starts Vite or a watcher. Run it under a
-process supervisor that restarts it (systemd `Restart=on-failure`, a container restart policy): the process exits on a
-fatal error. SIGTERM drains in-flight requests (10 s) and disconnects the database. Probes: `/api/v1/health/live`
+process supervisor that restarts it — reference unit `deploy/systemd/hr-api.service` (`Restart=on-failure`, crash-loop
+limit, `OnFailure` alert hook) or a container restart policy: the process exits on a fatal error (`app_fatal_error`). SIGTERM drains in-flight requests (10 s) and disconnects the database. Probes: `/api/v1/health/live`
 (process), `/api/v1/health/ready` (database + document storage; 503 when not ready) — unauthenticated, not
 rate-limited, `no-store`.
 
-## 11. Checklist
+## 11. Backups and monitoring (Task 49)
+
+```sh
+install -d -m 700 -o hr /var/backups/hr                      # BACKUP_DIR, on a different volume than the database
+# /etc/hr-platform/backup.env (root-owned, 0600): BACKUP_DIR, BACKUP_OFFHOST_COMMAND/_VERIFY_COMMAND, hook settings
+cp deploy/systemd/hr-backup.* deploy/systemd/hr-monitor.* deploy/systemd/hr-alert@.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now hr-backup.timer hr-monitor.timer
+npm run ops:backup && npm run ops:restore -- "$BACKUP_DIR"/hr-backup-* --verify-only   # first set + restore drill
+npm run ops:monitor-check
+```
+
+Off-host hooks: `deploy/backup/` (rsync over SSH or rclone). Alert delivery: replace `/usr/local/bin/hr-notify` in
+`hr-alert@.service` with your integration, and add an external HTTPS uptime monitor on `/api/v1/health/live` and
+`/api/v1/health/ready`. Nothing pages anybody until that is done. Details: [backup-restore.md](backup-restore.md),
+[operations-monitoring.md](operations-monitoring.md). Before each new release: `npm run ops:preflight`.
+
+## 12. Checklist
 
 - [ ] PostgreSQL database + dedicated role; credentials only in the secret store / env file
 - [ ] Env file outside the repository, `chmod 600`, `NODE_ENV=production`, every P variable set
@@ -162,5 +179,9 @@ rate-limited, `no-store`.
 - [ ] `TRUST_PROXY` matches the topology (§8)
 - [ ] `npm run ops:verify-web -- https://<host>` passes
 - [ ] `npm start` under a supervisor; `npm run ops:check` passes
-- [ ] Still required before production (not covered here): scheduled off-host backups of the database **and** the
-      documents directory with a restore drill; monitoring and alerting (audit findings T44-P1-10/11/12)
+- [ ] `backup.env` with `BACKUP_DIR` and verified off-host hooks; `hr-backup.timer` and `hr-monitor.timer` enabled
+- [ ] First `npm run ops:backup` exit 0; `ops:restore -- <set> --verify-only` exit 0 (restore drill)
+- [ ] `npm run ops:monitor-check` exit 0
+- [ ] Alert delivery configured (`hr-alert@.service` → your pager/chat/e-mail) and an external uptime monitor on
+      `/health/live` + `/health/ready` — **the application cannot do this part for you**
+- [ ] PostgreSQL disk/availability alerts on the database host or provider

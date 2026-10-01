@@ -21,9 +21,15 @@ export interface DocumentStorage {
   exists(key: string): Promise<boolean>;
   stat(key: string): Promise<{ size: number } | null>;
   delete(key: string): Promise<void>;
-  /** Liveness: the root exists and is writable, verified with a create/delete of a private probe file. */
-  health(): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Readiness of the store (Task 49, T44-P1-10 / P2-19). `hasDocuments` says whether the database references any stored
+   * object. The root is never re-created behind the operator's back once documents exist: a missing or empty root then
+   * means an unmounted volume or a database restored without its files, and is reported, not papered over.
+   */
+  health(hasDocuments: boolean): Promise<{ ok: boolean; reason?: StorageHealthReason }>;
 }
+/** Stable, path-free reason codes (safe for the readiness payload and logs). */
+export type StorageHealthReason = 'ROOT_MISSING' | 'ROOT_NOT_DIRECTORY' | 'ROOT_EMPTY_BUT_DOCUMENTS_EXIST' | 'NOT_READABLE' | 'NOT_WRITABLE';
 
 const KEY_PATTERN = /^documents\/[0-9a-f]{2}\/[0-9a-f-]{36}$/;
 export const newStorageKey = (): string => { const id = randomUUID(); return `documents/${id.slice(0, 2)}/${id}`; };
@@ -44,6 +50,10 @@ export class LocalFileDocumentStorage implements DocumentStorage {
 
   async put(key: string, stream: Readable): Promise<StoredObject> {
     const full = this.resolve(key);
+    // The root itself must already exist (created at install, or by a readiness check on an empty installation): a
+    // write must never silently re-create a missing volume mount point.
+    const root = await stat(this.root).catch(() => null);
+    if (!root?.isDirectory()) throw new AppError(503, 'DOCUMENT_STORAGE_UNAVAILABLE', 'Document storage is not available');
     await mkdir(path.dirname(full), { recursive: true });
     const tmp = `${full}.part-${randomUUID()}`;
     const hash = createHash('sha256');
@@ -64,15 +74,25 @@ export class LocalFileDocumentStorage implements DocumentStorage {
   async stat(key: string) { try { const s = await stat(this.resolve(key)); return { size: s.size }; } catch { return null; } }
   async delete(key: string): Promise<void> { await unlink(this.resolve(key)).catch(() => undefined); }
 
-  async health() {
+  async health(hasDocuments: boolean): Promise<{ ok: boolean; reason?: StorageHealthReason }> {
+    const root = await stat(this.root).catch(() => null);
+    if (!root) {
+      // A brand-new installation (nothing stored yet) may create its root; an installation with documents may not.
+      if (hasDocuments) return { ok: false, reason: 'ROOT_MISSING' };
+      try { await mkdir(this.root, { recursive: true, mode: 0o700 }); } catch { return { ok: false, reason: 'NOT_WRITABLE' }; }
+    } else if (!root.isDirectory()) {
+      return { ok: false, reason: 'ROOT_NOT_DIRECTORY' };
+    }
+    try { await access(this.root, constants.R_OK | constants.X_OK); } catch { return { ok: false, reason: 'NOT_READABLE' }; }
+    // Objects live under <root>/documents/; documents in the database but no object directory = wrong or empty volume.
+    if (hasDocuments && !(await stat(path.join(this.root, 'documents')).catch(() => null))?.isDirectory()) return { ok: false, reason: 'ROOT_EMPTY_BUT_DOCUMENTS_EXIST' };
     try {
-      await mkdir(this.root, { recursive: true });
       const probe = path.join(this.root, `.health-${randomUUID()}`);
       await pipeline(Readable.from([Buffer.from('ok')]), createWriteStream(probe, { flags: 'wx', mode: 0o600 }));
       await unlink(probe);
       return { ok: true };
-    } catch (e) {
-      return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+    } catch {
+      return { ok: false, reason: 'NOT_WRITABLE' };
     }
   }
 }
@@ -82,10 +102,17 @@ let instance: DocumentStorage | null = null;
 export function documentStorage(): DocumentStorage {
   if (!env.DOCUMENTS_ENABLED) throw new AppError(503, 'DOCUMENTS_DISABLED', 'The document center is disabled on this installation');
   if (!instance) {
-    const root = env.DOCUMENT_STORAGE_DIR ?? (env.isProduction ? null : path.resolve(process.cwd(), env.isTest ? '.data/documents-test' : '.data/documents'));
+    const root = documentStorageRoot();
     if (!root) throw new AppError(503, 'DOCUMENTS_NOT_CONFIGURED', 'DOCUMENT_STORAGE_DIR is not configured');
     instance = new LocalFileDocumentStorage(root);
   }
   return instance;
 }
 export const documentStorageConfigured = () => env.DOCUMENTS_ENABLED && (!!env.DOCUMENT_STORAGE_DIR || !env.isProduction);
+
+/** The configured local root (for operational tooling: backup, restore, integrity), or null when not configured. */
+export function documentStorageRoot(source: { DOCUMENTS_ENABLED: boolean; DOCUMENT_STORAGE_DIR?: string; isProduction: boolean; isTest: boolean } = env, cwd = process.cwd()): string | null {
+  if (!source.DOCUMENTS_ENABLED) return null;
+  if (source.DOCUMENT_STORAGE_DIR) return path.resolve(source.DOCUMENT_STORAGE_DIR);
+  return source.isProduction ? null : path.resolve(cwd, source.isTest ? '.data/documents-test' : '.data/documents');
+}

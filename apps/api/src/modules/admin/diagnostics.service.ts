@@ -17,7 +17,7 @@ async function databaseReachable(): Promise<boolean> {
 }
 async function storageHealth(): Promise<'ok' | 'unavailable' | 'disabled'> {
   if (!documentStorageConfigured()) return 'disabled';
-  try { return (await documentStorage().health()).ok ? 'ok' : 'unavailable'; } catch { return 'unavailable'; }
+  try { return (await documentStorage().health(!!(await prisma.documentVersion.findFirst({ select: { id: true } })))).ok ? 'ok' : 'unavailable'; } catch { return 'unavailable'; }
 }
 
 export const adminDiagnosticsService = {

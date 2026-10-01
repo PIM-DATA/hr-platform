@@ -629,30 +629,31 @@ ENV_FILE=/etc/hr-platform/api.env npm start   # = NODE_ENV=production node apps/
 
 ## Backups and operations
 
-Full procedures in [docs/operations-runbook.md](docs/operations-runbook.md).
+Full procedures in [docs/operations-runbook.md](docs/operations-runbook.md),
+[docs/backup-restore.md](docs/backup-restore.md) and [docs/operations-monitoring.md](docs/operations-monitoring.md).
 
 ```bash
-BACKUP_DIR=/var/backups/hr npm run db:backup          # pg_dump --format=custom + SHA-256 manifest
-npm run db:restore:verify -- <path/to/*.manifest.json> # restore into a throwaway DB and prove it is usable
-npm run ops:check                                      # liveness + readiness, exit 0/1 (no credentials needed)
-npm run ops:revoke-sessions                            # after a restore: force everyone to sign in again
+npm run ops:backup                                    # recovery set: database + documents + manifest + SHA256SUMS, verified, off-host, retention
+npm run ops:backup:verify -- <set dir>                # checksums, manifest, readable dump
+npm run ops:restore -- <set dir> --verify-only        # restore drill into throwaway targets (removed afterwards)
+npm run ops:restore -- <set dir> --database <new> --documents <empty dir>   # canonical restore (never overwrites)
+npm run ops:integrity                                 # documents ↔ database + financial handoff, report only
+npm run ops:preflight                                 # before deploying/migrating and after a restore
+npm run ops:monitor-check                             # API ready, document storage + space, backup freshness; exit 0/1
+npm run ops:check                                     # liveness + readiness only
+npm run ops:revoke-sessions                           # force everyone to sign in again
 ```
 
-- Credentials reach the PostgreSQL tools through libpq environment variables, never through command arguments (a
-  connection string in `ps` output is a leak). Everything runs through `execFile` with an argument array — no shell.
-- A dump is written as `.dump.partial` and renamed only after it completes and is checksummed, so a truncated file
-  can never pass for a backup; a failure removes the partial, writes no manifest and exits non-zero.
-- Dumps and manifests are `0600`: a dump contains every HR record. `BACKUP_DIR` is required in production and the
-  backup folder is git-ignored.
-- `db:restore:verify` checks the SHA-256 first, then restores into a generated `hr_restore_verify_<random>` database,
-  verifies tables/migrations/row counts/referential sanity, runs `migrate deploy`, revokes the restored sessions and
-  drops the temporary database. It refuses the development, test and source databases as targets.
-- **Restoring onto a live database is not a command here** — it is a controlled procedure in the runbook, because one
-  mistyped argument would destroy customer data. Session revocation after a restore is mandatory: a dump contains the
-  sessions that were valid when it was taken.
-- PostgreSQL client tools are expected on `PATH` (or `PG_BIN_DIR`); nothing is installed by these scripts. There is no
-  scheduler, no off-host copy and no backup encryption in the application — those are deployment responsibilities and
-  are listed as gaps.
+- One backup run = database **and** documents as one set; any failure (dump, document copy, verification, off-host
+  copy) exits non-zero; only a fully successful run updates `last-success.json` and applies retention, which never
+  deletes the newest valid set. Sets are owner-only (`0700`/`0600`) and contain no credentials.
+- Credentials reach the PostgreSQL tools through libpq environment variables, never through command arguments; no
+  shell anywhere; ops commands load `ENV_FILE` first so they act on the configured database.
+- Restore goes into a **new** database and an **empty** document directory, migrates forward, and revokes every
+  restored session and unused reset token — restoring over a live database is not possible with this tooling.
+- Off-host copy is a provider-neutral hook contract (examples: rsync over SSH, rclone); the application does not encrypt
+  sets and does not deliver alerts — both are stated operator responsibilities (docs/backup-restore.md §5,
+  docs/operations-monitoring.md §2). `db:backup` / `db:restore:verify` remain as database-only diagnostics.
 
 ## Customer onboarding (Excel import)
 
