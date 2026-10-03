@@ -1,6 +1,6 @@
 {
   "name": "hr-enterprise-platform",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "private": true,
   "description": "HR Enterprise Platform - one employee data, one organization, one permission system, one platform",
   "workspaces": [
