@@ -15,7 +15,7 @@ environment before a pilot or a production go-live. It does **not** promote read
 
 | Item | Result |
 |---|---|
-| Base commit | `2dcf004` (Task 53) + the Task 54 commit that adds this document (see the commit log; no tag) |
+| Base commit | `2dcf004` (Task 53) → `32d2cd5` (Task 54, adds this document; no tag) |
 | Working tree | clean before Task 54 |
 | Version | root `package.json` `0.1.0-rc.1`; workspaces `0.1.0`; **no git tags exist** (convention so far: an RC is a document in `docs/releases/`, no tag) |
 | Migrations | 30 in `apps/api/prisma/migrations`, sequential; `prisma migrate status` → "Database schema is up to date"; the restore drill brought a restored database to 30 with `migrate deploy` |
