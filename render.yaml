@@ -1,0 +1,28 @@
+# Portfolio demo API on Render (docs/portfolio-demo.md). Demo data only — not a production deployment.
+services:
+  - type: web
+    name: hr-platform-api
+    runtime: node
+    plan: free
+    region: singapore
+    # NODE_ENV is NOT set here: the build needs devDependencies (typescript, prisma); `npm run start` sets production.
+    buildCommand: npm ci && npm run build -w packages/shared && npm run build -w apps/api
+    startCommand: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma && npm run start
+    healthCheckPath: /api/v1/health/live
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL # Neon connection string (with ?sslmode=require)
+        sync: false
+      - key: CORS_ORIGIN # https://<your-app>.vercel.app
+        sync: false
+      - key: PUBLIC_APP_URL # https://<your-app>.vercel.app
+        sync: false
+      - key: TRUST_PROXY # Vercel rewrite + Render proxy
+        value: "2"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DOCUMENTS_ENABLED # free instances have no persistent disk
+        value: "false"
+      - key: COPILOT_ENABLED
+        value: "false"
