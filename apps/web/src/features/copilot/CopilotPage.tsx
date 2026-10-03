@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bot, Clock, ExternalLink, Sparkles, Trash2, User } from 'lucide-react';
+import { Bot, Clock, ExternalLink, ShieldAlert, Sparkles, Trash2, User } from 'lucide-react';
 import type { CopilotChatResponseDto, CopilotMessage, CopilotSourceDto } from '@hr/shared';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -51,7 +51,11 @@ export function CopilotPage() {
   const ask = async (text: string) => {
     const message = text.trim();
     if (!message || busy) return;
-    const history: CopilotMessage[] = turns.filter((t) => !t.error).slice(-20).map((t) => ({ role: t.role, content: t.content }));
+    // A refused exchange (high-impact request + the server's boundary answer) is not sent back as context. This is a
+    // convenience only — the server classifies whatever history arrives and enforces the policy itself.
+    const refused = new Set<number>();
+    turns.forEach((t, i) => { if (t.response && (t.response.policy.decision === 'BLOCK_HIGH_IMPACT_DECISION' || t.response.policy.outputWithheld)) { refused.add(t.id); if (turns[i - 1]?.role === 'user') refused.add(turns[i - 1]!.id); } });
+    const history: CopilotMessage[] = turns.filter((t) => !t.error && !refused.has(t.id)).slice(-20).map((t) => ({ role: t.role, content: t.content }));
     const userTurn: Turn = { id: ++seq.current, role: 'user', content: message };
     setTurns((prev) => [...prev, userTurn]);
     setInput(''); setBusy(true); setStatusText('กำลังตรวจข้อมูลในระบบ…');
@@ -115,6 +119,11 @@ export function CopilotPage() {
                   )}
                   {t.response && (
                     <div className="mt-2 space-y-2">
+                      {t.response.policy.decision !== 'ALLOW_FACTUAL_QUERY' && (
+                        <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800" data-testid="copilot-policy">
+                          <ShieldAlert className="h-3.5 w-3.5" /> {t.response.policy.decision === 'BLOCK_HIGH_IMPACT_DECISION' ? 'ขอบเขตการตัดสินใจ — Copilot ไม่ตัดสิน ไม่จัดอันดับ และไม่ค้นข้อมูลสำหรับคำขอนี้' : 'ต้องการคำอธิบายเพิ่ม — ยังไม่มีการค้นข้อมูล'}
+                        </div>
+                      )}
                       {t.response.limitations.length > 0 && <ul className="space-y-0.5 text-xs text-amber-700">{t.response.limitations.map((l) => <li key={l}>⚠ {l}</li>)}</ul>}
                       {t.response.reportDraft && (
                         <div className="rounded-md border border-brand-200 bg-brand-50 p-3 text-sm">

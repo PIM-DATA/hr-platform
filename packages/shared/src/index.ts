@@ -17,6 +17,7 @@ export * from './talent';
 export * from './documents';
 export * from './reports';
 export * from './copilot';
+export * from './copilot-policy';
 export * from './workforce';
 export * from './engagement';
 export * from './lifecycle';

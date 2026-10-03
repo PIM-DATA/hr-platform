@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AUDIT_ACTIONS, COPILOT_INSTRUCTIONS_VERSION, COPILOT_LIMITS, COPILOT_SYSTEM_INSTRUCTIONS, HIGH_IMPACT_NOTICE, isHighImpactQuestion, isThai, type CopilotChatRequest, type CopilotChatResponseDto, type CopilotSourceDto } from '@hr/shared';
+import { AUDIT_ACTIONS, COPILOT_HISTORY_DROPPED, COPILOT_INSTRUCTIONS_VERSION, COPILOT_LIMITS, COPILOT_OUTPUT_WITHHELD, COPILOT_SYSTEM_INSTRUCTIONS, classifyCopilotIntent, evaluateCopilotPolicy, isThai, type CopilotChatRequest, type CopilotChatResponseDto, type CopilotPolicyResult, type CopilotSourceDto } from '@hr/shared';
 import { z } from 'zod';
 import { env } from '../../config/env';
 import { AppError } from '../../lib/errors';
@@ -7,6 +7,7 @@ import { logger } from '../../lib/logger';
 import { auditService } from '../../services/audit/audit.service';
 import { narrowAuth } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
+import { issueDispatchPermit } from './policy-guard';
 import { copilotProvider, type ProviderMessage, type ProviderTool } from './provider';
 import { toolsFor, type CopilotTool, type ToolContext, type ToolResult } from './tools';
 
@@ -16,10 +17,21 @@ import { toolsFor, type CopilotTool, type ToolContext, type ToolResult } from '.
  * The server owns everything that matters. The actor and their permissions come from the session, never from
  * the request; the model is offered only the tools that actor may run; every tool call is checked against that
  * offer and its arguments against a strict schema; every tool re-applies its module's scope. Sources in the
- * answer are the sources the tools actually returned — the model cannot add one. A high-impact question gets the
- * boundary notice regardless of what the model says. Nothing here writes to a business table.
+ * answer are the sources the tools actually returned — the model cannot add one. Nothing here writes to a business table.
+ *
+ * Task 52 (T44-P1-22) — execution sequence:
+ *   1. enabled? → 503 COPILOT_DISABLED; size bound → 400.
+ *   2. Layer A: `evaluateCopilotPolicy` on the message and the client-sent history (the effective context). A
+ *      BLOCK_HIGH_IMPACT_DECISION or CLARIFICATION_REQUIRED result is answered here with the deterministic server text:
+ *      the provider is not even constructed, no tool is offered or run, one audit row records the category.
+ *   3. ALLOW only: the provider, the offered tools, and a dispatch permit (Layer B) without which no tool handler runs.
+ *      A conversation whose earlier turns were refused is sent without them (`dropHistory`).
+ *   4. Tools run with their source permission's scope (Layer C, Task 50); report_query refuses ranking people.
+ *   5. The model's answer is checked once more: a draft that turns facts into a judgment about people is withheld.
+ * The system prompt (Layer D) still states the boundary, but nothing above depends on the model obeying it.
  */
-const log = logger.child({ module: 'copilot' });
+export const copilotLog = logger.child({ module: 'copilot' });
+const log = copilotLog;
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 
 const zodToJsonSchema = (schema: z.ZodTypeAny): Record<string, unknown> => {
@@ -45,31 +57,59 @@ const truncate = (v: unknown): unknown => {
   return { truncated: true, note: `Result truncated to ${COPILOT_LIMITS.maxToolResultChars} characters`, preview: text.slice(0, COPILOT_LIMITS.maxToolResultChars) };
 };
 
+type Outcome = { status: string; policy: CopilotPolicyResult; outputWithheld: boolean; provider: { name: string; model: string } | null; toolIds: string[]; modules: Set<string>; providerMs: number; toolMs: number; usage: { inputTokens: number; outputTokens: number } };
+
+/** Operational log and the one audit event per request: who, the policy result, which sources, how long — never text. */
+async function record(actor: Actor, requestId: string, started: number, o: Outcome) {
+  const durationMs = Date.now() - started;
+  const highImpact = o.policy.decision === 'BLOCK_HIGH_IMPACT_DECISION' || o.outputWithheld;
+  const policy = { policyDecision: o.policy.decision, policyCategory: o.policy.category, policyScope: o.policy.scope, mixed: o.policy.mixed, historyDropped: o.policy.dropHistory, outputWithheld: o.outputWithheld };
+  log.info({ event: 'copilot_chat', requestId, actorUserId: actor.auth.userId, provider: o.provider?.name ?? null, model: o.provider?.model ?? null, durationMs, providerMs: o.providerMs, toolMs: o.toolMs, toolIds: o.toolIds, toolCount: o.toolIds.length, status: o.status, highImpact, ...policy, usage: o.usage }, 'copilot chat');
+  await auditService.log({ userId: actor.auth.userId, ipAddress: actor.ipAddress, userAgent: actor.userAgent, action: AUDIT_ACTIONS.COPILOT_QUERY, module: 'copilot', recordType: 'CopilotRequest', recordId: requestId, newValue: { status: o.status, highImpact, ...policy, toolIds: o.toolIds, sourceModules: [...o.modules], toolCount: o.toolIds.length, durationMs, providerMs: o.providerMs, instructionsVersion: COPILOT_INSTRUCTIONS_VERSION } }).catch(() => undefined);
+}
+const policyDto = (p: CopilotPolicyResult, outputWithheld = false): CopilotChatResponseDto['policy'] => ({ decision: p.decision, category: p.category, mixed: p.mixed, outputWithheld });
+
 export const copilotOrchestrator = {
   async chat(actor: Actor, input: CopilotChatRequest): Promise<CopilotChatResponseDto> {
     const started = Date.now();
     const requestId = randomUUID();
-    const provider = copilotProvider();
     const { auth } = actor;
+    if (!env.COPILOT_ENABLED) throw new AppError(503, 'COPILOT_DISABLED', 'The HR Copilot is not enabled on this installation');
     const totalChars = input.message.length + input.history.reduce((n, m) => n + m.content.length, 0);
     if (totalChars > env.COPILOT_MAX_INPUT_CHARS) throw new AppError(400, 'COPILOT_INPUT_TOO_LARGE', `The conversation is too long (${env.COPILOT_MAX_INPUT_CHARS} characters at most); clear it and ask again`);
+    const thai = isThai(input.message);
 
+    // Layer A — before the provider, the tool offer and any source module. The result is server-owned: no request
+    // field exists that could set it, and nothing the provider returns feeds back into it.
+    const policy = evaluateCopilotPolicy({ message: input.message, history: input.history });
+    if (policy.decision !== 'ALLOW_FACTUAL_QUERY') {
+      const blocked = policy.decision === 'BLOCK_HIGH_IMPACT_DECISION';
+      await record(actor, requestId, started, { status: blocked ? 'blocked' : 'clarification', policy, outputWithheld: false, provider: null, toolIds: [], modules: new Set(), providerMs: 0, toolMs: 0, usage: { inputTokens: 0, outputTokens: 0 } });
+      return {
+        answer: thai ? policy.response!.th : policy.response!.en, sources: [], reportDraft: null,
+        limitations: [blocked ? (thai ? 'คำขอนี้เป็นการตัดสินใจหรืออนุมานที่มีผลกระทบสูงต่อบุคคล — Copilot ไม่ค้นข้อมูลและไม่ตอบ' : 'This request asks for a high-impact judgment about people — the copilot looked up no data and did not answer it.') : (thai ? 'คำขอนี้ไม่ชัดเจน — Copilot ไม่ค้นข้อมูลจนกว่าจะระบุข้อเท็จจริงที่ต้องการ' : 'This request is ambiguous — the copilot looked up no data until the fact you need is specified.')],
+        consulted: [], highImpact: blocked, policy: policyDto(policy), generatedAt: new Date().toISOString(),
+      };
+    }
+
+    const provider = copilotProvider();
     const offered: CopilotTool[] = toolsFor(auth);
     const providerTools: ProviderTool[] = offered.map((t) => ({ id: t.id, description: t.description, inputSchema: zodToJsonSchema(t.inputSchema) }));
-    const highImpact = isHighImpactQuestion(input.message);
-    const thai = isThai(input.message);
-    const system = `${COPILOT_SYSTEM_INSTRUCTIONS}\n\nInstructions version: ${COPILOT_INSTRUCTIONS_VERSION}. Today is ${new Date().toISOString().slice(0, 10)}.${highImpact ? '\nThe current question asks for an employment decision or ranking. Do not make it: state the boundary, then give only factual, unranked records the user is authorized to see.' : ''}`;
-    // Client history is text. Tool results, roles and instructions never come from it.
-    const messages: ProviderMessage[] = [...input.history.map((m) => ({ role: m.role, content: m.content }) as ProviderMessage), { role: 'user', content: input.message }];
+    const system = `${COPILOT_SYSTEM_INSTRUCTIONS}\n\nInstructions version: ${COPILOT_INSTRUCTIONS_VERSION}. Today is ${new Date().toISOString().slice(0, 10)}.`;
+    // Client history is text. Tool results, roles and instructions never come from it. A thread whose earlier turns
+    // were refused is not replayed to the model: the factual follow-up is answered on its own.
+    const history = policy.dropHistory ? [] : input.history;
+    const messages: ProviderMessage[] = [...history.map((m) => ({ role: m.role, content: m.content }) as ProviderMessage), { role: 'user', content: input.message }];
 
     const sources = new Map<string, CopilotSourceDto>();
     const consulted: string[] = [];
-    const limitations: string[] = [];
+    const limitations: string[] = policy.dropHistory ? [thai ? COPILOT_HISTORY_DROPPED.th : COPILOT_HISTORY_DROPPED.en] : [];
     const toolIds: string[] = [];
     const modules = new Set<string>();
     let reportDraft: ToolResult['reportDraft'] | undefined;
-    let providerMs = 0; let toolMs = 0; let steps = 0; let status = 'ok'; let usage = { inputTokens: 0, outputTokens: 0 };
-    const ctx: ToolContext = { auth, actor, requestId };
+    let providerMs = 0; let toolMs = 0; let steps = 0; let status = 'ok'; let usage = { inputTokens: 0, outputTokens: 0 }; let outputWithheld = false;
+    // Layer B — the permit every tool handler checks; issued only here, only for ALLOW.
+    const ctx: ToolContext = { auth, actor, requestId, policy: issueDispatchPermit(policy, requestId) };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), env.COPILOT_TIMEOUT_MS);
 
@@ -82,9 +122,13 @@ export const copilotOrchestrator = {
         providerMs += Date.now() - t0;
         if (res.usage) usage = { inputTokens: usage.inputTokens + res.usage.inputTokens, outputTokens: usage.outputTokens + res.usage.outputTokens };
         if (res.kind === 'answer') {
-          const answer = highImpact ? `${thai ? HIGH_IMPACT_NOTICE.th : HIGH_IMPACT_NOTICE.en}\n\n${res.text}` : res.text;
-          if (highImpact) limitations.push(thai ? 'คำถามนี้เกี่ยวกับการตัดสินใจด้านการจ้างงาน — Copilot ให้ข้อเท็จจริงเท่านั้น ไม่จัดอันดับหรือแนะนำ' : 'This question asks for an employment decision — the copilot gives facts only and does not rank or recommend.');
-          return { answer, sources: [...sources.values()], reportDraft: reportDraft ?? null, limitations, consulted, highImpact, generatedAt: new Date().toISOString() };
+          // Authorized facts about a person stay facts: a draft that turns them into a decision, a ranking or an
+          // inference about people is withheld, and the facts it was built on are not shown with it.
+          if (classifyCopilotIntent(res.text).decision === 'BLOCK_HIGH_IMPACT_DECISION') {
+            outputWithheld = true; status = 'output_withheld';
+            return { answer: thai ? COPILOT_OUTPUT_WITHHELD.th : COPILOT_OUTPUT_WITHHELD.en, sources: [], reportDraft: null, limitations, consulted, highImpact: true, policy: policyDto(policy, true), generatedAt: new Date().toISOString() };
+          }
+          return { answer: res.text, sources: [...sources.values()], reportDraft: reportDraft ?? null, limitations, consulted, highImpact: false, policy: policyDto(policy), generatedAt: new Date().toISOString() };
         }
         // Tool calls: every id must be one the server offered; arguments must satisfy the strict schema.
         steps += 1;
@@ -119,10 +163,7 @@ export const copilotOrchestrator = {
       throw e;
     } finally {
       clearTimeout(timer);
-      const durationMs = Date.now() - started;
-      // Operational log and one audit event per request: who, which sources, how long, how it ended — never text.
-      log.info({ event: 'copilot_chat', requestId, actorUserId: auth.userId, provider: provider.name, model: provider.model, durationMs, providerMs, toolMs, toolIds, toolCount: toolIds.length, status, highImpact, usage }, 'copilot chat');
-      await auditService.log({ userId: auth.userId, ipAddress: actor.ipAddress, userAgent: actor.userAgent, action: AUDIT_ACTIONS.COPILOT_QUERY, module: 'copilot', recordType: 'CopilotRequest', recordId: requestId, newValue: { status, highImpact, toolIds, sourceModules: [...modules], toolCount: toolIds.length, durationMs, providerMs, instructionsVersion: COPILOT_INSTRUCTIONS_VERSION } }).catch(() => undefined);
+      await record(actor, requestId, started, { status, policy, outputWithheld, provider: { name: provider.name, model: provider.model }, toolIds, modules, providerMs, toolMs, usage });
     }
   },
 };

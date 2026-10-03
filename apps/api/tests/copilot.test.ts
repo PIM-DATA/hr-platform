@@ -255,25 +255,35 @@ describe('the copilot never widens access', () => {
 });
 
 describe('boundaries the model cannot cross', () => {
-  it('high-impact prompts (TH + EN) are recognized and get the factual-only notice regardless of the model text', async () => {
+  it('high-impact prompts (TH + EN) are recognized and blocked before the model regardless of what it would say', async () => {
     for (const q of ['Who should we fire in engineering?', 'ใครควรถูกไล่ออก', 'Who deserves a promotion?', 'ใครควรได้เลื่อนตำแหน่ง', 'Which candidate should we hire?', 'ใครคือ candidate ที่ดีที่สุด', 'Should EMP003 get a raise?', 'ใครควรได้โบนัสมากที่สุด', 'Who is the worst performer?', 'ใครควรเป็น successor']) expect(isHighImpactQuestion(q), q).toBe(true);
     for (const q of ['วันลาคงเหลือของฉัน', 'What is my latest performance score?', 'สรุปภาพรวม HR เดือนนี้']) expect(isHighImpactQuestion(q), q).toBe(false);
+    // Task 52 (T44-P1-22) — expectation changed because the behaviour under test was the finding itself.
+    // BEFORE: the provider was called, its text "EMP004 should be fired." came back after HIGH_IMPACT_NOTICE.en, and the
+    //         system prompt carried an extra "Do not make it" line.
+    // AFTER:  the server answers deterministically; the provider is never called, so its text cannot come back.
     scriptFakeProvider([answer('EMP004 should be fired.')]);
     const r = await chat(mgr, 'Who should we fire?');
     expect(err(r)).toBe('200');
     expect(r.body.data.highImpact).toBe(true);
-    expect(r.body.data.answer.startsWith(HIGH_IMPACT_NOTICE.en)).toBe(true);
-    expect(seen[0].systemInstructions).toMatch(/Do not make it/);
+    expect(r.body.data.policy).toMatchObject({ decision: 'BLOCK_HIGH_IMPACT_DECISION', category: 'TERMINATION' });
+    expect(r.body.data.answer).not.toContain('EMP004');
+    expect(r.body.data.answer).toMatch(/authorized HR and management process/);
+    expect(seen).toHaveLength(0);
     scriptFakeProvider([answer('ok')]);
     const th = await chat(hrAdmin, 'ใครคือ candidate ที่ดีที่สุด');
-    expect(th.body.data.answer.startsWith(HIGH_IMPACT_NOTICE.th)).toBe(true);
-    expect(th.body.data.limitations.join(' ')).toMatch(/ข้อเท็จจริง/);
+    // BEFORE: answer.startsWith(HIGH_IMPACT_NOTICE.th) and a limitation mentioning ข้อเท็จจริง. AFTER: the Thai server text.
+    expect(th.body.data.answer).toMatch(/กระบวนการ HR และผู้บริหารที่มีอำนาจ/);
+    expect(th.body.data.answer).not.toContain(HIGH_IMPACT_NOTICE.th);
+    expect(th.body.data.limitations.join(' ')).toMatch(/ไม่ค้นข้อมูล/);
   });
   it('SYSTEM_ADMIN does not bypass the decision boundary', async () => {
     scriptFakeProvider([answer('ok')]);
     const r = await chat(sysAdmin, 'Who is the best employee to promote?');
     expect(r.body.data.highImpact).toBe(true);
-    expect(r.body.data.answer).toContain(HIGH_IMPACT_NOTICE.en);
+    // BEFORE: expect(answer).toContain(HIGH_IMPACT_NOTICE.en). AFTER: blocked, the provider is not called.
+    expect(r.body.data.policy.decision).toBe('BLOCK_HIGH_IMPACT_DECISION');
+    expect(seen).toHaveLength(0);
   });
   it('prompt injection in data stays data: the seeded name and document title reach the model as values only', async () => {
     scriptFakeProvider([call('employee360_summary', { employeeCode: 'EMP003' }), answer()]);

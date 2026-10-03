@@ -12,7 +12,7 @@
 import type { Server } from 'node:http';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ANALYTICS_METRICS, HIGH_IMPACT_NOTICE } from '@hr/shared';
+import { ANALYTICS_METRICS } from '@hr/shared';
 import { prisma } from '../src/lib/prisma';
 import { env } from '../src/config/env';
 import { resetCopilotProvider, scriptFakeProvider, type ProviderRequest } from '../src/modules/copilot/provider';
@@ -362,7 +362,11 @@ describe('copilot — aggregate tools for the newer domains', () => {
       scriptFakeProvider([answer('facts only')]);
       const r = await chat(exec, q);
       expect(r.body.data.highImpact).toBe(true);
-      expect(r.body.data.answer.startsWith(/[฀-๿]/.test(q) ? HIGH_IMPACT_NOTICE.th : HIGH_IMPACT_NOTICE.en)).toBe(true);
+      // Task 52 (T44-P1-22). BEFORE: answer.startsWith(HIGH_IMPACT_NOTICE) followed by the model's text ("facts only").
+      // AFTER: blocked before the provider — the server's own text, no provider call.
+      expect(r.body.data.policy.decision, q).toBe('BLOCK_HIGH_IMPACT_DECISION');
+      expect(r.body.data.answer).not.toContain('facts only');
+      expect(seen).toHaveLength(0);
     }
     scriptFakeProvider([answer()]);
     expect((await chat(exec, 'How many benefit claims are pending?')).body.data.highImpact).toBe(false);

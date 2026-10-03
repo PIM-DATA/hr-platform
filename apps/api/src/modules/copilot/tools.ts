@@ -17,6 +17,7 @@ import { recruitmentReportService } from '../recruitment/report.service';
 import { talentReportService } from '../talent/talent-report.service';
 import { skillGapService } from '../competency/skill-gap.service';
 import { employeesService } from '../employees/employees.service';
+import { assertDispatchAllowed, type DispatchPermit } from './policy-guard';
 
 /**
  * The copilot tool registry — server-owned, allow-listed, read-only.
@@ -26,7 +27,11 @@ import { employeesService } from '../employees/employees.service';
  * it goes anywhere near the model — codes rather than names where a name is not needed, small bounded slices,
  * counts instead of lists — and carries the source metadata the answer will cite. There is no tool that writes.
  */
-export interface ToolContext { auth: AuthContext; actor: { auth: AuthContext; ipAddress: string | null; userAgent: string | null }; requestId: string }
+export interface ToolContext {
+  auth: AuthContext; actor: { auth: AuthContext; ipAddress: string | null; userAgent: string | null }; requestId: string;
+  /** Task 52: the permit the orchestrator issues only for an ALLOW_FACTUAL_QUERY request (policy-guard.ts). */
+  policy: DispatchPermit;
+}
 export interface ToolResult { data: unknown; sources: CopilotSourceDto[]; consulted: string; reportDraft?: { datasetId: string; datasetName: string; definition: z.infer<typeof reportDefinitionSchema>; rowCount: number; truncated: boolean } }
 export interface CopilotTool {
   id: string;
@@ -341,6 +346,12 @@ const tools: CopilotTool[] = [
         return { data: { dataset: { id: d.id, name: d.name, description: d.description, aggregateOnly: d.aggregateOnly, requiredDateRange: d.requiredDateRange, fields: d.fields.map((f) => ({ id: f.id, label: f.label, type: f.type, groupable: f.groupable, aggregatable: f.aggregatable, options: f.options?.map((o) => o.value) })) } }, sources: [], consulted: `dataset ${d.id}` };
       }
       const definition = { ...a.definition, pageSize: Math.min(a.definition.pageSize ?? COPILOT_LIMITS.maxToolRows, COPILOT_LIMITS.maxToolRows) };
+      // Task 52 (T44-P1-22): rows about people ordered by a sensitive judgment field (score, rating, potential, 9-box…)
+      // are a ranking of people, whatever the question said. Unranked rows and grouped aggregates stay available.
+      const ds = getDataset(a.datasetId);
+      if (ds && !ds.aggregateOnly && !definition.groupBy?.length && (definition.sort ?? []).some((s) => ds.fields.find((f) => f.id === s.fieldId)?.sensitivity === 'SENSITIVE')) {
+        throw new AppError(422, 'COPILOT_RANKING_NOT_ALLOWED', 'The copilot does not order people by a performance, potential or other sensitive field; ask for the rows unranked or for an organization-level aggregate');
+      }
       const result = await reportsService.run(ctx.auth, a.datasetId, definition, 1);
       const truncated = result.meta.total > result.rows.length;
       const name = getDataset(a.datasetId)?.name ?? a.datasetId;
@@ -364,6 +375,11 @@ const tools: CopilotTool[] = [
   },
 ];
 
+// Task 52, Layer B: no tool handler runs without the request's ALLOW permit, whoever calls it.
+for (const t of tools) {
+  const handler = t.handler;
+  t.handler = (args, ctx) => { assertDispatchAllowed(ctx?.policy); return handler.call(t, args, ctx); };
+}
 export const COPILOT_TOOLS: ReadonlyMap<string, CopilotTool> = new Map(tools.map((t) => [t.id, t]));
 const audienceAllows = (auth: AuthContext, t: CopilotTool) =>
   t.audience === 'ORG' || (t.audience === 'TEAM' ? !!auth.employeeId : !!auth.employeeId || hasPermission(auth, PERMISSIONS.EMPLOYEES_UPDATE));

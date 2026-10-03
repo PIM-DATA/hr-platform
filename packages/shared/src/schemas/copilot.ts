@@ -26,7 +26,10 @@ export interface CopilotChatResponseDto {
   limitations: string[];
   /** Friendly labels of the checks that were run, for the tool-status UI. Never tool ids or arguments. */
   consulted: string[];
+  /** True when the request was a high-impact decision (blocked) or the model's draft was withheld as one. */
   highImpact: boolean;
+  /** Task 52: the server's policy result for this request — set by the server, never by the client or the model. */
+  policy: { decision: 'ALLOW_FACTUAL_QUERY' | 'BLOCK_HIGH_IMPACT_DECISION' | 'CLARIFICATION_REQUIRED'; category: string | null; mixed: boolean; outputWithheld: boolean };
   generatedAt: string;
 }
 export interface CopilotSuggestionDto { text: string; group: string }
