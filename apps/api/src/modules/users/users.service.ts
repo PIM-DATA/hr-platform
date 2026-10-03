@@ -191,6 +191,11 @@ export const usersService = {
       await assertCanAdministerAccount(tx, actor, id, 'UPDATE');
       if (input.email !== undefined) await assertEmailAvailable(tx, input.email, id);
       if (input.employeeId) await assertEmployeeLinkable(tx, input.employeeId, id);
+      // Task 51 (T44-P1-19): the employee behind your own account is who "yourself" is for every self-dealing rule —
+      // changing it yourself would let you act on your real record as somebody else. Another administrator must do it.
+      if (id === actor.auth.userId && input.employeeId !== undefined && input.employeeId !== before.employeeId) {
+        throw new AppError(403, 'SELF_EMPLOYEE_LINK_CHANGE_NOT_ALLOWED', 'You cannot change which employee record your own account is linked to; another administrator must do it.');
+      }
 
       const after = await tx.user.update({
         where: { id },

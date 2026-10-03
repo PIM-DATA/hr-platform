@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { CompensationDto } from '@hr/shared';
@@ -28,6 +29,7 @@ export function CompensationPage() {
   const [creating, setCreating] = useState(false);
   const [closing, setClosing] = useState<CompensationDto | null>(null);
   const list = useCompensations({ employeeId: employee?.id, page, pageSize: 20 });
+  const { user } = useAuth();
 
   const columns: Column<CompensationDto>[] = [
     { key: 'emp', header: 'Employee', render: (c) => (
@@ -42,9 +44,12 @@ export function CompensationPage() {
     { key: 'inUse', header: 'Used by payroll', hideBelow: 'lg', render: (c) => (c.inUse ? 'Yes' : <span className="text-slate-400">No</span>) },
     { key: 'note', header: 'Note', hideBelow: 'lg', render: (c) => c.note ?? <span className="text-slate-400">—</span> },
     { key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', render: (c) => (
-      c.effectiveTo === null
-        ? <Button variant="ghost" size="sm" onClick={() => setClosing(c)}>Close</Button>
-        : null
+      // Task 51: your own salary is changed by another payroll administrator (the API refuses it too)
+      c.employee.id === user?.employee?.id
+        ? <span className="text-xs text-slate-500">Yours — another administrator</span>
+        : c.effectiveTo === null
+          ? <Button variant="ghost" size="sm" onClick={() => setClosing(c)}>Close</Button>
+          : null
     ) },
   ];
 

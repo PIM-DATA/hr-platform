@@ -11,6 +11,7 @@ import { auditService } from '../../services/audit/audit.service';
 import { workflowEngine } from '../../services/workflow';
 import type { AuthContext } from '../auth/auth.types';
 import { dec, equals, money, sumMoney, toMoneyString, toQuantityString, toRateString, ZERO } from './money';
+import { assertNotSelfFinancial } from '../../services/authorization/self-dealing';
 import { isSourceLinkedLine, payrollAudit, type Actor, type Db, type SourceLinkedReference, type Tx } from './payroll.types';
 import { payrollPolicyService } from './payroll-master.service';
 import { payrollCalculationService, systemComponent, type CalculationInputs, type EmployeeForPayroll } from './payroll-calculation.service';
@@ -384,6 +385,10 @@ export const payrollRunService = {
   /** A manual earning or deduction, added during review. Generated lines are read-only; these are not. */
   async addAdjustment(resultId: string, input: AddPayrollAdjustmentInput, actor: Actor): Promise<PayrollResultDto> {
     const row = await prisma.$transaction(async (tx) => {
+      // Task 51 (T44-P1-19): an ordinary manual adjustment is never entered on one's own payslip. (A benefit / expense
+      // handoff is not ordinary: it carries an amount approved by someone else in its source domain.)
+      const target = await tx.payrollResult.findUnique({ where: { id: resultId }, select: { employeeId: true } });
+      assertNotSelfFinancial(actor.auth, target?.employeeId, 'add a payroll adjustment');
       await addManualAdjustmentWithTx(tx, resultId, { componentId: input.componentId, amount: input.amount, note: input.note }, actor);
       return tx.payrollResult.findUniqueOrThrow({ where: { id: resultId }, include: resultInclude });
     });
@@ -399,6 +404,8 @@ export const payrollRunService = {
       if (!item) throw new AppError(404, 'PAYROLL_ITEM_NOT_FOUND', 'Payroll line not found');
       await lockPeriod(tx, item.payrollResult.run.periodId);
       if (!item.isManual) throw new AppError(409, 'PAYROLL_ITEM_GENERATED', 'Generated lines cannot be removed; recalculate the run instead');
+      // Task 51: removing a deduction from one's own payslip is a benefit too
+      assertNotSelfFinancial(actor.auth, (await tx.payrollResult.findUnique({ where: { id: item.payrollResult.id }, select: { employeeId: true } }))?.employeeId, 'remove a payroll adjustment');
       // Task 48 (T44-P1-15): a line handed over by benefits or expense is an approved reimbursement; deleting it here
       // would leave the claim "sent to payroll" and never paid. It is not removable from payroll.
       if (isSourceLinkedLine(item)) {
@@ -606,6 +613,7 @@ export const payrollRunService = {
   lockPeriod,
   populationFor,
   assertApprovable,
+  assertApproverIndependent,
   toRunSummary,
   toResultDto,
 };
@@ -674,6 +682,27 @@ async function recomputeRunTotals(tx: Tx, runId: string) {
       netTotal: sumMoney(results.map((r) => r.netPay)),
     },
   });
+}
+
+/**
+ * Task 51 (T44-P1-19) — maker ≠ checker at payroll approval. The approver may be paid by the run (Case C: an unchanged
+ * salary among everybody else's is not a conflict); what they may not do is approve a run in which an input that pays
+ * THEM was authored by THEM: a manual line on their own result, or a salary / recurring record of theirs covering the
+ * period. Source checks already refuse such inputs; this catches anything older or written by another path.
+ * Source-linked lines (benefit / expense handoffs) carry an amount approved in their own domain and are not counted.
+ */
+export async function assertApproverIndependent(tx: Tx, runId: string, approver: { userId: string; employeeId: string | null }, period: { periodStart: string; periodEnd: string }) {
+  if (!approver.employeeId) return;
+  const own = await tx.payrollResult.findFirst({ where: { runId, employeeId: approver.employeeId }, select: { id: true } });
+  if (!own) return;
+  const [lines, compensations, payItems] = await Promise.all([
+    tx.payrollResultItem.findMany({ where: { payrollResultId: own.id, isManual: true, createdByUserId: approver.userId }, select: { referenceType: true } }),
+    tx.employeeCompensation.count({ where: { employeeId: approver.employeeId, createdByUserId: approver.userId, effectiveFrom: { lte: period.periodEnd }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: period.periodStart } }] } }),
+    tx.employeePayItem.count({ where: { employeeId: approver.employeeId, createdByUserId: approver.userId, effectiveFrom: { lte: period.periodEnd }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: period.periodStart } }] } }),
+  ]);
+  if (lines.some((l) => !isSourceLinkedLine(l)) || compensations > 0 || payItems > 0) {
+    throw new AppError(409, 'PAYROLL_APPROVER_SELF_BENEFIT', 'This run pays you an amount you entered yourself; another authorized approver must decide it.');
+  }
 }
 
 /**

@@ -17,6 +17,7 @@ import { issueLetterWithTx, letterSummary } from './letter.service';
 import {
   type Actor, type Db, type Tx, P, employeeSnapshot, fulfillerScope, has, history, historyDto, isApprover, isOwner, lockRow, nextNumber, notFound, servicesAudit, snapshotDto, textAudit, today, userNames, visibleRequestWhere,
 } from './services.types';
+import { isSelf } from '../../services/authorization/self-dealing';
 
 const include = {
   requestType: { select: { id: true, code: true, name: true, category: true, fulfillmentType: true, workflowCode: true, targetDays: true, requiresAttachment: true, letterTemplateId: true, fields: { orderBy: [{ displayOrder: 'asc' }, { key: 'asc' }] } } },
@@ -40,7 +41,8 @@ async function attachments(db: Db, auth: AuthContext, requestId: string): Promis
 
 function dto(auth: AuthContext, r: Row, counts: { attachments: number; assignedToName: string | null }): ServiceRequestDto {
   const owner = isOwner(auth, r.employeeId);
-  const fulfiller = isFulfiller(auth);
+  // Task 51: on their own request a fulfiller is only the requester — no handling, and no internal notes about it.
+  const fulfiller = isFulfiller(auth) && !owner;
   const workflowPending = !!r.workflowInstanceId && r.workflowStatus !== 'APPROVED' && r.workflowStatus !== 'REJECTED';
   return {
     id: r.id, requestNumber: r.requestNumber, employeeId: r.employeeId, requestTypeId: r.requestTypeId, requestTypeCode: r.requestTypeCodeSnapshot, requestTypeName: r.requestTypeNameSnapshot,
@@ -61,7 +63,7 @@ function dto(auth: AuthContext, r: Row, counts: { attachments: number; assignedT
 function visibleMessages(auth: AuthContext, r: Row, rows: { id: string; visibility: string; body: string; authorUserId: string; createdAt: Date }[], names: Map<string, string>): ServiceMessageDto[] {
   const fulfiller = isFulfiller(auth);
   return rows
-    .filter((m) => fulfiller || (isOwner(auth, r.employeeId) && m.visibility === 'REQUESTER_VISIBLE'))
+    .filter((m) => (fulfiller && !isOwner(auth, r.employeeId)) || (isOwner(auth, r.employeeId) && m.visibility === 'REQUESTER_VISIBLE'))
     .map((m) => ({ id: m.id, visibility: m.visibility as 'REQUESTER_VISIBLE' | 'INTERNAL', body: m.body, authorName: names.get(m.authorUserId) ?? null, isMine: m.authorUserId === auth.userId, createdAt: m.createdAt.toISOString() }));
 }
 
@@ -254,6 +256,8 @@ export const serviceRequestService = {
       await lockRow(tx, 'service_requests', id);
       const r = await load(tx, auth, id);
       if (!isFulfiller(auth)) throw new AppError(403, 'FORBIDDEN', 'You may not assign service requests');
+      // Task 51 (T44-P1-19): a fulfiller never handles their own request.
+      if (isSelf(auth, r.employeeId)) throw new AppError(403, 'SERVICE_SELF_FULFILMENT_NOT_ALLOWED', 'This is your own request; another fulfiller must handle it');
       if (isClosed(r.status)) throw new AppError(409, 'SERVICE_REQUEST_CLOSED', 'This request is closed');
       if (input.assignedToUserId) {
         const u = await tx.user.findFirst({ where: { id: input.assignedToUserId, isActive: true } });
@@ -261,6 +265,7 @@ export const serviceRequestService = {
         // Being assigned a ticket grants nothing: the assignee still needs their own source-domain permissions.
         const canFulfil = await tx.userRole.count({ where: { userId: input.assignedToUserId, role: { rolePermissions: { some: { permission: { code: { in: [P.SERVICE_REQUEST_FULFILL, P.SERVICE_REQUEST_MANAGE] } } } } } } });
         if (!canFulfil) throw new AppError(422, 'VALIDATION_ERROR', 'That user cannot fulfil service requests', [{ field: 'assignedToUserId', message: 'Not a fulfiller' }]);
+        if (u.employeeId && u.employeeId === r.employeeId) throw new AppError(409, 'SERVICE_SELF_ASSIGNMENT_NOT_ALLOWED', 'A request cannot be assigned to its own requester'); // Task 51
       }
       const after = await tx.serviceRequest.update({ where: { id }, data: { assignedToUserId: input.assignedToUserId, assignedAt: input.assignedToUserId ? new Date() : null, status: r.status === 'SUBMITTED' && input.assignedToUserId ? 'IN_PROGRESS' : undefined } });
       if (after.status !== r.status) await history(tx, id, r.status, after.status, auth.userId);
@@ -282,6 +287,8 @@ export const serviceRequestService = {
       await lockRow(tx, 'service_requests', id);
       const r = await load(tx, auth, id);
       if (!isFulfiller(auth)) throw new AppError(403, 'FORBIDDEN', 'You may not change the status of service requests');
+      // Task 51 (T44-P1-19): a fulfiller never handles their own request.
+      if (isSelf(auth, r.employeeId)) throw new AppError(403, 'SERVICE_SELF_FULFILMENT_NOT_ALLOWED', 'This is your own request; another fulfiller must handle it');
       if (!isOpen(r.status)) throw new AppError(409, 'SERVICE_REQUEST_CLOSED', 'This request is closed');
       if (r.status === status) return;
       await tx.serviceRequest.update({ where: { id }, data: { status } });
@@ -334,6 +341,8 @@ export const serviceRequestService = {
       await lockRow(tx, 'service_requests', id);
       const r = await load(tx, auth, id);
       if (!isFulfiller(auth)) throw new AppError(403, 'FORBIDDEN', 'You may not fulfil service requests');
+      // Task 51 (T44-P1-19): a fulfiller never handles their own request.
+      if (isSelf(auth, r.employeeId)) throw new AppError(403, 'SERVICE_SELF_FULFILMENT_NOT_ALLOWED', 'This is your own request; another fulfiller must handle it');
       if (!isOpen(r.status)) throw new AppError(409, 'SERVICE_REQUEST_NOT_OPEN', `This request is ${r.status.toLowerCase().replace(/_/g, ' ')}`);
       if (r.workflowInstanceId && r.workflowStatus !== 'APPROVED') throw new AppError(409, 'SERVICE_REQUEST_NOT_APPROVED', 'This request is still waiting for its approval');
       let letterId: string | null = null;
@@ -358,6 +367,8 @@ export const serviceRequestService = {
       await lockRow(tx, 'service_requests', id);
       const r = await load(tx, auth, id);
       if (!isFulfiller(auth)) throw new AppError(403, 'FORBIDDEN', 'You may not reject service requests');
+      // Task 51 (T44-P1-19): a fulfiller never handles their own request.
+      if (isSelf(auth, r.employeeId)) throw new AppError(403, 'SERVICE_SELF_FULFILMENT_NOT_ALLOWED', 'This is your own request; another fulfiller must handle it');
       if (!isOpen(r.status)) throw new AppError(409, 'SERVICE_REQUEST_NOT_OPEN', `This request is ${r.status.toLowerCase().replace(/_/g, ' ')}`);
       await tx.serviceRequest.update({ where: { id }, data: { status: 'REJECTED', rejectedAt: new Date(), rejectReasonCode: input.reasonCode, rejectExplanation: input.explanation ?? null } });
       await history(tx, id, r.status, 'REJECTED', auth.userId, input.reasonCode);

@@ -13,6 +13,7 @@ import type { AuthContext } from '../auth/auth.types';
 import {
   type Actor, type Db, type EmployeeRow, type Tx, P, canIssueSalaryLetter, employeeInclude, has, isOwner, letterAdminScope, lockRow, nextNumber, notFound, servicesAudit, snapshotData, snapshotDto, textAudit, today, userNames, visibleLetterWhere,
 } from './services.types';
+import { isSelf } from '../../services/authorization/self-dealing';
 
 const letterInclude = { template: { select: { code: true, name: true } }, serviceRequest: { select: { requestNumber: true } } } satisfies Prisma.HrLetterInclude;
 type LetterRow = Prisma.HrLetterGetPayload<{ include: typeof letterInclude }>;
@@ -144,6 +145,8 @@ async function resolveTokens(db: Db, employee: EmployeeRow, tokens: HrLetterToke
 export async function issueLetterWithTx(tx: Tx, input: IssueHrLetterInput & { serviceRequestId?: string | null }, actor: Actor): Promise<LetterRow> {
   const { auth } = actor;
   if (!has(auth, P.HR_LETTER_ISSUE)) throw new AppError(403, 'FORBIDDEN', 'You may not issue HR letters');
+  // Task 51 (T44-P1-19): nobody certifies themselves (an employment or salary letter about the issuer).
+  if (isSelf(auth, input.employeeId)) throw new AppError(403, 'HR_LETTER_SELF_ISSUE_NOT_ALLOWED', 'You cannot issue an HR letter about yourself; another issuer must do it');
   const employee = await tx.employee.findUnique({ where: { id: input.employeeId }, include: employeeInclude });
   if (!employee) throw notFound('employee');
   const template = await tx.hrLetterTemplate.findUnique({ where: { id: input.templateId } });
@@ -244,6 +247,7 @@ export const hrLetterService = {
       const before = await tx.hrLetter.findUnique({ where: { id }, include: letterInclude });
       if (!before) throw notFound('hr letter');
       if (before.status !== 'ISSUED') throw new AppError(409, 'HR_LETTER_NOT_ISSUED', 'This letter is already void');
+      if (isSelf(actor.auth, before.employeeId)) throw new AppError(403, 'HR_LETTER_SELF_ISSUE_NOT_ALLOWED', 'You cannot void an HR letter about yourself'); // Task 51
       const after = await tx.hrLetter.update({ where: { id }, data: { status: 'VOID', voidedAt: new Date(), voidedByUserId: actor.auth.userId, voidReasonCode: input.reasonCode }, include: letterInclude });
       await auditService.log(servicesAudit(actor, AUDIT_ACTIONS.VOID_HR_LETTER, 'HrLetter', id, { letterNumber: after.letterNumber, letterType: after.letterTypeSnapshot, reasonCode: input.reasonCode }), tx);
       const employee = await tx.employee.findUnique({ where: { id: after.employeeId }, select: { user: { select: { id: true } } } });

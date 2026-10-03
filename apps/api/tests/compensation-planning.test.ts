@@ -210,7 +210,11 @@ describe('HR review and finalization', () => {
     expect(err(await as(mgrA, 'patch', `${C}/proposals/${p1}`).send({ proposedBaseSalary: '31500.00', managerComment: COMMENT }))).toBe('200');
     expect(err(await as(mgrA, 'post', `${C}/my/cycles/${cycleId}/submit`))).toBe('200');
     expect(err(await as(hradmin(), 'post', `${C}/cycles/${cycleId}/finalize`))).toBe('409 COMP_PROPOSALS_NOT_APPROVED');
-    expect((await as(hr, 'post', `${C}/cycles/${cycleId}/approve`).send({})).body.data).toEqual({ approved: 3 });
+    // Task 51 (T44-P1-19) — BEFORE: { approved: 3 } — `hr` approved p2 although `hr` had just set its amount by override.
+    // AFTER: maker ≠ checker — the bulk approval leaves p2 for another reviewer (counted), and hradmin approves it.
+    expect((await as(hr, 'post', `${C}/cycles/${cycleId}/approve`).send({})).body.data).toEqual({ approved: 2, skipped: 1 });
+    expect(err(await as(hr, 'post', `${C}/proposals/${p2}/approve`))).toBe('409 MAKER_CHECKER_CONFLICT');
+    expect(err(await as(hradmin(), 'post', `${C}/proposals/${p2}/approve`))).toBe('200');
   });
 
   it('finalize freezes the plan and changes no salary', async () => {

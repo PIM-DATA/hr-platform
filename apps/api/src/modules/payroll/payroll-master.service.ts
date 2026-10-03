@@ -13,6 +13,7 @@ import { workflowDefinitionsService } from '../../services/workflow';
 import { dec, money, toMoneyString, toQuantityString, type DecimalLike } from './money';
 import { employeeRef, payrollAudit, type Actor, type Db, type Tx } from './payroll.types';
 import { assertPayrollInputsOpen, endDateChangeWindow } from './payroll-freeze';
+import { assertNotSelfFinancial } from '../../services/authorization/self-dealing';
 
 /**
  * Payroll master data: salary history, the components a payslip can contain, recurring items, and the policy that
@@ -75,6 +76,7 @@ export const compensationService = {
    * salaries — and a salary change is recorded as history rather than an overwrite.
    */
   async create(input: CreateCompensationInput, actor: Actor): Promise<CompensationDto> {
+    assertNotSelfFinancial(actor.auth, input.employeeId, 'create a salary record'); // Task 51 (T44-P1-19)
     const employee = await prisma.employee.findUnique({ where: { id: input.employeeId }, select: { id: true } });
     if (!employee) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
 
@@ -112,6 +114,7 @@ export const compensationService = {
     const row = await prisma.$transaction(async (tx) => {
       const before = await tx.employeeCompensation.findUnique({ where: { id }, include: compensationInclude });
       if (!before) throw new AppError(404, 'COMPENSATION_NOT_FOUND', 'Salary record not found');
+      assertNotSelfFinancial(actor.auth, before.employeeId, 'change a salary record'); // Task 51
       const effectiveTo = input.effectiveTo === undefined ? before.effectiveTo : input.effectiveTo;
       if (effectiveTo && compareBusinessDate(effectiveTo, before.effectiveFrom) < 0) {
         throw new AppError(400, 'VALIDATION_ERROR', 'effectiveTo must be on or after effectiveFrom');
@@ -186,6 +189,8 @@ export async function checkCompensationBaselinesWithTx(db: Db, baselines: Compen
 export async function applyCompensationChangesWithTx(tx: Tx, changes: (CompensationBaseline & { newBaseSalary: DecimalLike; note: string })[], actor: Actor): Promise<Map<string, string>> {
   const created = new Map<string, string>();
   if (!changes.length) return created;
+  // Task 51: whoever applies salary changes may not be one of their beneficiaries (all-or-nothing: nothing is written).
+  for (const c of changes) assertNotSelfFinancial(actor.auth, c.employeeId, 'apply a salary change');
   const ids = changes.map((c) => c.employeeId);
   await tx.$executeRaw`SELECT "id" FROM "employee_compensations" WHERE "employee_id" = ANY(${ids}) FOR UPDATE`;
   const problems = await checkCompensationBaselinesWithTx(tx, changes);
@@ -337,6 +342,7 @@ export const payItemService = {
     if (!component) throw new AppError(404, 'PAY_COMPONENT_NOT_FOUND', 'Pay component not found');
     if (!component.isActive) throw new AppError(409, 'PAY_COMPONENT_INACTIVE', 'That pay component is inactive');
     if (!component.recurringAllowed) throw new AppError(409, 'PAY_COMPONENT_NOT_RECURRING', `${component.code} cannot be assigned as a recurring item`);
+    assertNotSelfFinancial(actor.auth, input.employeeId, 'assign a recurring pay item'); // Task 51
 
     const row = await prisma.$transaction(async (tx) => {
       const others = await tx.employeePayItem.findMany({
@@ -368,6 +374,7 @@ export const payItemService = {
     const row = await prisma.$transaction(async (tx) => {
       const before = await tx.employeePayItem.findUnique({ where: { id }, include: payItemInclude });
       if (!before) throw new AppError(404, 'PAY_ITEM_NOT_FOUND', 'Recurring item not found');
+      assertNotSelfFinancial(actor.auth, before.employeeId, 'change a recurring pay item'); // Task 51
       const nextTo = input.effectiveTo === undefined ? before.effectiveTo : input.effectiveTo;
       if (input.amount !== undefined && !dec(input.amount).equals(before.amount)) {
         await assertPayrollInputsOpen(tx, before.employeeId, { from: before.effectiveFrom, to: nextTo }, 'PAY', 'Re-pricing a recurring pay item');

@@ -297,6 +297,10 @@ export const compCycleService = {
       assertStatus(cycle, ['ACTIVE', 'REVIEW'], 'reassign a planner in');
       if (row.eligibility !== 'ELIGIBLE') throw new AppError(409, 'COMP_ROW_NOT_PLANNABLE', 'This person cannot be planned in this cycle');
       if (input.plannerUserId && !(await userHasPermission(tx, input.plannerUserId, P.COMP_PLAN_PLAN))) throw new AppError(422, 'COMP_PLANNER_NOT_ALLOWED', 'The planner must be an active user with compensation_planning.plan');
+      // Task 51 (T44-P1-19): nobody plans their own salary.
+      if (input.plannerUserId && (await tx.user.findUnique({ where: { id: input.plannerUserId }, select: { employeeId: true } }))?.employeeId === row.employeeId) {
+        throw new AppError(409, 'COMP_PLANNER_SELF_ROW', 'A planner cannot be assigned to plan their own salary');
+      }
       await tx.compensationCycleEmployee.update({ where: { id: row.id }, data: { plannerUserId: input.plannerUserId } });
       await tx.compensationPlannerAssignment.create({ data: { cycleEmployeeId: row.id, fromUserId: row.plannerUserId, toUserId: input.plannerUserId, reasonCode: input.reasonCode, actorUserId: actor.auth.userId } });
       await auditService.log(compAudit(actor, AUDIT_ACTIONS.ASSIGN_COMPENSATION_PLANNER, 'CompensationCycleEmployee', row.id, { employeeId: row.employeeId, toUserId: input.plannerUserId, reasonCode: input.reasonCode }, { fromUserId: row.plannerUserId }), tx);

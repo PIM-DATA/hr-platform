@@ -27,6 +27,8 @@ export const payrollWorkflowHandlers = {
     await payrollRunService.lockPeriod(tx, run.periodId);
     if (run.status !== 'REVIEW') throw new AppError(409, 'PAYROLL_RUN_NOT_IN_REVIEW', `This run is ${run.status.toLowerCase()}`);
 
+    // Task 51: the approver did not author an input of this run that pays themselves (checked under the period lock).
+    await payrollRunService.assertApproverIndependent(tx, run.id, { userId: ctx.actor.auth.userId, employeeId: ctx.actor.auth.employeeId }, run.period);
     // The same three questions as at submit, asked again at the moment the decision actually lands.
     await payrollRunService.assertApprovable(tx, run.id, run.period);
 

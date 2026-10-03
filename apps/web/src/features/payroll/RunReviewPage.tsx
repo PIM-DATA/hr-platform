@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth';
 import { useState, type ReactNode } from 'react';
 import { Calculator, Check, Download, Lock, RefreshCw, Send, Trash2 } from 'lucide-react';
 import { PERMISSIONS, type PayrollPeriodDto, type PayrollResultDto, type PayrollResultItemDto, type PayrollRunSummaryDto } from '@hr/shared';
@@ -222,12 +223,16 @@ const Figure = ({ label, value }: { label: string; value: ReactNode }) => (
 );
 
 /** One employee's result: every line, what produced it, and — while the run is in review — manual adjustments. */
-function ResultDetailModal({ id, editable, onClose }: { id: string | null; editable: boolean; onClose: () => void }) {
+function ResultDetailModal({ id, editable: editableRun, onClose }: { id: string | null; editable: boolean; onClose: () => void }) {
   const result = usePayrollResult(id);
+  const { user } = useAuth();
   const m = usePayrollMutations();
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const r = result.data;
+  // Task 51: nobody adjusts their own payslip (the API refuses it too); another payroll administrator must.
+  const own = !!r && !!user?.employee && r.employee.id === user.employee.id;
+  const editable = editableRun && !own;
 
   const remove = async (itemId: string) => {
     setErr(null);
@@ -262,6 +267,7 @@ function ResultDetailModal({ id, editable, onClose }: { id: string | null; edita
             <Alert>This employee&apos;s net pay is negative. The run cannot be approved until that is resolved.</Alert>
           )}
 
+          {editableRun && own && <Alert tone="info">This is your own payroll result. Adjustments to it must be made by another payroll administrator.</Alert>}
           {editable && (
             adding
               ? <AdjustmentForm resultId={r.id} onDone={() => setAdding(false)} />

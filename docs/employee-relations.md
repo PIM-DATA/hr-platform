@@ -186,3 +186,11 @@ The ER report withholds per-department counts for departments of fewer than 5 pe
 complementary suppression, and a department filter onto such a department withholds the whole report (`suppression`,
 `actions: null`). Organization totals remain. The Report Center `employee_relations_aggregate` dataset is per-person
 (`PERSON_ROWS`): it must be grouped, and groups of fewer than 5 people are withheld.
+
+## Task 51 — the subject never handles their own case (T44-P1-19)
+
+A case or disciplinary action about the acting user's own employee record is, for management purposes, not theirs:
+lists exclude it, detail / edit / close / cancel / actions / approval view answer `404` (as for a case that does not
+exist), the 360 summary of oneself is `404`, opening a case about oneself is `403 ER_SUBJECT_NOT_ALLOWED`, and a workflow
+decision (approve / reject) by the subject is `409 ER_SUBJECT_CANNOT_DECIDE` even when they are the configured approver.
+The employee's own flow — `/my/records`, acknowledgement — is unchanged.

@@ -21,7 +21,7 @@ import { notifyCycle } from './cycle.service';
 async function preflight(db: Db, cycle: { id: string; effectiveDate: string; currency: string }) {
   const rows = await db.compensationProposal.findMany({
     where: { cycleId: cycle.id, status: 'APPROVED' },
-    select: { id: true, currentBaseSalary: true, proposedBaseSalary: true, increaseAmount: true, appliedAt: true, cycleEmployee: { select: { employeeId: true, employeeCodeSnapshot: true, employeeNameSnapshot: true, sourceCompensationId: true, currencySnapshot: true } } },
+    select: { id: true, currentBaseSalary: true, proposedBaseSalary: true, increaseAmount: true, appliedAt: true, approvedByUserId: true, cycleEmployee: { select: { employeeId: true, employeeCodeSnapshot: true, employeeNameSnapshot: true, sourceCompensationId: true, currencySnapshot: true } } },
   });
   const changes = rows.filter((r) => r.increaseAmount && dec(r.increaseAmount).greaterThan(0));
   const [employees, problems] = await Promise.all([
@@ -31,9 +31,16 @@ async function preflight(db: Db, cycle: { id: string; effectiveDate: string; cur
     }))),
   ]);
   const status = new Map(employees.map((e) => [e.id, e.employmentStatus]));
+  // Task 51 (T44-P1-19): an approval is independent only if the approver is neither the subject nor the last author of
+  // the amount (both refused since Task 51; this catches approvals recorded before it).
+  const approverIds = [...new Set(changes.map((r) => r.approvedByUserId).filter((x): x is string => !!x))];
+  const approverEmployee = new Map((await db.user.findMany({ where: { id: { in: approverIds } }, select: { id: true, employeeId: true } })).map((u) => [u.id, u.employeeId]));
+  const authorRows = await db.compensationProposalHistory.findMany({ where: { proposalId: { in: changes.map((r) => r.id) }, action: { in: ['SAVED', 'OVERRIDDEN'] } }, orderBy: { createdAt: 'asc' }, select: { proposalId: true, actorUserId: true } });
+  const author = new Map<string, string>(); for (const a of authorRows) author.set(a.proposalId, a.actorUserId);
+  const notIndependent = (r: (typeof changes)[number]) => !!r.approvedByUserId && (approverEmployee.get(r.approvedByUserId) === r.cycleEmployee.employeeId || author.get(r.id) === r.approvedByUserId);
   const blockers: CompApplyPreviewDto['blockers'] = [];
   for (const r of changes) {
-    const reason: CompApplyBlocker | null = status.get(r.cycleEmployee.employeeId) !== 'ACTIVE' ? 'EMPLOYEE_NOT_ACTIVE' : problems.get(r.cycleEmployee.employeeId) ?? null;
+    const reason: CompApplyBlocker | null = status.get(r.cycleEmployee.employeeId) !== 'ACTIVE' ? 'EMPLOYEE_NOT_ACTIVE' : notIndependent(r) ? 'APPROVAL_NOT_INDEPENDENT' : problems.get(r.cycleEmployee.employeeId) ?? null;
     if (reason) blockers.push({ employeeCode: r.cycleEmployee.employeeCodeSnapshot, employeeName: r.cycleEmployee.employeeNameSnapshot, reason });
   }
   return { rows, changes, blockers };

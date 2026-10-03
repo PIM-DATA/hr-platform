@@ -376,7 +376,7 @@ describe('who may see what', () => {
   });
 
   it('the Employee 360 hand-off counts and never narrates', async () => {
-    const summary = await erCaseService.summaryFor(emp.EMP003);
+    const summary = await erCaseService.summaryFor({ employeeId: null } as never, emp.EMP003) // Task 51: the viewer is passed (here: an HR context, not the subject);
     expect(summary).toMatchObject({ employeeId: emp.EMP003, totalIssued: 1, activeWarnings: 1, awaitingAcknowledgement: 0 });
     expect(summary.latestActionDate).toBeTruthy();
     expect(JSON.stringify(summary)).not.toMatch(/two days late|team lead|Dear EMP003|Written warning/);

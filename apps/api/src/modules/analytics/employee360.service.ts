@@ -182,7 +182,7 @@ export const employee360Service = {
         };
       }) : null,
       may.employeeRelations ? section('employeeRelations', async () => {
-        const s = await erCaseService.summaryFor(employeeId);
+        const s = await erCaseService.summaryFor(auth, employeeId);
         if (s.latestActionDate) activity.push({ date: s.latestActionDate.slice(0, 10), domain: 'employee_relations', title: 'Employee relations action issued', detail: 'Open Employee relations for the record' });
         return s;
       }) : null,

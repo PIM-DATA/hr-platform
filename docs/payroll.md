@@ -252,3 +252,26 @@ whose money fields now declare `currencyField: currencyCode`).
 **Fix found on the way.** System pay components were cached for the whole process; a refused first calculation on a
 fresh database kept ids created inside the rolled-back transaction, and every later calculation failed on a foreign key.
 The cache is now per transaction client.
+
+## Task 51 — maker ≠ checker, no self-benefit (T44-P1-19)
+
+"Self" is the employee record linked to the acting user's account — server-owned; an administrator cannot re-link their
+own account (`403 SELF_EMPLOYEE_LINK_CHANGE_NOT_ALLOWED`). These are business rules on top of permissions: no role,
+permission or scope lifts them, and there is no emergency bypass.
+
+| Action | About yourself | About anybody else |
+|---|---|---|
+| Create / change a salary record | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED`, nothing written | normal (with `payroll.manage`) |
+| Create / change a recurring pay item | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED` | normal |
+| Add / remove a manual adjustment | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED` | normal |
+| Benefit / expense handoff line on your own result | allowed — the amount was approved by someone else in its source domain (Task 48 rules unchanged) | — |
+| Apply salary changes (compensation planning or any caller of `applyCompensationChangesWithTx`) | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED` for the whole batch | normal |
+| Approve a payroll run | allowed when your result is merely part of the run (unchanged salary); refused `409 PAYROLL_APPROVER_SELF_BENEFIT` when the run contains an input that pays you and that **you** authored (a manual line on your result, or a salary / recurring record of yours covering the period) | — |
+
+The approval check runs inside the workflow decision under the period lock, so a concurrent adjustment cannot slip past
+it (tested). The workflow engine's existing rule — the submitter never approves, a second session of the same user is
+the same user — is unchanged.
+
+**Operational minimum.** Changes to a payroll administrator's own pay need a second person with `payroll.manage` (and,
+for approval, a second approver in the payroll workflow). With a single administrator these requests are refused with
+the codes above — the control is never switched off.

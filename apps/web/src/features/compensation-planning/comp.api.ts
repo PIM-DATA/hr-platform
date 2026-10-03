@@ -36,7 +36,7 @@ export function useCompMutations() {
     setBudget: useM((a: { id: string; budgetAmount: string }) => api.put<CompCycleDto>(`${B}/cycles/${a.id}/budget`, { budgetAmount: a.budgetAmount }).then((r) => r.data)),
     transition: useM((a: { id: string; action: 'activate' | 'start-review' | 'finalize' | 'archive' }) => api.post<CompCycleDto>(`${B}/cycles/${a.id}/${a.action}`).then((r) => r.data)),
     apply: useM((id: string) => api.post<CompApplyResultDto>(`${B}/cycles/${id}/apply`).then((r) => r.data)),
-    approveAll: useM((a: { id: string; plannerUserId?: string; departmentId?: string }) => api.post<{ approved: number }>(`${B}/cycles/${a.id}/approve`, { plannerUserId: a.plannerUserId, departmentId: a.departmentId }).then((r) => r.data)),
+    approveAll: useM((a: { id: string; plannerUserId?: string; departmentId?: string }) => api.post<{ approved: number; skipped?: number }>(`${B}/cycles/${a.id}/approve`, { plannerUserId: a.plannerUserId, departmentId: a.departmentId }).then((r) => r.data)),
     approve: useM((proposalId: string) => api.post(`${B}/proposals/${proposalId}/approve`)),
     returnToPlanner: useM((a: { proposalId: string; reasonCode: string }) => api.post(`${B}/proposals/${a.proposalId}/return`, { reasonCode: a.reasonCode })),
     override: useM((a: { proposalId: string; proposedBaseSalary: string; reasonCode: string }) => api.post(`${B}/proposals/${a.proposalId}/override`, { proposedBaseSalary: a.proposedBaseSalary, reasonCode: a.reasonCode })),

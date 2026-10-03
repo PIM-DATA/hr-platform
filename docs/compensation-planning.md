@@ -174,3 +174,20 @@ recommendation and no merit matrix; no promotion workflow; no salary decreases t
 cycle, no FX; one organization budget pool (no department or manager allocations); no employee compensation
 statement or letter generation; no Finance/ERP budget integration; no employee self-service view of proposals; no
 copilot access to planning; Apply is all-or-nothing (reconcile blockers, then apply again).
+
+## Task 51 — maker ≠ checker, no self-benefit (T44-P1-19)
+
+| Step | Rule | Error |
+|---|---|---|
+| Planner (re)assignment | nobody is assigned to plan their own salary | `409 COMP_PLANNER_SELF_ROW` |
+| Planner edit / submit | a row about the planner is refused (legacy assignments) | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED` |
+| HR override / approve / return | never on a proposal about the reviewer | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED` |
+| Approve | the person who last SET the amount (planner save or HR override, from the server-owned proposal history) does not approve it | `409 MAKER_CHECKER_CONFLICT` |
+| Bulk approve | rows about the reviewer and rows whose amount the reviewer set are skipped and counted | `{ approved, skipped }` |
+| Apply | the applier may not be a beneficiary of the cycle — the whole Apply is refused, nothing written | `403 FINANCIAL_SELF_BENEFIT_NOT_ALLOWED` |
+| Apply preflight | an approval recorded before Task 51 by the subject or by the amount's author blocks the row | blocker `APPROVAL_NOT_INDEPENDENT` |
+
+The Task 43 guarantees are unchanged: explicit Apply, `compensation_planning.apply` + `payroll.manage`, stale-source
+blockers, all-or-nothing, single Apply under concurrency. Finalize and Apply may be the same person: the independent
+check is the proposal approval (every amount is approved by someone who did not set it). Operational minimum: two people
+with `compensation_planning.review` (and another with Apply authority when the applier is in the cycle).

@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { COMP_OVERRIDE_REASONS, COMP_PLANNER_REASONS, COMP_RETURN_REASONS, type CompCycleDto, type CompRowDto } from '@hr/shared';
@@ -193,9 +194,11 @@ function ProposalsCard({ c }: { c: CompCycleDto }) {
   const [f, setF] = useState({ page: 1, departmentId: '', plannerUserId: '', status: '', search: '' });
   const rows = useCycleRows(c.id, { ...f, pageSize: 50 }, true);
   const [action, setAction] = useState<null | { kind: 'return' | 'override' | 'planner' | 'history'; row: CompRowDto }>(null);
+  const { user } = useAuth();
+  const mine = (r: CompRowDto) => !!user?.employee && r.employee.id === user.employee.id;
   const departments = (opts.data?.departments ?? []).filter((d) => d.organizationId === c.organization.id);
   const approveAll = async () => {
-    try { const r = await mut.approveAll.mutateAsync({ id: c.id, plannerUserId: f.plannerUserId || undefined, departmentId: f.departmentId || undefined }); toast.success(`${r.approved} proposal(s) approved`); }
+    try { const r = await mut.approveAll.mutateAsync({ id: c.id, plannerUserId: f.plannerUserId || undefined, departmentId: f.departmentId || undefined }); toast.success(`${r.approved} proposal(s) approved${r.skipped ? ` · ${r.skipped} left for another reviewer (your own row, or an amount you set)` : ''}`); }
     catch (e) { toast.error('Could not approve', errorMessage(e)); }
   };
   const approve = async (row: CompRowDto) => { try { await mut.approve.mutateAsync(row.proposalId!); } catch (e) { toast.error('Could not approve', errorMessage(e)); } };
@@ -227,9 +230,11 @@ function ProposalsCard({ c }: { c: CompCycleDto }) {
                 <td className="px-3 py-2">{r.eligibility === 'ELIGIBLE' ? <CompBadge status={r.status ?? 'NOT_STARTED'} /> : <CompBadge status={r.eligibility} />}{r.applied && <div className="mt-1 text-xs text-emerald-700">Applied</div>}</td>
                 <td className="px-3 py-2"><div className="flex flex-wrap gap-1">
                   {r.proposalId && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: 'history', row: r })}>History</Button>}
-                  {a.review && c.status === 'REVIEW' && r.status === 'HR_REVIEW' && <Button size="sm" variant="secondary" onClick={() => approve(r)}>Approve</Button>}
-                  {a.review && c.status === 'REVIEW' && ['HR_REVIEW', 'APPROVED'].includes(r.status ?? '') && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: 'override', row: r })}>Change</Button>}
-                  {a.review && ['ACTIVE', 'REVIEW'].includes(c.status) && ['SUBMITTED', 'HR_REVIEW', 'APPROVED'].includes(r.status ?? '') && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: 'return', row: r })}>Return</Button>}
+                  {/* Task 51: nobody reviews their own salary — the API refuses it; another reviewer does it */}
+                  {mine(r) && <span className="text-xs text-slate-500">Yours — another reviewer decides</span>}
+                  {!mine(r) && a.review && c.status === 'REVIEW' && r.status === 'HR_REVIEW' && <Button size="sm" variant="secondary" onClick={() => approve(r)}>Approve</Button>}
+                  {!mine(r) && a.review && c.status === 'REVIEW' && ['HR_REVIEW', 'APPROVED'].includes(r.status ?? '') && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: 'override', row: r })}>Change</Button>}
+                  {!mine(r) && a.review && ['ACTIVE', 'REVIEW'].includes(c.status) && ['SUBMITTED', 'HR_REVIEW', 'APPROVED'].includes(r.status ?? '') && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: 'return', row: r })}>Return</Button>}
                   {a.manage && ['ACTIVE', 'REVIEW'].includes(c.status) && r.eligibility === 'ELIGIBLE' && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: 'planner', row: r })}>Planner</Button>}
                 </div></td>
               </tr>

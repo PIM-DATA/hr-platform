@@ -21,7 +21,7 @@ export const COMP_RETURN_REASONS = ['OVER_BUDGET', 'NEEDS_JUSTIFICATION', 'POLIC
 export const COMP_OVERRIDE_REASONS = ['BUDGET_ALIGNMENT', 'POLICY_ALIGNMENT', 'DATA_CORRECTION', 'CALIBRATION_OUTCOME', 'OTHER'] as const;
 export const COMP_PLANNER_REASONS = ['MANAGER_CHANGED', 'NO_PLANNER', 'WORKLOAD', 'CONFLICT_OF_INTEREST', 'OTHER'] as const;
 /** Why a finalized row cannot be applied to salary history right now. */
-export const COMP_APPLY_BLOCKERS = ['SOURCE_COMPENSATION_CHANGED', 'EMPLOYEE_NOT_ACTIVE', 'COMPENSATION_IN_USE'] as const;
+export const COMP_APPLY_BLOCKERS = ['SOURCE_COMPENSATION_CHANGED', 'EMPLOYEE_NOT_ACTIVE', 'COMPENSATION_IN_USE', 'APPROVAL_NOT_INDEPENDENT'] as const;
 export type CompApplyBlocker = (typeof COMP_APPLY_BLOCKERS)[number];
 
 const businessDate = z.string().refine(isBusinessDate, 'Use a real date in YYYY-MM-DD format');

@@ -10,6 +10,7 @@ import {
   type Actor, type Db, type RowWithProposal, type Tx,
 } from './comp.types';
 import { notifyCycle } from './cycle.service';
+import { assertNotSelfFinancial, isSelf, makerCheckerConflict } from '../../services/authorization/self-dealing';
 
 /**
  * Proposals. A planner enters one number per person — the proposed base salary — for the rows assigned to them;
@@ -27,6 +28,7 @@ async function history(tx: Tx, proposalId: string, action: string, actorUserId: 
 async function plannerProposal(tx: Tx, auth: AuthContext, proposalId: string) {
   const p = await tx.compensationProposal.findUnique({ where: { id: proposalId }, include: { cycleEmployee: true } });
   if (!p || p.cycleEmployee.plannerUserId !== auth.userId || !plannerCapable(auth)) throw notFound('compensation proposal');
+  assertNotSelfFinancial(auth, p.cycleEmployee.employeeId, 'plan a salary'); // Task 51 (T44-P1-19)
   return p;
 }
 async function hrProposal(tx: Tx, auth: AuthContext, proposalId: string) {
@@ -34,7 +36,17 @@ async function hrProposal(tx: Tx, auth: AuthContext, proposalId: string) {
   if (!has(auth, P.COMP_PLAN_REVIEW)) throw AppError.forbidden();
   const p = await tx.compensationProposal.findUnique({ where: { id: proposalId }, include: { cycleEmployee: true } });
   if (!p) throw notFound('compensation proposal');
+  // Task 51: HR never overrides, approves or returns a proposal about themselves.
+  assertNotSelfFinancial(auth, p.cycleEmployee.employeeId, 'review a salary proposal');
   return p;
+}
+
+/** Task 51: who last SET the proposed amount (planner save or HR override) — server-owned history, never the client. */
+async function lastAmountAuthors(tx: Tx, proposalIds: string[]): Promise<Map<string, string>> {
+  const rows = await tx.compensationProposalHistory.findMany({ where: { proposalId: { in: proposalIds }, action: { in: ['SAVED', 'OVERRIDDEN'] } }, orderBy: { createdAt: 'asc' }, select: { proposalId: true, actorUserId: true } });
+  const out = new Map<string, string>();
+  for (const r of rows) out.set(r.proposalId, r.actorUserId); // ascending → the last one wins
+  return out;
 }
 
 function validateProposed(current: Prisma.Decimal, proposedRaw: string) {
@@ -113,8 +125,9 @@ export const compProposalService = {
     if (!has(actor.auth, P.COMP_PLAN_PLAN)) throw AppError.forbidden();
     return prisma.$transaction(async (tx) => {
       const cycle = await lockCycle(tx, cycleId);
-      const mine = await tx.compensationProposal.findMany({ where: { cycleId, cycleEmployee: { plannerUserId: actor.auth.userId } } });
+      const mine = await tx.compensationProposal.findMany({ where: { cycleId, cycleEmployee: { plannerUserId: actor.auth.userId } }, include: { cycleEmployee: { select: { employeeId: true } } } });
       if (!mine.length) throw notFound('compensation cycle');
+      for (const p of mine) assertNotSelfFinancial(actor.auth, p.cycleEmployee.employeeId, 'submit a salary plan'); // Task 51 (legacy assignment)
       assertStatus(cycle, ['ACTIVE', 'REVIEW'], 'submit a plan in');
       const open = mine.filter((p) => (cycle.status === 'ACTIVE' ? EDITABLE_ACTIVE.includes(p.status) : p.status === 'RETURNED'));
       if (!open.length) throw new AppError(409, 'COMP_NOTHING_TO_SUBMIT', 'There is nothing to submit');
@@ -188,6 +201,8 @@ export const compProposalService = {
       const cycle = await lockCycle(tx, p.cycleId);
       assertStatus(cycle, ['REVIEW'], 'approve a proposal in');
       if (p.status !== 'HR_REVIEW') throw new AppError(409, 'COMP_PROPOSAL_INVALID_STATE', 'Only a proposal under HR review can be approved');
+      // Task 51: maker ≠ checker — the person who last set this amount (as planner or by override) does not approve it.
+      if ((await lastAmountAuthors(tx, [p.id])).get(p.id) === actor.auth.userId) throw makerCheckerConflict('proposed salary');
       await tx.compensationProposal.update({ where: { id: p.id }, data: { status: 'APPROVED', approvedAt: new Date(), approvedByUserId: actor.auth.userId } });
       await history(tx, p.id, 'APPROVED', actor.auth.userId, p.proposedBaseSalary, p.proposedBaseSalary);
       await auditService.log(compAudit(actor, AUDIT_ACTIONS.APPROVE_COMPENSATION_PROPOSAL, 'CompensationProposal', p.id, { cycleId: p.cycleId, employeeId: p.cycleEmployee.employeeId, status: 'APPROVED' }, { status: p.status }), tx);
@@ -202,12 +217,16 @@ export const compProposalService = {
     return prisma.$transaction(async (tx) => {
       const cycle = await lockCycle(tx, cycleId);
       assertStatus(cycle, ['REVIEW'], 'approve proposals in');
-      const targets = await tx.compensationProposal.findMany({ where: { cycleId, status: 'HR_REVIEW', cycleEmployee: { plannerUserId: f.plannerUserId, departmentIdSnapshot: f.departmentId } }, select: { id: true, proposedBaseSalary: true } });
-      if (!targets.length) return { approved: 0 };
+      const candidates = await tx.compensationProposal.findMany({ where: { cycleId, status: 'HR_REVIEW', cycleEmployee: { plannerUserId: f.plannerUserId, departmentIdSnapshot: f.departmentId } }, select: { id: true, proposedBaseSalary: true, cycleEmployee: { select: { employeeId: true } } } });
+      // Task 51: rows about the reviewer, and rows whose amount the reviewer set, are left for another reviewer — counted.
+      const authors = await lastAmountAuthors(tx, candidates.map((c) => c.id));
+      const targets = candidates.filter((c) => !isSelf(actor.auth, c.cycleEmployee.employeeId) && authors.get(c.id) !== actor.auth.userId);
+      const skipped = candidates.length - targets.length;
+      if (!targets.length) return { approved: 0, skipped };
       await tx.compensationProposal.updateMany({ where: { id: { in: targets.map((t) => t.id) } }, data: { status: 'APPROVED', approvedAt: new Date(), approvedByUserId: actor.auth.userId } });
       await tx.compensationProposalHistory.createMany({ data: targets.map((t) => ({ proposalId: t.id, action: 'APPROVED', actorUserId: actor.auth.userId, oldProposedBaseSalary: t.proposedBaseSalary, newProposedBaseSalary: t.proposedBaseSalary })) });
       await auditService.log(compAudit(actor, AUDIT_ACTIONS.APPROVE_COMPENSATION_PROPOSAL, 'CompensationReviewCycle', cycleId, { approved: targets.length, plannerUserId: f.plannerUserId ?? null, departmentId: f.departmentId ?? null }), tx);
-      return { approved: targets.length };
+      return { approved: targets.length, skipped };
     }, { timeout: 60_000 });
   },
 

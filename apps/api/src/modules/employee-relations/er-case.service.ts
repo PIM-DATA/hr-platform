@@ -16,6 +16,7 @@ import { workflowEngine } from '../../services/workflow';
 import type { AuthContext } from '../auth/auth.types';
 import { actionTypeService, disciplinaryPolicyService } from './er-config.service';
 import { erAudit, narrativeAudit, type Actor, type Db, type Tx } from './er.types';
+import { isSelf } from '../../services/authorization/self-dealing';
 
 /**
  * Employee relations cases and the disciplinary actions on them.
@@ -123,16 +124,26 @@ function toSummaryDto(row: CaseRow): CaseSummaryDto {
   };
 }
 
-async function loadCase(db: Db, id: string): Promise<CaseRow> {
+/**
+ * Task 51 (T44-P1-19): the subject of a case never handles it — not reading it as HR, not editing it, not deciding its
+ * actions. To them it is indistinguishable from a case that does not exist (their own disciplinary records stay
+ * reachable through /my/records, the employee's acknowledgement flow).
+ */
+async function loadCase(db: Db, id: string, auth?: AuthContext): Promise<CaseRow> {
   const row = await db.employeeRelationCase.findUnique({ where: { id }, include: caseInclude });
-  if (!row) throw new AppError(404, 'ER_CASE_NOT_FOUND', 'Case not found');
+  if (!row || (auth && isSelf(auth, row.employeeId))) throw new AppError(404, 'ER_CASE_NOT_FOUND', 'Case not found');
   return row;
 }
 
-async function loadAction(db: Db, id: string): Promise<ActionRow> {
+async function loadAction(db: Db, id: string, auth?: AuthContext): Promise<ActionRow> {
   const row = await db.disciplinaryAction.findUnique({ where: { id }, include: actionInclude });
-  if (!row) throw new AppError(404, 'DISCIPLINARY_ACTION_NOT_FOUND', 'Disciplinary action not found');
+  if (!row || (auth && isSelf(auth, row.employeeId))) throw new AppError(404, 'DISCIPLINARY_ACTION_NOT_FOUND', 'Disciplinary action not found');
   return row;
+}
+
+/** A workflow decision on an action about the approver themselves is refused (the engine only excludes the requester). */
+function assertNotDecidingOwn(actor: Actor, employeeId: string) {
+  if (isSelf(actor.auth, employeeId)) throw new AppError(409, 'ER_SUBJECT_CANNOT_DECIDE', 'This action concerns you; another approver must decide it');
 }
 
 const lockCase = async (tx: Tx, caseId: string) => {
@@ -204,6 +215,7 @@ async function nextCaseNumber(tx: Tx): Promise<string> {
 // ---------------------------------------------------------------------------
 export const erCaseService = {
   async create(input: CreateCaseInput, actor: Actor): Promise<CaseDetailDto> {
+    if (isSelf(actor.auth, input.employeeId)) throw new AppError(403, 'ER_SUBJECT_NOT_ALLOWED', 'You cannot open an employee-relations case about yourself');
     const row = await prisma.$transaction(async (tx) => {
       const employee = await tx.employee.findUnique({
         where: { id: input.employeeId },
@@ -254,7 +266,7 @@ export const erCaseService = {
   async update(id: string, input: UpdateCaseInput, actor: Actor): Promise<CaseDetailDto> {
     const row = await prisma.$transaction(async (tx) => {
       await lockCase(tx, id);
-      const before = await loadCase(tx, id);
+      const before = await loadCase(tx, id, actor.auth);
       if (['CLOSED', 'CANCELLED'].includes(before.status)) throw new AppError(409, 'ER_CASE_FINISHED', `This case is ${before.status.toLowerCase()}`);
       // Once a proposal is with an approver, the facts it was based on do not move underneath them.
       const frozen = before.status === 'PENDING_APPROVAL' || before.status === 'ACTION_ISSUED';
@@ -290,8 +302,9 @@ export const erCaseService = {
     return toDetailDto(prisma, row, true);
   },
 
-  async list(q: CaseListQuery): Promise<{ data: CaseSummaryDto[]; meta: { page: number; pageSize: number; total: number } }> {
+  async list(auth: AuthContext, q: CaseListQuery): Promise<{ data: CaseSummaryDto[]; meta: { page: number; pageSize: number; total: number } }> {
     const where: Prisma.EmployeeRelationCaseWhereInput = {
+      ...(auth.employeeId ? { NOT: { employeeId: auth.employeeId } } : {}), // Task 51: never one's own case
       employeeId: q.employeeId,
       departmentId: q.departmentId,
       status: q.status,
@@ -308,7 +321,7 @@ export const erCaseService = {
   },
 
   async get(auth: AuthContext, id: string): Promise<CaseDetailDto> {
-    const row = await loadCase(prisma, id);
+    const row = await loadCase(prisma, id, auth);
     return toDetailDto(prisma, row, hasPermission(auth, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE));
   },
 
@@ -316,7 +329,7 @@ export const erCaseService = {
   async close(id: string, actor: Actor): Promise<CaseDetailDto> {
     const row = await prisma.$transaction(async (tx) => {
       await lockCase(tx, id);
-      const before = await loadCase(tx, id);
+      const before = await loadCase(tx, id, actor.auth);
       if (before.status === 'CLOSED') throw new AppError(409, 'ER_CASE_CLOSED', 'This case is already closed');
       if (before.status === 'PENDING_APPROVAL') throw new AppError(409, 'ER_CASE_PENDING', 'A proposal is with an approver; wait for the decision before closing');
       if (before.status === 'CANCELLED') throw new AppError(409, 'ER_CASE_FINISHED', 'This case is cancelled');
@@ -331,7 +344,7 @@ export const erCaseService = {
   async cancel(id: string, actor: Actor): Promise<CaseDetailDto> {
     const row = await prisma.$transaction(async (tx) => {
       await lockCase(tx, id);
-      const before = await loadCase(tx, id);
+      const before = await loadCase(tx, id, actor.auth);
       if (!['DRAFT', 'UNDER_REVIEW'].includes(before.status)) throw new AppError(409, 'ER_CASE_NOT_CANCELLABLE', `A ${before.status.toLowerCase().replace('_', ' ')} case cannot be cancelled`);
       await tx.disciplinaryAction.updateMany({ where: { caseId: id, status: 'DRAFT' }, data: { status: 'CANCELLED', cancelledAt: new Date() } });
       const after = await tx.employeeRelationCase.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date() }, include: caseInclude });
@@ -347,7 +360,7 @@ export const erCaseService = {
   async createAction(caseId: string, input: CreateActionInput, actor: Actor): Promise<CaseDetailDto> {
     const row = await prisma.$transaction(async (tx) => {
       await lockCase(tx, caseId);
-      const erCase = await loadCase(tx, caseId);
+      const erCase = await loadCase(tx, caseId, actor.auth);
       if (!['DRAFT', 'UNDER_REVIEW'].includes(erCase.status)) throw new AppError(409, 'ER_CASE_NOT_OPEN', `A ${erCase.status.toLowerCase().replace('_', ' ')} case cannot take a new proposal`);
       if (currentActionOf(erCase)) throw new AppError(409, 'DISCIPLINARY_ACTION_EXISTS', 'This case already has a proposal; withdraw it first');
       const type = await actionTypeService.require(tx, input.actionTypeId);
@@ -382,14 +395,14 @@ export const erCaseService = {
       await auditService.log(erAudit(actor, AUDIT_ACTIONS.CREATE_DISCIPLINARY_ACTION, 'DisciplinaryAction', created.id, {
         caseNumber: erCase.caseNumber, actionType: type.code, validityDays: created.validityDays, hasLetterDraft: !!created.letterBody,
       }), tx);
-      return loadCase(tx, caseId);
+      return loadCase(tx, caseId, actor.auth);
     });
     return toDetailDto(prisma, row, true);
   },
 
   async updateAction(actionId: string, input: UpdateActionInput, actor: Actor): Promise<CaseDetailDto> {
     const caseId = await prisma.$transaction(async (tx) => {
-      const before = await loadAction(tx, actionId);
+      const before = await loadAction(tx, actionId, actor.auth);
       await lockCase(tx, before.caseId);
       if (before.status !== 'DRAFT') throw new AppError(409, 'DISCIPLINARY_ACTION_FROZEN', `This proposal is ${before.status.toLowerCase().replace('_', ' ')} and can no longer be edited`);
       const after = await tx.disciplinaryAction.update({
@@ -408,20 +421,20 @@ export const erCaseService = {
       }, { validityDays: before.validityDays }), tx);
       return before.caseId;
     });
-    return toDetailDto(prisma, await loadCase(prisma, caseId), true);
+    return toDetailDto(prisma, await loadCase(prisma, caseId, actor.auth), true);
   },
 
   /** Withdrawing a draft proposal. A pending one is withdrawn through the workflow; an issued one cannot be. */
   async cancelAction(actionId: string, actor: Actor): Promise<CaseDetailDto> {
     const caseId = await prisma.$transaction(async (tx) => {
-      const before = await loadAction(tx, actionId);
+      const before = await loadAction(tx, actionId, actor.auth);
       await lockCase(tx, before.caseId);
       if (before.status !== 'DRAFT') throw new AppError(409, 'DISCIPLINARY_ACTION_NOT_DRAFT', before.status === 'ISSUED' || before.status === 'ACKNOWLEDGED' ? 'An issued action cannot be cancelled; this release has no correction flow' : `This proposal is ${before.status.toLowerCase().replace('_', ' ')}`);
       await tx.disciplinaryAction.update({ where: { id: actionId }, data: { status: 'CANCELLED', cancelledAt: new Date() } });
       await auditService.log(erAudit(actor, AUDIT_ACTIONS.UPDATE_DISCIPLINARY_ACTION, 'DisciplinaryAction', actionId, { status: 'CANCELLED' }, { status: before.status }), tx);
       return before.caseId;
     });
-    return toDetailDto(prisma, await loadCase(prisma, caseId), true);
+    return toDetailDto(prisma, await loadCase(prisma, caseId, actor.auth), true);
   },
 
   /**
@@ -430,14 +443,14 @@ export const erCaseService = {
    */
   async submit(actionId: string, actor: Actor): Promise<CaseDetailDto> {
     const caseId = await prisma.$transaction(async (tx) => {
-      const action = await loadAction(tx, actionId);
+      const action = await loadAction(tx, actionId, actor.auth);
       await lockCase(tx, action.caseId);
-      const fresh = await loadAction(tx, actionId);
+      const fresh = await loadAction(tx, actionId, actor.auth);
       if (fresh.status !== 'DRAFT') throw new AppError(409, 'DISCIPLINARY_ACTION_NOT_DRAFT', `This proposal is already ${fresh.status.toLowerCase().replace('_', ' ')}`);
       if (fresh.requiresWarningLetter && (!fresh.letterSubject || !fresh.letterBody)) {
         throw new AppError(422, 'WARNING_LETTER_REQUIRED', `${fresh.actionTypeNameSnapshot} requires a warning letter; draft its subject and body first`);
       }
-      const erCase = await loadCase(tx, action.caseId);
+      const erCase = await loadCase(tx, action.caseId, actor.auth);
       if (!erCase.organizationId) throw new AppError(409, 'DISCIPLINARY_POLICY_NOT_FOUND', 'The employee has no organization, so no policy applies');
       const policy = await disciplinaryPolicyService.resolve(tx, erCase.organizationId, erCase.incidentDate);
       const requester = await tx.employee.findFirst({ where: { user: { id: actor.auth.userId } }, select: { id: true } });
@@ -455,7 +468,7 @@ export const erCaseService = {
       }), tx);
       return action.caseId;
     });
-    return toDetailDto(prisma, await loadCase(prisma, caseId), true);
+    return toDetailDto(prisma, await loadCase(prisma, caseId, actor.auth), true);
   },
 
   /**
@@ -464,6 +477,7 @@ export const erCaseService = {
    */
   async issueFromWorkflow(tx: Tx, actionId: string, actor: Actor, comment: string | null | undefined) {
     const action = await loadAction(tx, actionId);
+    assertNotDecidingOwn(actor, action.employeeId); // Task 51
     await lockCase(tx, action.caseId);
     const fresh = await loadAction(tx, actionId);
     if (fresh.status !== 'PENDING_APPROVAL') throw new AppError(409, 'DISCIPLINARY_ACTION_NOT_PENDING', `This proposal is ${fresh.status.toLowerCase().replace('_', ' ')}`);
@@ -530,6 +544,7 @@ export const erCaseService = {
 
   async rejectFromWorkflow(tx: Tx, actionId: string, actor: Actor, comment: string | null | undefined) {
     const action = await loadAction(tx, actionId);
+    assertNotDecidingOwn(actor, action.employeeId); // Task 51
     await lockCase(tx, action.caseId);
     // REJECTED is terminal for this proposal. HR drafts a new one rather than quietly editing the refused one.
     await tx.disciplinaryAction.update({ where: { id: actionId }, data: { status: 'REJECTED', rejectedAt: new Date() } });
@@ -546,11 +561,11 @@ export const erCaseService = {
 
   /** What an approver may see: enough to decide, and no internal notes. Only the snapshot approver of the pending step. */
   async approvalProjection(auth: AuthContext, actionId: string): Promise<ApprovalProjectionDto> {
-    const action = await loadAction(prisma, actionId);
+    const action = await loadAction(prisma, actionId, auth);
     if (!action.workflowInstanceId) throw AppError.forbidden();
     const step = await prisma.workflowInstanceStep.findFirst({ where: { instanceId: action.workflowInstanceId, approverUserId: auth.userId }, select: { name: true } });
     if (!step && !hasPermission(auth, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE)) throw AppError.forbidden();
-    const erCase = await loadCase(prisma, action.caseId);
+    const erCase = await loadCase(prisma, action.caseId, auth);
     return {
       action: toActionDto(action),
       caseSummary: { caseNumber: erCase.caseNumber, title: erCase.title, category: erCase.categoryNameSnapshot, incidentDate: erCase.incidentDate, description: erCase.description },
@@ -560,9 +575,10 @@ export const erCaseService = {
     };
   },
 
-  async listActions(q: ActionListQuery): Promise<{ data: DisciplinaryActionDto[]; meta: { page: number; pageSize: number; total: number } }> {
+  async listActions(auth: AuthContext, q: ActionListQuery): Promise<{ data: DisciplinaryActionDto[]; meta: { page: number; pageSize: number; total: number } }> {
     const now = today();
     const where: Prisma.DisciplinaryActionWhereInput = {
+      ...(auth.employeeId ? { NOT: { employeeId: auth.employeeId } } : {}), // Task 51: never one's own actions
       employeeId: q.employeeId,
       actionTypeId: q.actionTypeId,
       status: q.status,
@@ -643,18 +659,19 @@ export const erCaseService = {
   /** HR records that the employee declined to sign. A refusal to acknowledge receipt is not an admission of anything either. */
   async recordDeclined(actionId: string, input: DeclineAcknowledgementInput, actor: Actor): Promise<CaseDetailDto> {
     const caseId = await prisma.$transaction(async (tx) => {
-      const action = await loadAction(tx, actionId);
+      const action = await loadAction(tx, actionId, actor.auth);
       await lockCase(tx, action.caseId);
       if (action.status !== 'ISSUED') throw new AppError(409, 'DISCIPLINARY_ACTION_NOT_ISSUED', 'Only an issued, unacknowledged record can be marked declined');
       await tx.disciplinaryAction.update({ where: { id: actionId }, data: { declinedAt: new Date(), declineNote: toPlainText(input.note) } });
       await auditService.log(erAudit(actor, AUDIT_ACTIONS.RECORD_ACKNOWLEDGEMENT_DECLINED, 'DisciplinaryAction', actionId, { caseNumber: action.case.caseNumber, noteLength: input.note.length }), tx);
       return action.caseId;
     });
-    return toDetailDto(prisma, await loadCase(prisma, caseId), true);
+    return toDetailDto(prisma, await loadCase(prisma, caseId, actor.auth), true);
   },
 
   /** The hand-off for a future Employee 360: counts, never narrative. */
-  async summaryFor(employeeId: string): Promise<EmployeeRelationsSummaryDto> {
+  async summaryFor(auth: AuthContext, employeeId: string): Promise<EmployeeRelationsSummaryDto> {
+    if (isSelf(auth, employeeId)) throw new AppError(404, 'ER_CASE_NOT_FOUND', 'Case not found'); // Task 51
     const rows = await prisma.disciplinaryAction.findMany({ where: { employeeId, status: { in: ['ISSUED', 'ACKNOWLEDGED'] } }, select: { status: true, validUntil: true, issuedAt: true, requiresAcknowledgement: true, acknowledgedAt: true } });
     const now = today();
     return {

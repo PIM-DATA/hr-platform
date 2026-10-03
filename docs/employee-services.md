@@ -241,3 +241,11 @@ Issuing a salary certificate already required the payroll authority; **reading**
 subject, body and salary are returned only to the employee it concerns and to holders of `payroll.manage`. Anyone else
 with organization-wide letter or service-desk scope sees that the letter exists — number, type, date, status — with
 `contentRestricted: true` and subject, body and salary `null` (list, detail, and the request's letter summaries).
+
+## Task 51 — no self-fulfilment (T44-P1-19)
+
+A fulfiller never assigns, changes the status of, fulfils or rejects their own request
+(`403 SERVICE_SELF_FULFILMENT_NOT_ALLOWED`); a request is never assigned to its own requester
+(`409 SERVICE_SELF_ASSIGNMENT_NOT_ALLOWED`); on their own request a fulfiller sees it as the requester (no internal notes,
+no handling actions). Nobody issues or voids an HR letter about themselves (`403 HR_LETTER_SELF_ISSUE_NOT_ALLOWED`) —
+including through fulfilment of an HR_LETTER request.

@@ -51,7 +51,7 @@ employeeRelationsRouter.get('/letter-templates', view, async (_req, res) => res.
 employeeRelationsRouter.put('/letter-templates', manage, validate(upsertLetterTemplateSchema), async (req, res) => res.json({ data: await letterTemplateService.upsert(req.body) }));
 
 // ---------- cases ----------
-employeeRelationsRouter.get('/cases', view, validate(caseListQuerySchema, 'query'), async (_req, res: Response) => res.json(await erCaseService.list(res.locals.query)));
+employeeRelationsRouter.get('/cases', view, validate(caseListQuerySchema, 'query'), async (req, res: Response) => res.json(await erCaseService.list(req.auth!, res.locals.query)));
 employeeRelationsRouter.get('/cases/:id', view, async (req, res) => res.json({ data: await erCaseService.get(req.auth!, id(req)) }));
 employeeRelationsRouter.post('/cases', manage, validate(createCaseSchema), async (req, res) => res.status(201).json({ data: await erCaseService.create(req.body, actor(req)) }));
 employeeRelationsRouter.patch('/cases/:id', manage, validate(updateCaseSchema), async (req, res) => res.json({ data: await erCaseService.update(id(req), req.body, actor(req)) }));
@@ -60,7 +60,7 @@ employeeRelationsRouter.post('/cases/:id/cancel', manage, async (req, res) => re
 employeeRelationsRouter.post('/cases/:id/actions', manage, validate(createActionSchema), async (req, res) => res.status(201).json({ data: await erCaseService.createAction(id(req), req.body, actor(req)) }));
 
 // ---------- actions ----------
-employeeRelationsRouter.get('/actions', view, validate(actionListQuerySchema, 'query'), async (_req, res: Response) => res.json(await erCaseService.listActions(res.locals.query)));
+employeeRelationsRouter.get('/actions', view, validate(actionListQuerySchema, 'query'), async (req, res: Response) => res.json(await erCaseService.listActions(req.auth!, res.locals.query)));
 employeeRelationsRouter.patch('/actions/:id', manage, validate(updateActionSchema), async (req, res) => res.json({ data: await erCaseService.updateAction(id(req), req.body, actor(req)) }));
 employeeRelationsRouter.post('/actions/:id/cancel', manage, async (req, res) => res.json({ data: await erCaseService.cancelAction(id(req), actor(req)) }));
 employeeRelationsRouter.post('/actions/:id/submit', issue, async (req, res) => res.json({ data: await erCaseService.submit(id(req), actor(req)) }));
@@ -71,7 +71,7 @@ employeeRelationsRouter.get('/actions/:id/approval', requirePermission(PERMISSIO
 
 // ---------- summary and reporting ----------
 /** The Employee 360 hand-off. Counts only, and only for people who may see the cases. */
-employeeRelationsRouter.get('/summary/:employeeId', view, async (req, res) => res.json({ data: await erCaseService.summaryFor(req.params.employeeId as string) }));
+employeeRelationsRouter.get('/summary/:employeeId', view, async (req, res) => res.json({ data: await erCaseService.summaryFor(req.auth!, req.params.employeeId as string) }));
 employeeRelationsRouter.get('/reports/overview', view, validate(erReportQuerySchema, 'query'), async (_req, res: Response) => res.json({ data: await erReportService.report(res.locals.query) }));
 
 employeeRelationsRouter.get(

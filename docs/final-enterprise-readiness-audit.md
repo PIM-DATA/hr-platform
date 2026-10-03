@@ -84,6 +84,7 @@ What stands between this system and real use:
 | T44-P2-22 RPO/RTO | partly — Task 49 | Stated factually with measured drill durations (docs/backup-restore.md §10); no target is promised — agreeing targets is a customer decision; release engineering untouched |
 | Found and fixed in Task 49 | fixed | Ops commands imported `@prisma/client` before the application's `ENV_FILE` loader; Prisma loaded the repository `.env` first, so a backup run with `ENV_FILE` silently dumped the `.env` database (caught in the drill by the new document cross-check: 203 objects "missing"). Every ops entry point now loads `ENV_FILE` first; regression test spawns a command with `ENV_FILE` and proves it targets that database. Also: macOS `openrsync` lacks `--chmod` — the shipped hook no longer uses it (`-a` preserves the 0600/0700 modes) |
 | T44-P1-21 scope per permission | **RESOLVED — Task 50** | Reproduced first (`permission-scope.test.ts` on the old code: MANAGER+EXECUTIVE read another department's private and public documents by URL `200`, the individual employee directory dataset returned all employees, CSV export and a shared saved report likewise; "employees.view SELF + leave.view ALL" listed every employee; organization reports accepted an unrelated ALL; an RBAC manager with an unrelated ALL role could self-assign a wider leave scope; Copilot `report_query` returned other departments — 9 tests failed). Now scope is resolved per permission from the roles that grant it (`@hr/shared` `computePermissionScopes`, same on the web); no user-wide scope (SELF until a guard names a permission); Employee 360 sections, Copilot tools, Report Center (`datasetAuth`), documents, organization reports and module admin checks use their own permission's scope; SoD compares per permission. Same-permission union, manager TEAM, HR ALL unchanged; no migration. Also fixed: a `documents.view` ALL viewer without `documents.manage` got an empty list (`ownerEmployee: {}`) |
+| T44-P1-19 self-approval / self-dealing | **RESOLVED — Task 51** | Reproduced first (`self-dealing.test.ts` on the old code: an administrator ended their own salary `200`, gave themselves a recurring allowance `201` and a payroll bonus `201`, approved a run paying a line they wrote for themselves `200`, re-linked their own account `200`; became planner of their own salary `200`, overrode their own proposal `200`, applied a cycle raising their own salary `200`; read their own ER case and decided their own disciplinary action `200`; assigned/fulfilled their own service request `200`; issued their own HR letter `201`). Now: subject ≠ actor on salary, pay items, adjustments, Apply, proposals, ER and services; maker ≠ checker on proposal amounts (last author never approves; bulk approval skips and counts) and at payroll approval (no self-authored self-benefit in the run — an unchanged salary in the population is not a conflict); self re-link refused; legacy non-independent approvals block Apply. Rules sit in the source services and the workflow callbacks (no UI-only control, no admin bypass); concurrency tested. Operational minimum documented: a second authorized person |
 | All other findings | open | — |
 
 The classifications above are unchanged by these fixes; the remaining Pilot blockers are listed in §27.
@@ -581,7 +582,7 @@ copilot prompts, browser walk) were run from the session scratch area against th
 | T44-P1-16 ✅ resolved (Task 48) | Payroll after approval | `close()` does not re-check inputs; source changes in closed periods accepted | Closed payroll diverges from attendance/leave without reconciliation | Re-check at close; block or flag changes in approved/closed periods; retro-adjustment path | conditional / yes / yes |
 | T44-P1-17 ✅ resolved (Task 47) | Privacy export completeness | Salary history, payroll, attendance/OT, performance, competency, training/IDP, documents, recruitment of hires neither exported nor declared | Incomplete and partly false subject-access answers | Add collections or declare them in `notIncluded`; fix docs | yes (declare) / yes / yes |
 | T44-P1-18 ✅ resolved (Task 47) | Sensitive text in append-only audit | Leave reason/comments, ER comments/title, termination reason, payroll notes | Health/disciplinary text readable by every `audit.view` holder forever | Switch to the existing length/changed pattern | yes / yes / yes |
-| T44-P1-19 | Self-approval / self-dealing | Compensation override/approve/apply chain; payroll own compensation/adjustments; ER subject; service fulfiller own ticket/letter | One person can raise and pay their own salary or handle their own case | Subject ≠ actor checks; maker ≠ checker on money steps | conditional (small trusted HR team) / yes / yes |
+| T44-P1-19 ✅ resolved (Task 51) | Self-approval / self-dealing | Compensation override/approve/apply chain; payroll own compensation/adjustments; ER subject; service fulfiller own ticket/letter | One person can raise and pay their own salary or handle their own case | Subject ≠ actor checks; maker ≠ checker on money steps | conditional (small trusted HR team) / yes / yes |
 | T44-P1-20 ✅ resolved (Task 47) | Salary letters exposure | `letter.service.ts:188-198` returns body + salary to ALL-scope fulfillers | Salaries visible without payroll authority | Redact salary-bearing letters unless owner or `payroll.manage` | yes / yes / yes |
 | T44-P1-21 ✅ resolved (Task 50) | Scope per permission | `authorization.service.ts:19-33` widest scope across roles | MANAGER+EXECUTIVE user reads all private documents and individual reports | Resolve scope per permission or forbid mixed-scope combinations | conditional (avoid combos) / yes / yes |
 | T44-P1-22 | Copilot high-impact | Notice only; tools unrestricted; history not classified | A real model can still rank or recommend with a disclaimer | Server-side factual-only template or tool restriction for high-impact; classify history | conditional (keep copilot off) / yes / yes |
@@ -643,8 +644,8 @@ Blockers (must be fixed or explicitly accepted before a real customer pilot):
    (**T44-P1-10/11** — tooling shipped in Task 49: `ops:backup`, off-host hooks, `ops:restore --verify-only`, timers; the
    operator still configures the destination), an external uptime check, alert delivery and the process supervisor
    (**T44-P1-12** — `ops:monitor-check`, `hr-api.service` and the alert contract shipped in Task 49; delivery is the operator's).
-6. Scope limits: Asia/Bangkok, copilot disabled or restricted to non-decision use, small trusted HR team aware of the
-   self-approval gaps (**T44-P1-19/22/23**). ~~One currency (THB), departments ≤ 500 employees (T44-P1-13/14)~~ — no
+6. Scope limits: Asia/Bangkok, copilot disabled or restricted to non-decision use, ~~small trusted HR team aware of the
+   self-approval gaps (T44-P1-19, resolved in Task 51)~~ (**T44-P1-22/23** remain). ~~One currency (THB), departments ≤ 500 employees (T44-P1-13/14)~~ — no
    longer needed after Task 48: a mismatched currency is refused, not paid, and totals cover any department size.
 
 ## 28. Production classification — **NO**
@@ -652,7 +653,7 @@ Blockers (must be fixed or explicitly accepted before a real customer pilot):
 Beyond the pilot blockers, production requires the remaining P1 items: ~~RBAC SoD enforced (P1-01), small-group
 suppression in analytics and Report Center (P1-07)~~ (resolved in Tasks 45 / 47), document and off-host backups automated with alerting (P1-10/11),
 monitoring and supervision (P1-12), ~~attendance/OT truncation (P1-13), payroll currency, handoff and post-approval
-integrity (P1-14/15/16)~~ (resolved in Task 48), ~~complete privacy export (P1-17)~~ (Task 47), maker-checker and subject exclusion (P1-19), ~~per-permission
+integrity (P1-14/15/16)~~ (resolved in Task 48), ~~complete privacy export (P1-17)~~ (Task 47), ~~maker-checker and subject exclusion (P1-19)~~ (Task 51), ~~per-permission
 scope (P1-21)~~ (Task 50), copilot high-impact restriction if enabled (P1-22), organization timezone everywhere (P1-23), plus defined
 RPO/RTO and MFA for privileged roles.
 
@@ -671,7 +672,7 @@ engineering (tags, changelog, reproducible versioned builds).
    doc drift (P2-21).
 3. **Confidentiality (pilot):** ~~P1-05, P1-06, P1-18, P1-20, P1-24; then P1-07~~ (Task 47) and ~~P1-21~~ (Task 50).
 4. **Data correctness (production):** ~~P1-13, P1-14, P1-15, P1-16~~ and ~~P2-15~~ resolved in Task 48; P1-23; P2-16/17.
-5. **Governance and privacy (production):** P1-17, P1-19, P1-22; P2-07/08/09/10; MFA for privileged roles (P2-25).
+5. **Governance and privacy (production):** ~~P1-17~~ (Task 47), ~~P1-19~~ (Task 51), P1-22; P2-07/08/09/10; MFA for privileged roles (P2-25).
 6. **Hardening (production):** remaining P2 items.
 7. **Enterprise track:** §26 / §29.
 
