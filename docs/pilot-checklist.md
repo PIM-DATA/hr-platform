@@ -77,6 +77,9 @@ npm run start          # node apps/api/dist/server.js, with ENV_FILE pointing at
 - [ ] Roles reviewed: who is System Admin, HR Admin, Manager, Employee. Nobody gets System Admin "just in case".
 - [ ] `account.manage_recovery` and `privacy.*` are with the people the customer named in §1.
 - [ ] Session cookie shows `Secure`, `HttpOnly`, `SameSite=Lax` in the browser.
+- [ ] Copilot: left disabled (`COPILOT_ENABLED=false`, the default), **or**, if the customer enables it, a live-provider
+      adversarial smoke test was run and recorded before go-live (docs/hr-copilot.md §14.6): every high-impact and alias
+      prompt refused with `toolCount: 0` in the `COPILOT_QUERY` audit, factual samples answered.
 - [ ] `PUBLIC_APP_URL` is the real application URL — reset links are built from it.
 - [ ] The password policy is understood: 12 characters minimum, no forced rotation, recovery is admin-assisted.
 - [ ] Audit log is readable by the people who will answer "who did this?" and by nobody else.

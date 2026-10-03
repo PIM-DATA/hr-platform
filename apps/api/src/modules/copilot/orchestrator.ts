@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AUDIT_ACTIONS, COPILOT_HISTORY_DROPPED, COPILOT_INSTRUCTIONS_VERSION, COPILOT_LIMITS, COPILOT_OUTPUT_WITHHELD, COPILOT_SYSTEM_INSTRUCTIONS, classifyCopilotIntent, evaluateCopilotPolicy, isThai, type CopilotChatRequest, type CopilotChatResponseDto, type CopilotPolicyResult, type CopilotSourceDto } from '@hr/shared';
+import { AUDIT_ACTIONS, COPILOT_HISTORY_DROPPED, COPILOT_INSTRUCTIONS_VERSION, COPILOT_LIMITS, COPILOT_OUTPUT_WITHHELD, COPILOT_SYSTEM_INSTRUCTIONS, classifyCopilotIntent, evaluateCopilotPolicy, isThai, mentionsCopilotAlias, type CopilotChatRequest, type CopilotChatResponseDto, type CopilotPolicyResult, type CopilotSourceDto } from '@hr/shared';
 import { z } from 'zod';
 import { env } from '../../config/env';
 import { AppError } from '../../lib/errors';
@@ -124,7 +124,7 @@ export const copilotOrchestrator = {
         if (res.kind === 'answer') {
           // Authorized facts about a person stay facts: a draft that turns them into a decision, a ranking or an
           // inference about people is withheld, and the facts it was built on are not shown with it.
-          if (classifyCopilotIntent(res.text).decision === 'BLOCK_HIGH_IMPACT_DECISION') {
+          if (classifyCopilotIntent(res.text).decision === 'BLOCK_HIGH_IMPACT_DECISION' || mentionsCopilotAlias(res.text, policy.aliasTerms)) {
             outputWithheld = true; status = 'output_withheld';
             return { answer: thai ? COPILOT_OUTPUT_WITHHELD.th : COPILOT_OUTPUT_WITHHELD.en, sources: [], reportDraft: null, limitations, consulted, highImpact: true, policy: policyDto(policy, true), generatedAt: new Date().toISOString() };
           }
