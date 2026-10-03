@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQueryClient } from '@tanstack/react-query';
 import { scopeForPermissions, type AuthUser, type LoginInput, type PermissionCode } from '@hr/shared';
 import { ApiClientError, setCsrfToken, setUnauthorizedHandler } from '@/lib/api-client';
+import { setBusinessCalendarZone } from '@/lib/format';
 import { authApi } from '@/features/auth/auth.api';
 
 type Status = 'loading' | 'authenticated' | 'unauthenticated';
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyUser = useCallback((next: AuthUser | null) => {
     setUser(next);
     setCsrfToken(next?.csrfToken ?? null);
+    setBusinessCalendarZone(next?.businessCalendar?.timezone);
     setStatus(next ? 'authenticated' : 'unauthenticated');
   }, []);
 

@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { errorMessage } from '@/features/organization/shared';
 import { usePositions } from '@/features/organization/organization.api';
 import { AssignmentPicker, type AssignmentValue } from './AssignmentPicker';
-import { localToday } from '@/lib/format';
+import { businessDateToday } from '@/lib/format';
 import { useEmployeeMutations } from './employees.api';
 
 export function ChangePositionModal({ open, onClose, employee }: { open: boolean; onClose: () => void; employee: EmployeeDetail }) {
@@ -25,7 +25,7 @@ export function ChangePositionModal({ open, onClose, employee }: { open: boolean
   useEffect(() => {
     if (!open) return;
     setValue({ organizationId: employee.organization.id, departmentId: employee.department.id, positionId: '' });
-    setEffectiveDate(localToday());
+    setEffectiveDate(businessDateToday());
     setConfirming(false);
     setServerError(null);
   }, [open, employee]);

@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ModuleIndex } from '@/components/guards/ModuleIndex';
-import { localToday, formatDate } from '@/lib/format';
+import { businessDateToday, formatDate } from '@/lib/format';
 import { useAuth } from '@/hooks/useAuth';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -18,7 +18,7 @@ export function ServiceBadge({ status }: { status: string }) { return <StatusBad
 /** Task 53: business dates as calendar dates in any browser zone; instants in the viewer's zone. */
 export const fmtDate = (iso: string | null | undefined) => formatDate(iso);
 export const fmtDateTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-export const todayIso = () => localToday();
+export const todayIso = () => businessDateToday();
 /** A frozen answer is shown as it was stored; a boolean reads as yes or no. */
 export const answerText = (fieldType: string, value: string) => (fieldType === 'BOOLEAN' ? (value === 'true' ? 'Yes' : 'No') : value);
 

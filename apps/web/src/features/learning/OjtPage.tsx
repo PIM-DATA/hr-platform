@@ -20,7 +20,7 @@ import { errorMessage } from '@/features/organization/shared';
 import { EmployeePicker, type PayrollEmployeeOption } from '@/features/payroll/employee-picker';
 import { useDocuments, useMyDocuments } from '@/features/documents/documents.api';
 import { useLearningMutations, useLearningOptions, useOjtPlan, useOjtPlans, useOjtPrograms } from './learning.api';
-import { localToday } from '@/lib/format';
+import { businessDateToday } from '@/lib/format';
 import { ACTIVITY_TYPE_LABEL, LearningBadge, Progress, fmtDate, titleCase } from './learning-ui';
 
 /**
@@ -73,7 +73,7 @@ function PlansPanel({ manage, onOpen }: { manage: boolean; onOpen: (id: string) 
 function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const m = useLearningMutations(); const programs = useOjtPrograms(); const toast = useToast();
   const [employee, setEmployee] = useState<PayrollEmployeeOption | null>(null); const [trainer, setTrainer] = useState<PayrollEmployeeOption | null>(null);
-  const [programId, setProgramId] = useState(''); const [startDate, setStartDate] = useState(localToday()); const [targetEndDate, setTargetEndDate] = useState(''); const [error, setError] = useState<string | null>(null);
+  const [programId, setProgramId] = useState(''); const [startDate, setStartDate] = useState(businessDateToday()); const [targetEndDate, setTargetEndDate] = useState(''); const [error, setError] = useState<string | null>(null);
   const submit = async () => {
     if (!employee || !programId) { setError('Choose the trainee and the program.'); return; }
     try { const p = await m.createPlan.mutateAsync({ employeeId: employee.id, programId, trainerEmployeeId: trainer?.id ?? null, startDate, targetEndDate: targetEndDate || null }); toast.success(`Plan ${p.planNumber} created as a draft.`); onCreated(p.id); } catch (e) { setError(errorMessage(e)); }

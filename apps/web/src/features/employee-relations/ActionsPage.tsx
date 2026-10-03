@@ -8,7 +8,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { useDepartmentOptions } from '@/features/organization/organization.api';
 import { useActionTypes, useActions } from './er.api';
-import { localToday } from '@/lib/format';
+import { businessDateToday } from '@/lib/format';
 import { ActionStatusBadge, ValidityBadge } from './er-ui';
 
 /** Warnings and actions across cases: what is active, what has lapsed, who has not yet acknowledged. */
@@ -28,7 +28,7 @@ export function ActionsPage() {
     { key: 'issued', header: 'Issued', hideBelow: 'sm', render: (a) => a.issuedDate ?? <span className="text-slate-400">—</span> },
     { key: 'until', header: 'On record until', hideBelow: 'md', render: (a) => a.validUntil ?? (a.issuedDate ? 'No end date' : <span className="text-slate-400">—</span>) },
     { key: 'validity', header: 'Validity', render: (a) => <ValidityBadge validity={a.validity} /> },
-    { key: 'ack', header: 'Receipt', hideBelow: 'lg', render: (a) => (!a.requiresAcknowledgement ? <span className="text-slate-400">Not required</span> : a.acknowledgedAt ? `Acknowledged ${a.acknowledgedAt.slice(0, 10)}` : a.status === 'ISSUED' ? <span className="text-amber-700">Awaiting{a.acknowledgementDueDate && a.acknowledgementDueDate < localToday() ? ' · overdue' : ''}</span> : <span className="text-slate-400">—</span>) },
+    { key: 'ack', header: 'Receipt', hideBelow: 'lg', render: (a) => (!a.requiresAcknowledgement ? <span className="text-slate-400">Not required</span> : a.acknowledgedAt ? `Acknowledged ${a.acknowledgedAt.slice(0, 10)}` : a.status === 'ISSUED' ? <span className="text-amber-700">Awaiting{a.acknowledgementDueDate && a.acknowledgementDueDate < businessDateToday() ? ' · overdue' : ''}</span> : <span className="text-slate-400">—</span>) },
     { key: 'status', header: 'Status', render: (a) => <ActionStatusBadge status={a.status} /> },
   ];
 

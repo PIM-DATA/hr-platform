@@ -19,7 +19,7 @@ import { errorMessage } from '@/features/organization/shared';
 import { EmployeePicker, type PayrollEmployeeOption } from '@/features/payroll/employee-picker';
 import { useDocuments } from '@/features/documents/documents.api';
 import { useCertification, useCertificationDefinitions, useCertifications, useLearningMutations, useLearningOptions } from './learning.api';
-import { localToday } from '@/lib/format';
+import { businessDateToday } from '@/lib/format';
 import { LearningBadge, fmtDate, titleCase } from './learning-ui';
 
 /** Certifications: a definition (what), an issuance per person with dates, and a status derived on read. Renewal is a new row; revoking is a human act with a reason. */
@@ -74,7 +74,7 @@ function CertificationForm({ employeeId, value, onChange }: { employeeId: string
     </>
   );
 }
-const emptyForm = () => ({ certificateNumber: '', issuedDate: localToday(), expiryDate: '', issuerName: '', documentId: '', note: '' });
+const emptyForm = () => ({ certificateNumber: '', issuedDate: businessDateToday(), expiryDate: '', issuerName: '', documentId: '', note: '' });
 const formBody = (f: ReturnType<typeof emptyForm>) => ({ certificateNumber: f.certificateNumber || null, issuedDate: f.issuedDate, expiryDate: f.expiryDate || null, issuerName: f.issuerName || null, documentId: f.documentId || null, note: f.note || null });
 
 function IssueModal({ onClose, onDone }: { onClose: () => void; onDone: (id: string) => void }) {

@@ -241,6 +241,18 @@ describe('I–J. one source, every consumer agrees (module, executive roll-up, R
   });
 });
 
+describe('Task 54. the user\'s business calendar for date-picker defaults', () => {
+  it('/auth/me names the zone of the user\'s organization (the browser zone may differ)', async () => {
+    expect((await as(hrAdmin, 'get', '/api/v1/auth/me')).body.data.businessCalendar).toEqual({ timezone: 'UTC' }); // HR admin's employee is in the UTC organization
+    await createUser({ email: 'nyc@t53.local', password: PW, role: 'EMPLOYEE', employeeId: emp.NYC1 });
+    const nyc = await loginAs(app, 'nyc@t53.local', PW);
+    expect((await as(nyc, 'get', '/api/v1/auth/me')).body.data.businessCalendar).toEqual({ timezone: 'America/New_York' });
+    await createUser({ email: 'unlinked@t53.local', password: PW, role: 'EXECUTIVE' });
+    const unlinked = await loginAs(app, 'unlinked@t53.local', PW);
+    expect((await as(unlinked, 'get', '/api/v1/auth/me')).body.data.businessCalendar).toEqual({ timezone: await referenceZone(prisma) });
+  });
+});
+
 describe('G. no production path asks the server for "today"', () => {
   it('no hard-coded business zone and no server-UTC business date in apps/api/src (allow-list documented)', () => {
     const root = join(__dirname, '../src');

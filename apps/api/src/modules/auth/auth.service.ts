@@ -4,6 +4,13 @@ import { AppError } from '../../lib/errors';
 import { hashPassword, verifyPassword } from '../../lib/password';
 import { auditService } from '../../services/audit/audit.service';
 import { sessionService } from './session.service';
+import { employeeZone, referenceZone } from '../../services/business-time/business-time';
+
+/** Task 54: the user's business calendar zone — their organization's; the reference organization's if unlinked or invalid. */
+async function calendarZone(auth: AuthContext): Promise<string> {
+  if (auth.employeeId) { try { return await employeeZone(prisma, auth.employeeId); } catch { /* fall through to the reference zone */ } }
+  return referenceZone(prisma);
+}
 import type { AuthContext } from './auth.types';
 
 type Meta = { ipAddress: string | null; userAgent: string | null };
@@ -92,6 +99,7 @@ export const authService = {
       permissions: auth.permissions,
       permissionScopes: auth.permissionScopes,
       csrfToken: auth.csrfToken,
+      businessCalendar: { timezone: await calendarZone(auth) },
     };
   },
 };

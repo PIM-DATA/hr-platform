@@ -20,7 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/hooks/useAuth';
 import { REPORT_DRAFT_KEY } from '@/features/copilot/copilot.api';
 import { errorMessage } from '@/features/organization/shared';
-import { localToday } from '@/lib/format';
+import { businessDateToday } from '@/lib/format';
 import { exportAdHoc, exportSaved, useReportDatasets, useReportMutations, useReportTemplates, useRunReport, useSavedReport, useSavedReports } from './reports.api';
 
 const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
@@ -161,7 +161,7 @@ export function ReportBuilderPage() {
       toast.success('Report saved'); setSaveOpen(false); navigate('/hrm/reports');
     } catch (e) { setErr(errorMessage(e)); }
   };
-  const selectDataset = (id: string) => { setDataset(id); setDef(EMPTY); setPreviewOn(false); const d = datasets.data?.find((x) => x.id === id); if (d?.requiredDateRange) { const to = localToday(); const from = localToday(new Date(Date.now() - 30 * 86_400_000)); setDef({ ...EMPTY, filters: [{ fieldId: d.requiredDateRange.fieldId, operator: 'BETWEEN', value: [from, to] }] }); } };
+  const selectDataset = (id: string) => { setDataset(id); setDef(EMPTY); setPreviewOn(false); const d = datasets.data?.find((x) => x.id === id); if (d?.requiredDateRange) { const to = businessDateToday(); const from = businessDateToday(new Date(Date.now() - 30 * 86_400_000)); setDef({ ...EMPTY, filters: [{ fieldId: d.requiredDateRange.fieldId, operator: 'BETWEEN', value: [from, to] }] }); } };
   const isDate = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v);
 
   return (

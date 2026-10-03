@@ -56,8 +56,11 @@ and are not recalculated by this rule.
 
 ## 6. Frontend
 
-Date pickers default to `localToday()` — the user's own clock, never `toISOString()` (UTC) — and submit `YYYY-MM-DD`
-unchanged. Business dates are displayed with `formatCalendarDate`/`formatDate`, which show `2026-10-01` as 1 October in
+Date pickers default to `businessDateToday()` — today in the signed-in user's **business calendar zone** (their
+organization's, from `/auth/me` → `businessCalendar.timezone`; Task 54), never `toISOString()` (UTC) and never just the
+browser's zone — and submit `YYYY-MM-DD` unchanged. Task 54 demonstrated why: with the browser on Pacific/Kiritimati or
+Pacific/Pago_Pago and the organization on Asia/Bangkok, the change-position effective date defaulted to tomorrow /
+yesterday; it now defaults to the organization's date. Before sign-in the browser's date is used. Business dates are displayed with `formatCalendarDate`/`formatDate`, which show `2026-10-01` as 1 October in
 every browser zone; instants are displayed in the viewer's zone. The server re-checks every business date against the
 organization's zone, so a browser in a different zone than its organization can only propose a date, not decide one.
 
@@ -67,6 +70,7 @@ organization's zone, so a browser in a different zone than its organization can 
 - Report Center date filters and unfiltered multi-organization report defaults use the reference organization's zone;
   per-row facts (overdue, validity, expiry, months) use each row's own organization.
 - Organization-level sequence numbers (recruitment, documents without an owner) use the reference organization's year.
-- Picker defaults use the browser's clock; a user travelling outside their organization's zone sees their local date as
-  the default (the server still validates).
+- Picker defaults use the signed-in user's own organization's zone; an HR user entering data for an employee of
+  another organization gets their own organization's date as the default (the server validates against the subject's
+  organization). Instants (timestamps) are displayed in the viewer's browser zone by design.
 - `Asia/Bangkok` remains the database default for a new organization.

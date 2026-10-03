@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ModuleIndex } from '@/components/guards/ModuleIndex';
-import { localToday, formatDate } from '@/lib/format';
+import { businessDateToday, formatDate } from '@/lib/format';
 import { useAuth } from '@/hooks/useAuth';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -17,7 +17,7 @@ export function ExpenseBadge({ status }: { status: string }) { return <StatusBad
 export const money = (v: string | null | undefined, currency?: string | null) => (v === null || v === undefined ? '—' : `${v}${currency ? ` ${currency}` : ''}`);
 /** Task 53: business dates as calendar dates in any browser zone; instants in the viewer's zone. */
 export const fmtDate = (iso: string | null | undefined) => formatDate(iso);
-export const todayIso = () => localToday();
+export const todayIso = () => businessDateToday();
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: string; tone?: 'warning' | 'danger' }) {
   return <div className={`rounded-lg border p-4 ${tone === 'danger' ? 'border-red-200 bg-red-50' : tone === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}><div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value}</div>{hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}</div>;
 }

@@ -88,10 +88,11 @@ export function NewReportModal({ resolution, travel, onClose, onCreated }: { res
   );
 }
 
-const blank = { categoryId: '', expenseDate: todayIso(), amount: '', merchant: '', description: '' };
+// A function, not a constant: the default date is taken when the dialog opens, not when the module loads.
+const blank = () => ({ categoryId: '', expenseDate: todayIso(), amount: '', merchant: '', description: '' });
 function ItemForm({ reportId, item, onDone }: { reportId: string; item: ExpenseItemDto | null; onDone: () => void }) {
   const cats = useExpenseCategories(); const m = useExpenseMutations(); const toast = useToast();
-  const [d, setD] = useState(item ? { categoryId: item.categoryId, expenseDate: item.expenseDate, amount: item.amount, merchant: item.merchant ?? '', description: item.description ?? '' } : blank); const [error, setError] = useState<string | null>(null);
+  const [d, setD] = useState(item ? { categoryId: item.categoryId, expenseDate: item.expenseDate, amount: item.amount, merchant: item.merchant ?? '', description: item.description ?? '' } : blank()); const [error, setError] = useState<string | null>(null);
   const save = async () => { setError(null); const input = { categoryId: d.categoryId, expenseDate: d.expenseDate, amount: d.amount, merchant: d.merchant || null, description: d.description || null }; try { if (item) await m.updateItem.mutateAsync({ id: reportId, itemId: item.id, input }); else await m.addItem.mutateAsync({ id: reportId, input }); toast.success(item ? 'Item updated.' : 'Item added.'); onDone(); } catch (e) { setError(errorMessage(e)); } };
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">

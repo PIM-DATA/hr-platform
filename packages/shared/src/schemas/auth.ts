@@ -27,4 +27,9 @@ export interface AuthUser {
   permissionScopes: Record<string, 'SELF' | 'TEAM' | 'ALL'>;
   /** Synchronizer CSRF token bound to the current session; send as `x-csrf-token` on mutations. */
   csrfToken: string;
+  /**
+   * Task 54: the IANA zone of the user's business calendar — their employee record's organization, else the reference
+   * organization. Date pickers default to "today" in this zone, not the browser's (docs/business-dates.md §6).
+   */
+  businessCalendar: { timezone: string };
 }

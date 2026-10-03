@@ -1,3 +1,4 @@
+import { businessToday } from '@hr/shared';
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -31,6 +32,18 @@ export function formatDate(iso: string | null | undefined): string {
  */
 export function localToday(now: Date = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
+ * Task 54: the browser's zone may differ from the organization's (a user travelling, a VPN desktop). The signed-in user's
+ * business calendar zone is set from /auth/me, and picker defaults use "today" there. Before sign-in (or if unknown) the
+ * browser's own date is used. The server still validates every business date.
+ */
+let calendarZone: string | null = null;
+export function setBusinessCalendarZone(timezone: string | null | undefined): void { calendarZone = timezone ?? null; }
+export function businessDateToday(now: Date = new Date()): string {
+  if (!calendarZone) return localToday(now);
+  try { return businessToday(calendarZone, now); } catch { return localToday(now); }
 }
 
 /** Full integer with thousands separators (1,234) — no compact notation for HR operational numbers. */
