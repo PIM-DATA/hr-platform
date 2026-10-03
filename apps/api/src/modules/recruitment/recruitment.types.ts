@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { PERMISSIONS, formatRecruitmentNumber, type AuditAction, type AuditModule, type RecruitmentNumberKind } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { hasPermission } from '../../services/authorization/authorization.service';
+import { businessYear } from '../../services/business-time/business-time';
 import type { AuthContext } from '../auth/auth.types';
 
 export type Tx = Prisma.TransactionClient;
@@ -51,7 +52,7 @@ export const notFound = (what: string) => new AppError(404, `${what.toUpperCase(
  * instant queue on the counter row rather than getting the same number.
  */
 export async function nextNumber(tx: Tx, kind: RecruitmentNumberKind): Promise<string> {
-  const year = new Date().getUTCFullYear();
+  const year = await businessYear(tx); // Task 53: the reference organization's business year (was UTC)
   await tx.recruitmentSequence.upsert({ where: { kind_year: { kind, year } }, create: { kind, year, next: 1 }, update: {} });
   await tx.$executeRaw`SELECT "next" FROM "recruitment_sequences" WHERE "kind" = ${kind} AND "year" = ${year} FOR UPDATE`;
   const row = await tx.recruitmentSequence.findUniqueOrThrow({ where: { kind_year: { kind, year } } });

@@ -20,6 +20,16 @@ import { toMoneyString } from '../../payroll/money';
 import { cycleReport } from '../../compensation-planning/report.service';
 import { memoryDataset, prismaDataset, type ColumnDef } from '../prisma-runner';
 import { registerDataset, type Row } from '../registry';
+import { businessDateIn, employeeTodays, employeeZones, referenceZone } from '../../../services/business-time/business-time';
+
+/**
+ * Task 53: the business month of an instant for each row's employee (their organization's zone), so a report groups
+ * a 00:30 Bangkok submission on 1 October under October, as the module does — not under September by UTC.
+ */
+async function zonedMonths(employeeIds: string[]): Promise<(employeeId: string, at: Date) => string> {
+  const [zones, fallback] = await Promise.all([employeeZones(prisma, employeeIds), referenceZone(prisma)]);
+  return (employeeId, at) => businessDateIn(at, zones.get(employeeId) ?? fallback).slice(0, 7);
+}
 
 /**
  * The datasets. Each one names its module's permission, applies that module's row scope per caller, and lists
@@ -48,7 +58,7 @@ registerDataset(prismaDataset({
     f({ id: 'position', label: 'Position', type: 'STRING', column: 'position.title', groupable: true, groupKey: { column: 'positionId', labels: posLabels } }),
     f({ id: 'employmentStatus', label: 'Employment status', type: 'ENUM', column: 'employmentStatus', groupable: true, options: opts(['ACTIVE', 'INACTIVE', 'TERMINATED']) }),
     f({ id: 'employmentType', label: 'Employment type', type: 'ENUM', column: 'employmentType', groupable: true, options: opts(['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN']) }),
-    f({ id: 'hireDate', label: 'Hire date', type: 'DATETIME', column: 'hireDate' }),
+    f({ id: 'hireDate', label: 'Hire date', type: 'DATETIME', column: 'hireDate', calendarDate: true }),
   ],
 }));
 
@@ -224,7 +234,8 @@ registerDataset(memoryDataset({
   load: async (auth) => {
     need(auth, PERMISSIONS.EMPLOYEE_RELATIONS_VIEW, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE);
     const rows = await prisma.disciplinaryAction.findMany({ select: { status: true, actionTypeNameSnapshot: true, createdAt: true, case: { select: { departmentName: true, employeeId: true } } }, take: 50_000 });
-    return rows.map((r): Row => ({ __subject: r.case.employeeId, department: r.case.departmentName ?? 'Unassigned', actionType: r.actionTypeNameSnapshot, month: r.createdAt.toISOString().slice(0, 7), status: r.status, actions: 1 }));
+    const month = await zonedMonths(rows.map((r) => r.case.employeeId));
+    return rows.map((r): Row => ({ __subject: r.case.employeeId, department: r.case.departmentName ?? 'Unassigned', actionType: r.actionTypeNameSnapshot, month: month(r.case.employeeId, r.createdAt), status: r.status, actions: 1 }));
   },
 }));
 
@@ -356,7 +367,6 @@ registerDataset(memoryDataset({
 
 // ---------- lifecycle (Task 34): departments, statuses, dates and progress — never a name, a note or a comment ----------
 const LIFECYCLE_VIEW = [PERMISSIONS.LIFECYCLE_VIEW_REPORTS, PERMISSIONS.ONBOARDING_MANAGE, PERMISSIONS.PROBATION_MANAGE, PERMISSIONS.OFFBOARDING_MANAGE];
-const monthOf = (d: Date | string | null) => (d ? (typeof d === 'string' ? d : d.toISOString()).slice(0, 7) : null);
 registerDataset(memoryDataset({
   id: 'onboarding_summary', name: 'Onboarding summary', description: 'One row per onboarding plan: department and job at creation, start month, status, task counts and progress. No names, no task notes.',
   requiredPermissions: LIFECYCLE_VIEW, aggregateOnly: true, requiredDateRange: null, privacy: { kind: 'PERSON_ROWS' },
@@ -367,9 +377,9 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...LIFECYCLE_VIEW);
-    const t = new Date().toISOString().slice(0, 10);
     const rows = await prisma.onboardingPlan.findMany({ where: await lifecycleEmployeeWhere(auth), select: { employeeId: true, departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, startDate: true, status: true, tasks: { select: { status: true, required: true, dueDate: true } } }, orderBy: { startDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, tasks: p.total, done: p.done, overdue: r.status === 'ACTIVE' ? r.tasks.filter((x) => (x.status === 'PENDING' || x.status === 'IN_PROGRESS') && x.dueDate < t).length : 0, progressPct: p.pct }; });
+    const todays = await employeeTodays(prisma, rows.map((r) => r.employeeId)); // Task 53: each employee's own today
+    return rows.map((r): Row => { const p = checklistProgress(r.tasks); const t = todays.get(r.employeeId)!; return { __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, startMonth: r.startDate.slice(0, 7), status: r.status, tasks: p.total, done: p.done, overdue: r.status === 'ACTIVE' ? r.tasks.filter((x) => (x.status === 'PENDING' || x.status === 'IN_PROGRESS') && x.dueDate < t).length : 0, progressPct: p.pct }; });
   },
 }));
 registerDataset(memoryDataset({
@@ -398,7 +408,8 @@ registerDataset(memoryDataset({
   async load(auth) {
     need(auth, ...LIFECYCLE_VIEW);
     const rows = await prisma.offboardingCase.findMany({ where: (await lifecycleEmployeeWhere(auth)) as never, select: { employeeId: true, departmentSnapshot: true, jobSnapshot: true, organizationSnapshot: true, reasonCode: true, plannedLastWorkingDate: true, completedAt: true, status: true, tasks: { select: { status: true, required: true } } }, orderBy: { plannedLastWorkingDate: 'desc' }, take: 50000 });
-    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, reason: r.reasonCode, plannedMonth: r.plannedLastWorkingDate.slice(0, 7), completedMonth: monthOf(r.completedAt), status: r.status, tasks: p.total, done: p.done }; });
+    const month = await zonedMonths(rows.map((r) => r.employeeId)); // Task 53: completion month in the employee's zone
+    return rows.map((r): Row => { const p = checklistProgress(r.tasks); return { __subject: r.employeeId, department: r.departmentSnapshot, job: r.jobSnapshot, organization: r.organizationSnapshot, reason: r.reasonCode, plannedMonth: r.plannedLastWorkingDate.slice(0, 7), completedMonth: r.completedAt ? month(r.employeeId, r.completedAt) : null, status: r.status, tasks: p.total, done: p.done }; });
   },
 }));
 
@@ -430,7 +441,8 @@ registerDataset(memoryDataset({
   async load(auth) {
     need(auth, ...LEARNING_VIEW);
     const rows = await prisma.learningPathAssignment.findMany({ where: await learningScope(auth), select: { employeeId: true, pathNameSnapshot: true, departmentSnapshot: true, jobSnapshot: true, assignedAt: true, status: true, steps: { select: { fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => { const done = r.steps.filter((x) => x.fulfilledAt).length; return { __subject: r.employeeId, path: r.pathNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, assignedMonth: r.assignedAt.toISOString().slice(0, 7), status: r.status, steps: r.steps.length, fulfilled: done, progressPct: r.steps.length ? Math.round((done / r.steps.length) * 1000) / 10 : 0 }; });
+    const month = await zonedMonths(rows.map((r) => r.employeeId));
+    return rows.map((r): Row => { const done = r.steps.filter((x) => x.fulfilledAt).length; return { __subject: r.employeeId, path: r.pathNameSnapshot, department: r.departmentSnapshot, job: r.jobSnapshot, assignedMonth: month(r.employeeId, r.assignedAt), status: r.status, steps: r.steps.length, fulfilled: done, progressPct: r.steps.length ? Math.round((done / r.steps.length) * 1000) / 10 : 0 }; });
   },
 }));
 registerDataset(memoryDataset({
@@ -442,10 +454,10 @@ registerDataset(memoryDataset({
   ],
   async load(auth) {
     need(auth, ...LEARNING_VIEW);
-    const t = new Date().toISOString().slice(0, 10);
     const rows = await prisma.employeeCertification.findMany({ where: await learningScope(auth), select: { employeeId: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, renewedFromId: true, definition: { select: { issuerType: true, expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 50000 });
     const depts = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, department: { select: { name: true } }, organization: { select: { name: true } } } })).map((e) => [e.id, e]));
-    return rows.map((r): Row => ({ __subject: r.employeeId, certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, organization: depts.get(r.employeeId)?.organization.name ?? null, department: depts.get(r.employeeId)?.department.name ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
+    const todays = await employeeTodays(prisma, rows.map((r) => r.employeeId)); // Task 53: expiry in each holder's own zone
+    return rows.map((r): Row => ({ __subject: r.employeeId, certification: r.definitionNameSnapshot, issuerType: r.definition.issuerType, organization: depts.get(r.employeeId)?.organization.name ?? null, department: depts.get(r.employeeId)?.department.name ?? null, issuedMonth: r.issuedDate.slice(0, 7), expiryMonth: r.expiryDate ? r.expiryDate.slice(0, 7) : null, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, todays.get(r.employeeId)!, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), renewal: !!r.renewedFromId }));
   },
 }));
 
@@ -461,7 +473,8 @@ registerDataset(memoryDataset({
   async load(auth) {
     need(auth, ...BENEFITS_REPORTS);
     const rows = await prisma.benefitEnrollment.findMany({ select: { employeeId: true, status: true, organizationSnapshot: true, enrolledAt: true, plan: { select: { name: true, planType: true, category: { select: { name: true } } } } }, take: 50000 });
-    return rows.map((r): Row => ({ __subject: r.employeeId, plan: r.plan.name, category: r.plan.category.name, planType: r.plan.planType, organization: r.organizationSnapshot, status: r.status, enrolledMonth: r.enrolledAt ? r.enrolledAt.toISOString().slice(0, 7) : null }));
+    const month = await zonedMonths(rows.map((r) => r.employeeId));
+    return rows.map((r): Row => ({ __subject: r.employeeId, plan: r.plan.name, category: r.plan.category.name, planType: r.plan.planType, organization: r.organizationSnapshot, status: r.status, enrolledMonth: r.enrolledAt ? month(r.employeeId, r.enrolledAt) : null }));
   },
 }));
 registerDataset(memoryDataset({
@@ -506,7 +519,8 @@ registerDataset(memoryDataset({
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
     const rows = await prisma.travelRequest.findMany({ where: { status: { not: 'DRAFT' } }, select: { employeeId: true, travelPolicyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, startDate: true, endDate: true, status: true, currency: true, estimatedAmount: true }, orderBy: { createdAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ __subject: r.employeeId, travelPolicy: r.travelPolicyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, tripMonth: r.startDate.slice(0, 7), status: r.status, currency: r.currency, tripDays: Math.round((Date.parse(`${r.endDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) + 1, estimatedAmount: toMoneyString(r.estimatedAmount) }));
+    const month = await zonedMonths(rows.map((r) => r.employeeId));
+    return rows.map((r): Row => ({ __subject: r.employeeId, travelPolicy: r.travelPolicyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? month(r.employeeId, r.submittedAt) : null, tripMonth: r.startDate.slice(0, 7), status: r.status, currency: r.currency, tripDays: Math.round((Date.parse(`${r.endDate}T00:00:00Z`) - Date.parse(`${r.startDate}T00:00:00Z`)) / 86_400_000) + 1, estimatedAmount: toMoneyString(r.estimatedAmount) }));
   },
 }));
 registerDataset(memoryDataset({
@@ -520,7 +534,8 @@ registerDataset(memoryDataset({
   async load(auth) {
     need(auth, ...EXPENSE_REPORTS);
     const rows = await prisma.expenseReport.findMany({ where: { status: { not: 'DRAFT' } }, select: { employeeId: true, policyNameSnapshot: true, organizationSnapshot: true, submittedAt: true, paidDate: true, status: true, currency: true, paymentMethod: true, travelRequestId: true, totalAmount: true, _count: { select: { items: true } } }, orderBy: { createdAt: 'desc' }, take: 50000 });
-    return rows.map((r): Row => ({ __subject: r.employeeId, policy: r.policyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, status: r.status, currency: r.currency, paymentMethod: r.paymentMethod, linkedToTravel: !!r.travelRequestId, items: r._count.items, total: toMoneyString(r.totalAmount) }));
+    const month = await zonedMonths(rows.map((r) => r.employeeId));
+    return rows.map((r): Row => ({ __subject: r.employeeId, policy: r.policyNameSnapshot, organization: r.organizationSnapshot, submittedMonth: r.submittedAt ? month(r.employeeId, r.submittedAt) : null, paidMonth: r.paidDate ? r.paidDate.slice(0, 7) : null, status: r.status, currency: r.currency, paymentMethod: r.paymentMethod, linkedToTravel: !!r.travelRequestId, items: r._count.items, total: toMoneyString(r.totalAmount) }));
   },
 }));
 registerDataset(memoryDataset({
@@ -561,16 +576,18 @@ registerDataset(memoryDataset({
     need(auth, ...SERVICE_REPORTS);
     const rows = await prisma.serviceRequest.findMany({
       where: { status: { not: 'DRAFT' } },
-      select: { employeeId: true, requestTypeNameSnapshot: true, categorySnapshot: true, organizationSnapshot: true, submittedAt: true, fulfilledAt: true, dueDate: true, status: true, fulfillmentTypeSnapshot: true },
+      select: { employeeId: true, requestTypeNameSnapshot: true, categorySnapshot: true, organizationSnapshot: true, submittedDate: true, submittedAt: true, fulfilledAt: true, dueDate: true, status: true, fulfillmentTypeSnapshot: true },
     });
-    const today = new Date().toISOString().slice(0, 10);
-    return rows.map((r): Row => ({ __subject: r.employeeId,
+    // Task 53 (T44-P1-23): the module's rule — dates in the requester's organization zone (this used the server's UTC
+    // date and disagreed with the module for 7 hours a day in Bangkok).
+    const [todays, zones] = await Promise.all([employeeTodays(prisma, rows.map((r) => r.employeeId)), employeeZones(prisma, rows.map((r) => r.employeeId))]);
+    return rows.map((r): Row => { const zone = zones.get(r.employeeId) ?? 'UTC'; return { __subject: r.employeeId,
       requestType: r.requestTypeNameSnapshot, category: r.categorySnapshot, organization: r.organizationSnapshot,
-      submittedMonth: r.submittedAt ? r.submittedAt.toISOString().slice(0, 7) : null, fulfilledMonth: r.fulfilledAt ? r.fulfilledAt.toISOString().slice(0, 7) : null,
+      submittedMonth: r.submittedDate ? r.submittedDate.slice(0, 7) : null, fulfilledMonth: r.fulfilledAt ? businessDateIn(r.fulfilledAt, zone).slice(0, 7) : null,
       status: r.status, fulfillmentType: r.fulfillmentTypeSnapshot,
-      overdue: !!r.dueDate && (r.fulfilledAt ? r.dueDate < r.fulfilledAt.toISOString().slice(0, 10) : r.dueDate < today && ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(r.status)),
+      overdue: !!r.dueDate && (r.fulfilledAt ? r.dueDate < businessDateIn(r.fulfilledAt, zone) : r.dueDate < todays.get(r.employeeId)! && ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(r.status)),
       daysToFulfil: r.submittedAt && r.fulfilledAt ? Math.max(0, Math.round((r.fulfilledAt.getTime() - r.submittedAt.getTime()) / 86_400_000)) : null,
-    }));
+    }; });
   },
 }));
 registerDataset(memoryDataset({

@@ -7,6 +7,8 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditService } from '../../services/audit/audit.service';
+import { addDays, businessDayStart } from '@hr/shared';
+import { referenceZone } from '../../services/business-time/business-time';
 import { trainingAudit, type Actor, type Db } from './training.types';
 
 /**
@@ -162,11 +164,12 @@ const toSessionDto = (row: SessionRow, enrolledCount: number): SessionDto => ({
 
 export const sessionService = {
   async list(q: SessionListQuery): Promise<{ data: SessionDto[]; meta: { page: number; pageSize: number; total: number } }> {
+    const zone = q.from || q.to ? await referenceZone(prisma) : 'UTC'; // Task 53: business days in the reference organization's zone
     const where: Prisma.TrainingSessionWhereInput = {
       courseId: q.courseId,
       status: q.status,
-      ...(q.from ? { startAt: { gte: new Date(`${q.from}T00:00:00.000Z`) } } : {}),
-      ...(q.to ? { endAt: { lte: new Date(`${q.to}T23:59:59.999Z`) } } : {}),
+      ...(q.from ? { startAt: { gte: businessDayStart(q.from, zone) } } : {}),
+      ...(q.to ? { endAt: { lt: businessDayStart(addDays(q.to, 1), zone) } } : {}),
       ...(q.search ? { courseTitleSnapshot: { contains: q.search, mode: 'insensitive' } } : {}),
     };
     const [total, rows] = await prisma.$transaction([

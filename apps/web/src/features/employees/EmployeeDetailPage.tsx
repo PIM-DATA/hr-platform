@@ -14,7 +14,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { PermissionGuard } from '@/components/guards/PermissionGuard';
 import { usePermission } from '@/hooks/usePermission';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDateTime, formatCalendarDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { errorMessage } from '@/features/organization/shared';
 import { useDirectReports, useEmployee, useEmployeeMutations, useManagerHistory, usePositionHistory } from './employees.api';
@@ -221,7 +221,7 @@ function EmploymentTab({ e, onChangePosition, onChangeManager }: { e: EmployeeDe
             <Field label="Department">{e.department.name} <span className="font-mono text-xs text-slate-400">{e.department.code}</span></Field>
             <Field label="Position">{e.position.title} <span className="font-mono text-xs text-slate-400">{e.position.code}</span></Field>
             <Field label="Job">{e.job ? `${e.job.title} (L${e.job.level})` : null}</Field>
-            <Field label="Hire date">{formatDate(e.hireDate)}</Field>
+            <Field label="Hire date">{formatCalendarDate(e.hireDate)}</Field>
             <Field label="Employment type">{e.employmentType.replace('_', ' ')}</Field>
           </dl>
         </Card>
@@ -255,8 +255,8 @@ function PositionHistoryTab({ id }: { id: string }) {
           { key: 'position', header: 'Position', render: (h) => <span className="font-medium text-slate-900">{h.position.title} <span className="font-mono text-xs text-slate-400">{h.position.code}</span></span> },
           { key: 'department', header: 'Department', hideBelow: 'sm', render: (h) => h.department.name },
           { key: 'org', header: 'Organization', hideBelow: 'md', render: (h) => h.organization.name },
-          { key: 'start', header: 'Start', render: (h) => formatDate(h.startDate) },
-          { key: 'end', header: 'End', render: (h) => (h.endDate ? formatDate(h.endDate) : <StatusBadge status="CURRENT" tone="success" />) },
+          { key: 'start', header: 'Start', render: (h) => formatCalendarDate(h.startDate) },
+          { key: 'end', header: 'End', render: (h) => (h.endDate ? formatCalendarDate(h.endDate) : <StatusBadge status="CURRENT" tone="success" />) },
         ]}
         rows={history.data ?? []} rowKey={(h) => h.id} loading={history.isLoading} emptyTitle="No position history" />
     </Card>
@@ -273,8 +273,8 @@ function ManagerHistoryTab({ id }: { id: string }) {
         columns={[
           { key: 'manager', header: 'Manager', render: (h) => <span className="font-medium text-slate-900">{h.manager.firstName} {h.manager.lastName} <span className="font-mono text-xs text-slate-400">{h.manager.employeeCode}</span></span> },
           { key: 'position', header: "Manager's position", hideBelow: 'sm', render: (h) => h.manager.position?.title ?? '—' },
-          { key: 'start', header: 'Start', render: (h) => formatDate(h.startDate) },
-          { key: 'end', header: 'End', render: (h) => (h.endDate ? formatDate(h.endDate) : <StatusBadge status="CURRENT" tone="success" />) },
+          { key: 'start', header: 'Start', render: (h) => formatCalendarDate(h.startDate) },
+          { key: 'end', header: 'End', render: (h) => (h.endDate ? formatCalendarDate(h.endDate) : <StatusBadge status="CURRENT" tone="success" />) },
         ]}
         rows={history.data ?? []} rowKey={(h) => h.id} loading={history.isLoading} emptyTitle="No manager history" emptyDescription="This employee has never had a manager assigned." />
     </Card>

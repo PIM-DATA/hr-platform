@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import {
-  AUDIT_ACTIONS, DOCUMENT_ALLOWED_EXTENSIONS, DOCUMENT_FILE_TYPES, PERMISSIONS, expiryState, fileExtension, formatDocumentNumber,
+  AUDIT_ACTIONS, DOCUMENT_ALLOWED_EXTENSIONS, DOCUMENT_EXPIRY_SOON_DAYS, DOCUMENT_FILE_TYPES, PERMISSIONS, addDays, businessToday, expiryState, fileExtension, formatDocumentNumber,
   type AuditAction, type AuditModule, type CreateDocumentCategoryInput, type CreateDocumentInput, type DocumentCategoryDto, type DocumentDetailDto, type DocumentDto,
   type DocumentLinkDto, type DocumentListQuery, type DocumentLinkEntityType, type DocumentVersionDto, type LinkDocumentInput, type UpdateDocumentCategoryInput, type UpdateDocumentInput,
 } from '@hr/shared';
@@ -12,6 +12,7 @@ import type { AuthContext } from '../auth/auth.types';
 import { employeeScopeWhere } from '../employees/employees.scope';
 import { documentStorage } from './storage';
 import type { DocumentUpload } from './upload';
+import { businessYear, organizationTodays, referenceToday, todayForEmployee } from '../../services/business-time/business-time';
 import { platformMaxBytes } from './upload';
 
 type Tx = Prisma.TransactionClient;
@@ -32,7 +33,15 @@ type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | 
 const audit = (actor: Actor, action: AuditAction, recordType: string, recordId: string, newValue: unknown, oldValue?: unknown) => ({
   userId: actor.auth.userId, ipAddress: actor.ipAddress, userAgent: actor.userAgent, action, module: 'documents' as AuditModule, recordType, recordId, oldValue, newValue,
 });
-const today = () => new Date().toISOString().slice(0, 10);
+/**
+ * Task 53 (T44-P1-23): a document's "today" is its owner's organization's business date; a company document without an
+ * owner uses its own organization, else the reference organization. (This was the server's UTC date.)
+ */
+type ZoneRow = { ownerEmployeeId: string | null; organization: { id: string } | null };
+async function todayOfDocument(db: Db, row: ZoneRow): Promise<string> {
+  if (row.ownerEmployeeId) return todayForEmployee(db, row.ownerEmployeeId);
+  return referenceToday(db, row.organization?.id ?? null);
+}
 
 const include = {
   category: { select: { id: true, code: true, name: true, scopeType: true } },
@@ -207,11 +216,12 @@ async function userNames(db: Db, ids: string[]): Promise<Map<string, string>> {
 }
 async function toDto(db: Db, auth: AuthContext, row: Row): Promise<DocumentDto> {
   const names = await userNames(db, row.currentVersion ? [row.currentVersion.uploadedByUserId] : []);
+  const today = await todayOfDocument(db, row);
   return {
     id: row.id, documentNumber: row.documentNumber, title: row.title, description: row.description,
     category: row.category, owner: row.ownerEmployee ? { id: row.ownerEmployee.id, employeeCode: row.ownerEmployee.employeeCode, firstName: row.ownerEmployee.firstName, lastName: row.ownerEmployee.lastName } : null,
     organization: row.organization, classification: row.classification as DocumentDto['classification'], status: row.status as DocumentDto['status'],
-    issuedDate: row.issuedDate, expiryDate: row.expiryDate, expiryState: expiryState(row.expiryDate, today()),
+    issuedDate: row.issuedDate, expiryDate: row.expiryDate, expiryState: expiryState(row.expiryDate, today),
     currentVersion: row.currentVersion ? versionDto(row.currentVersion, names) : null, versionCount: row._count.versions,
     links: row.links.map((l): DocumentLinkDto => ({ id: l.id, entityType: l.entityType as DocumentLinkEntityType, entityId: l.entityId, relationType: l.relationType, label: null, createdAt: l.createdAt.toISOString() })),
     can: { download: canAccessDocument(auth, row) && !!row.currentVersion, manage: hasPermission(auth, PERMISSIONS.DOCUMENTS_MANAGE) },
@@ -234,8 +244,8 @@ async function loadFor(auth: AuthContext, id: string): Promise<Row> {
   if (!canAccessDocument(auth, row)) throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
   return row;
 }
-async function nextNumber(tx: Tx): Promise<string> {
-  const year = new Date().getUTCFullYear();
+async function nextNumber(tx: Tx, subject: { employeeId?: string | null; organizationId?: string | null }): Promise<string> {
+  const year = await businessYear(tx, subject); // Task 53: the owner's (or organization's) business year
   await tx.documentSequence.upsert({ where: { year }, create: { year, next: 1 }, update: {} });
   await tx.$executeRaw`SELECT "year" FROM "document_sequences" WHERE "year" = ${year} FOR UPDATE`;
   const row = await tx.documentSequence.findUniqueOrThrow({ where: { year } });
@@ -300,9 +310,12 @@ export const documentService = {
       ...(q.entityType && q.entityId ? { links: { some: { entityType: q.entityType, entityId: q.entityId } } } : {}),
       ...(q.search ? { OR: [{ title: { contains: q.search, mode: 'insensitive' } }, { documentNumber: { contains: q.search, mode: 'insensitive' } }, { ownerEmployee: { OR: [{ employeeCode: { contains: q.search, mode: 'insensitive' } }, { firstName: { contains: q.search, mode: 'insensitive' } }, { lastName: { contains: q.search, mode: 'insensitive' } }] } }] } : {}),
     };
+    // Task 53: organizations may be on different dates, so the database narrows with the widest bounds and each row's
+    // state is then decided on its own today (below).
     if (q.expiry) {
-      const t = today(); const soon = new Date(`${t}T00:00:00Z`); soon.setUTCDate(soon.getUTCDate() + 30); const s = soon.toISOString().slice(0, 10);
-      where.expiryDate = q.expiry === 'EXPIRED' ? { lt: t } : q.expiry === 'EXPIRING_SOON' ? { gte: t, lte: s } : q.expiry === 'VALID' ? { gt: s } : null;
+      const days = [...new Set((await organizationTodays(prisma)).values())].sort();
+      const lo = days[0] ?? businessToday('UTC'); const hi = days[days.length - 1] ?? lo;
+      where.expiryDate = q.expiry === 'EXPIRED' ? { lt: hi } : q.expiry === 'EXPIRING_SOON' ? { gte: lo, lte: addDays(hi, DOCUMENT_EXPIRY_SOON_DAYS) } : q.expiry === 'VALID' ? { gt: addDays(lo, DOCUMENT_EXPIRY_SOON_DAYS) } : null;
     }
     // The database narrows by scope first (a manager only ever sees their team's employee documents); the
     // classification and domain rules are then applied per row, which is why the page is read a little wide.
@@ -315,7 +328,8 @@ export const documentService = {
       where.AND = [{ OR: [...own, ...(hasPermission(auth, PERMISSIONS.DOCUMENTS_VIEW) ? [{ ownerEmployeeId: null }, owned] : [])] }];
     }
     const rows = await prisma.document.findMany({ where, include, orderBy: { createdAt: 'desc' }, take: 1000 });
-    const allowed = rows.filter((r) => canAccessDocument(auth, r));
+    const accessible = rows.filter((r) => canAccessDocument(auth, r));
+    const allowed = q.expiry ? (await Promise.all(accessible.map(async (r) => ({ r, state: expiryState(r.expiryDate, await todayOfDocument(prisma, r)) })))).filter((x) => x.state === q.expiry).map((x) => x.r) : accessible;
     const page = allowed.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
     return { data: await Promise.all(page.map((r) => toDto(prisma, auth, r))), meta: { page: q.page, pageSize: q.pageSize, total: allowed.length } };
   },
@@ -341,7 +355,7 @@ export const documentService = {
     if (input.ownerEmployeeId && !(await prisma.employee.findFirst({ where: { AND: [{ id: input.ownerEmployeeId }, employeeScopeWhere(narrowAuth(actor.auth, PERMISSIONS.DOCUMENTS_MANAGE))] }, select: { id: true } }))) throw new AppError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
     if (input.organizationId && !(await prisma.organization.findUnique({ where: { id: input.organizationId }, select: { id: true } }))) throw new AppError(404, 'ORGANIZATION_NOT_FOUND', 'Organization not found');
     const id = await prisma.$transaction(async (tx) => {
-      const documentNumber = await nextNumber(tx);
+      const documentNumber = await nextNumber(tx, { employeeId: input.ownerEmployeeId ?? null, organizationId: input.organizationId ?? null });
       const doc = await tx.document.create({ data: {
         documentNumber, title: input.title, description: input.description ?? null, categoryId: category.id, ownerEmployeeId: input.ownerEmployeeId ?? null, organizationId: input.organizationId ?? null,
         classification: input.classification ?? category.defaultClassification, issuedDate: input.issuedDate ?? null, expiryDate: input.expiryDate ?? null, createdByUserId: actor.auth.userId,

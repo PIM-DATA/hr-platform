@@ -5,7 +5,8 @@ import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
 import type { AuthContext } from '../auth/auth.types';
 import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.service';
-import { P, employeeSnapshot, has, learningAudit, lockRow, notFound, scopedEmployeeIds, textAudit, today, type Actor, type Db } from './learning.types';
+import { employeeTodays } from '../../services/business-time/business-time';
+import { P, employeeSnapshot, has, learningAudit, lockRow, notFound, scopedEmployeeIds, textAudit, type Actor, type Db } from './learning.types';
 
 /**
  * Certifications the organization tracks: a definition (internal or external issuer, validity) and one row per
@@ -13,17 +14,24 @@ import { P, employeeSnapshot, has, learningAudit, lockRow, notFound, scopedEmplo
  * renewal is a new row pointing at the old one; a revocation is a manual HR action with a reason. No claim of
  * legal licence or accreditation is made by the software.
  */
-const defDto = async (db: Db, d: Prisma.CertificationDefinitionGetPayload<object>): Promise<CertificationDefinitionDto> => ({ id: d.id, code: d.code, name: d.name, description: d.description, issuerType: d.issuerType as CertificationDefinitionDto['issuerType'], issuerName: d.issuerName, organizationId: d.organizationId, validityDays: d.validityDays, expiryWindowDays: d.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS, isActive: d.isActive, activeCount: (await db.employeeCertification.findMany({ where: { definitionId: d.id, revokedAt: null }, select: { expiryDate: true } })).filter((c) => certificationStatus({ expiryDate: c.expiryDate, revokedAt: null }, today(), d.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS) !== 'EXPIRED').length, createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() });
+/** Certifications of a definition that are not expired, each judged on its holder's own business today (Task 53). */
+async function activeCount(db: Db, definitionId: string, windowDays: number): Promise<number> {
+  const rows = await db.employeeCertification.findMany({ where: { definitionId, revokedAt: null }, select: { employeeId: true, expiryDate: true } });
+  const todays = await employeeTodays(db, rows.map((c) => c.employeeId));
+  return rows.filter((c) => certificationStatus({ expiryDate: c.expiryDate, revokedAt: null }, todays.get(c.employeeId)!, windowDays) !== 'EXPIRED').length;
+}
+const defDto = async (db: Db, d: Prisma.CertificationDefinitionGetPayload<object>): Promise<CertificationDefinitionDto> => ({ id: d.id, code: d.code, name: d.name, description: d.description, issuerType: d.issuerType as CertificationDefinitionDto['issuerType'], issuerName: d.issuerName, organizationId: d.organizationId, validityDays: d.validityDays, expiryWindowDays: d.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS, isActive: d.isActive, activeCount: await activeCount(db, d.id, d.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() });
 
 const include = { definition: true } as const;
 type Row = Prisma.EmployeeCertificationGetPayload<{ include: typeof include }>;
 async function dto(db: Db, rows: Row[], withEmployee: boolean): Promise<EmployeeCertificationDto[]> {
-  const t = today();
+  // Task 53 (T44-P1-23): a certificate is valid through its expiry date in the HOLDER's organization zone.
+  const todays = await employeeTodays(db, rows.map((r) => r.employeeId));
   const emps = withEmployee ? new Map((await db.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, employeeCode: true, firstName: true, lastName: true, department: { select: { name: true } } } })).map((e) => [e.id, e])) : new Map();
   const docIds = rows.map((r) => r.documentId).filter((x): x is string => !!x);
   const docs = new Map((docIds.length ? await db.document.findMany({ where: { id: { in: docIds } }, select: { id: true, title: true } }) : []).map((d) => [d.id, d.title]));
   const renewedBy = new Map((await db.employeeCertification.findMany({ where: { renewedFromId: { in: rows.map((r) => r.id) } }, select: { id: true, renewedFromId: true } })).map((x) => [x.renewedFromId!, x.id]));
-  return rows.map((r) => { const e = emps.get(r.employeeId); return { id: r.id, employeeId: r.employeeId, employee: e ? { employeeCode: e.employeeCode, name: `${e.firstName} ${e.lastName}`, department: e.department.name } : null, definitionId: r.definitionId, definitionName: r.definitionNameSnapshot, definitionCode: r.definition.code, issuerType: r.definition.issuerType, certificateNumber: r.certificateNumber, issuedDate: r.issuedDate, expiryDate: r.expiryDate, issuerName: r.issuerName, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), daysToExpiry: r.expiryDate ? daysUntil(t, r.expiryDate) : null, documentId: r.documentId, documentTitle: r.documentId ? (docs.get(r.documentId) ?? null) : null, renewedFromId: r.renewedFromId, renewedById: renewedBy.get(r.id) ?? null, revokedAt: r.revokedAt?.toISOString() ?? null, revokeReason: r.revokeReason, note: r.note, createdAt: r.createdAt.toISOString() }; });
+  return rows.map((r) => { const e = emps.get(r.employeeId); const t = todays.get(r.employeeId)!; return { id: r.id, employeeId: r.employeeId, employee: e ? { employeeCode: e.employeeCode, name: `${e.firstName} ${e.lastName}`, department: e.department.name } : null, definitionId: r.definitionId, definitionName: r.definitionNameSnapshot, definitionCode: r.definition.code, issuerType: r.definition.issuerType, certificateNumber: r.certificateNumber, issuedDate: r.issuedDate, expiryDate: r.expiryDate, issuerName: r.issuerName, status: certificationStatus({ expiryDate: r.expiryDate, revokedAt: r.revokedAt }, t, r.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), daysToExpiry: r.expiryDate ? daysUntil(t, r.expiryDate) : null, documentId: r.documentId, documentTitle: r.documentId ? (docs.get(r.documentId) ?? null) : null, renewedFromId: r.renewedFromId, renewedById: renewedBy.get(r.id) ?? null, revokedAt: r.revokedAt?.toISOString() ?? null, revokeReason: r.revokeReason, note: r.note, createdAt: r.createdAt.toISOString() }; });
 }
 async function linkDoc(tx: Prisma.TransactionClient, documentId: string, certId: string, actor: Actor) {
   const doc = await tx.document.findUnique({ where: { id: documentId }, include: { category: true, links: true, ownerEmployee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, managerId: true } } } });

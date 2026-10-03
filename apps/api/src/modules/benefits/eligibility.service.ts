@@ -1,7 +1,8 @@
 import { AUDIT_ACTIONS, tenureMonths, type EligibilityOverrideDto, type EligibilityPreviewDto, type EligibilityResultDto, type SetEligibilityOverrideInput } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
-import { type Actor, type Db, type EmployeeRow, benefitsAudit, employeeInclude, notFound, textAudit, today, userNames } from './benefits.types';
+import { organizationTodays, referenceToday, todayForEmployee } from '../../services/business-time/business-time';
+import { type Actor, type Db, type EmployeeRow, benefitsAudit, employeeInclude, notFound, textAudit, userNames } from './benefits.types';
 
 /**
  * Deterministic eligibility from allow-listed employee-master facts. The rule vocabulary has no field for a protected
@@ -44,7 +45,8 @@ export async function activeOverride(db: Db, planId: string, employeeId: string)
 }
 
 export const eligibilityService = {
-  async evaluate(db: Db, employeeId: string, planId: string, asOfDate = today()): Promise<EligibilityResultDto> {
+  async evaluate(db: Db, employeeId: string, planId: string, asOf?: string): Promise<EligibilityResultDto> {
+    const asOfDate = asOf ?? await todayForEmployee(db, employeeId); // Task 53: the employee's own today
     const [plan, employee, override] = await Promise.all([db.benefitPlan.findUnique({ where: { id: planId }, include: { rules: true } }), db.employee.findUnique({ where: { id: employeeId }, include: employeeInclude }), activeOverride(db, planId, employeeId)]);
     if (!plan) throw notFound('benefit plan');
     if (!employee) throw notFound('employee');
@@ -54,10 +56,13 @@ export const eligibilityService = {
   async preview(planId: string, q: { asOfDate?: string; includeEmployees?: boolean }): Promise<EligibilityPreviewDto> {
     const plan = await prisma.benefitPlan.findUnique({ where: { id: planId }, include: { rules: true, overrides: { where: { supersededAt: null } } } });
     if (!plan) throw notFound('benefit plan');
-    const asOfDate = q.asOfDate ?? today();
+    // Task 53: without an explicit date each employee is judged on their own organization's today; the reported as-of
+    // date is the plan's organization's (or the reference organization's) today.
+    const asOfDate = q.asOfDate ?? await referenceToday(prisma, plan.organizationId);
+    const todays = q.asOfDate ? null : await organizationTodays(prisma);
     const employees = await prisma.employee.findMany({ where: { employmentStatus: 'ACTIVE', ...(plan.organizationId ? { organizationId: plan.organizationId } : {}) }, include: employeeInclude, orderBy: { employeeCode: 'asc' } });
     const overrides = new Map(plan.overrides.map((o) => [o.employeeId, { mode: o.mode, reasonCode: o.reasonCode }]));
-    const rows = employees.map((e) => ({ e, r: evaluateRules(e, plan.rules, overrides.get(e.id) ?? null, asOfDate) }));
+    const rows = employees.map((e) => ({ e, r: evaluateRules(e, plan.rules, overrides.get(e.id) ?? null, todays?.get(e.organizationId) ?? asOfDate) }));
     const eligible = rows.filter((x) => x.r.eligible).length;
     return { planId, asOfDate, eligible, ineligible: rows.length - eligible, ...(q.includeEmployees ? { employees: rows.map((x) => ({ employeeId: x.e.id, employeeCode: x.e.employeeCode, name: `${x.e.firstName} ${x.e.lastName}`, department: x.e.department.name, eligible: x.r.eligible, reasons: x.r.reasons.map((y) => y.message) })) } : {}) };
   },

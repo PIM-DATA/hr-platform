@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { errorMessage } from '@/features/organization/shared';
 import { useBenefitsInbox, useBenefitsMutations, useMyBenefits } from './benefits.api';
 import { BalanceBar, BenefitBadge, fmtDate, money } from './benefits-ui';
+import { localToday } from '@/lib/format';
 import { ClaimModal, ReviewModal } from './ClaimDialogs';
 
 /** ESS: what I am enrolled in, what I can still claim, my claims, my coverage — and, for an approver, the claims waiting for me. */
@@ -64,7 +65,7 @@ export function MyBenefitsPage() {
 
 function NewClaimModal({ entitlements, onClose, onCreated }: { entitlements: BenefitEntitlementDto[]; onClose: () => void; onCreated: (id: string) => void }) {
   const m = useBenefitsMutations(); const toast = useToast();
-  const [entId, setEntId] = useState(entitlements[0]?.id ?? ''); const [amount, setAmount] = useState(''); const [serviceDate, setServiceDate] = useState(new Date().toISOString().slice(0, 10)); const [description, setDescription] = useState(''); const [error, setError] = useState<string | null>(null);
+  const [entId, setEntId] = useState(entitlements[0]?.id ?? ''); const [amount, setAmount] = useState(''); const [serviceDate, setServiceDate] = useState(localToday()); const [description, setDescription] = useState(''); const [error, setError] = useState<string | null>(null);
   const ent = entitlements.find((e) => e.id === entId);
   const submit = async () => { if (!ent) return; setError(null); try { const c = await m.createClaim.mutateAsync({ planId: ent.planId, periodId: ent.periodId, claimedAmount: amount, serviceDate, description: description || null }); toast.success('Draft claim created. Attach your receipt, then submit.'); onCreated(c.id); } catch (e) { setError(errorMessage(e)); } };
   return (

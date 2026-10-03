@@ -1,5 +1,6 @@
-import { MIN_AGGREGATE_GROUP_SIZE, businessToday, partitionSuppression, suppressedCell, validityState, type AggregateSuppression, type EmployeeRelationsReportDto, type ErReportQuery } from '@hr/shared';
+import { MIN_AGGREGATE_GROUP_SIZE, partitionSuppression, suppressedCell, validityState, type AggregateSuppression, type EmployeeRelationsReportDto, type ErReportQuery } from '@hr/shared';
 import type { Prisma } from '@prisma/client';
+import { businessDateIn, employeeTodays, employeeZones } from '../../services/business-time/business-time';
 import { prisma } from '../../lib/prisma';
 
 /**
@@ -39,14 +40,17 @@ export const erReportService = {
 
     const [casesByStatus, cases, actions] = await Promise.all([
       prisma.employeeRelationCase.groupBy({ by: ['status'], where: caseWhere, _count: { _all: true }, orderBy: { status: 'asc' } }),
-      prisma.employeeRelationCase.findMany({ where: caseWhere, select: { id: true, departmentName: true, createdAt: true } }),
+      prisma.employeeRelationCase.findMany({ where: caseWhere, select: { id: true, employeeId: true, departmentName: true, createdAt: true } }),
       prisma.disciplinaryAction.findMany({
         where: { status: { in: ['ISSUED', 'ACKNOWLEDGED'] }, case: caseWhere },
-        select: { status: true, validUntil: true, issuedDate: true, actionTypeNameSnapshot: true, requiresAcknowledgement: true, acknowledgedAt: true, acknowledgementDueDate: true, case: { select: { id: true, departmentName: true } } },
+        select: { employeeId: true, status: true, validUntil: true, issuedDate: true, actionTypeNameSnapshot: true, requiresAcknowledgement: true, acknowledgedAt: true, acknowledgementDueDate: true, case: { select: { id: true, departmentName: true } } },
       }),
     ]);
-    const now = businessToday('UTC');
-    const active = actions.filter((a) => validityState(a.status, a.validUntil, now) === 'ACTIVE');
+    // Task 53 (T44-P1-23): validity and acknowledgement deadlines are judged on each subject's own business today, and
+    // cases are bucketed by their business month in that zone (this used UTC).
+    const [todays, zones] = await Promise.all([employeeTodays(prisma, actions.map((a) => a.employeeId)), employeeZones(prisma, cases.map((c) => c.employeeId))]);
+    const now = (a: { employeeId: string }) => todays.get(a.employeeId)!;
+    const active = actions.filter((a) => validityState(a.status, a.validUntil, now(a)) === 'ACTIVE');
     const awaiting = actions.filter((a) => a.requiresAcknowledgement && !a.acknowledgedAt);
 
     const group = <T>(rows: T[], key: (row: T) => string) => {
@@ -57,7 +61,7 @@ export const erReportService = {
     const casesByDept = group(cases, (c) => c.departmentName ?? 'Unassigned');
     const actionsByDept = group(actions, (a) => a.case.departmentName ?? 'Unassigned');
     const byType = group(actions, (a) => a.actionTypeNameSnapshot);
-    const casesByMonth = group(cases, (c) => c.createdAt.toISOString().slice(0, 7));
+    const casesByMonth = group(cases, (c) => businessDateIn(c.createdAt, zones.get(c.employeeId) ?? 'UTC').slice(0, 7));
     const issuedByMonth = group(actions.filter((a) => a.issuedDate), (a) => a.issuedDate!.slice(0, 7));
 
     const departments = new Set([...casesByDept.keys(), ...actionsByDept.keys()]);
@@ -71,7 +75,7 @@ export const erReportService = {
         active: active.length,
         expired: actions.length - active.length,
         awaitingAcknowledgement: awaiting.length,
-        overdueAcknowledgement: awaiting.filter((a) => a.acknowledgementDueDate && a.acknowledgementDueDate < now).length,
+        overdueAcknowledgement: awaiting.filter((a) => a.acknowledgementDueDate && a.acknowledgementDueDate < now(a)).length,
       },
       byDepartment: [...departments].sort().map((departmentName) => {
         const suppression = deptSuppression(departmentName);
@@ -79,12 +83,12 @@ export const erReportService = {
           departmentName,
           cases: suppression ? null : casesByDept.get(departmentName)?.length ?? 0,
           issued: suppression ? null : actionsByDept.get(departmentName)?.length ?? 0,
-          active: suppression ? null : (actionsByDept.get(departmentName) ?? []).filter((a) => validityState(a.status, a.validUntil, now) === 'ACTIVE').length,
+          active: suppression ? null : (actionsByDept.get(departmentName) ?? []).filter((a) => validityState(a.status, a.validUntil, now(a)) === 'ACTIVE').length,
           suppression,
         };
       }),
       byActionType: [...byType.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([actionTypeName, rows]) => ({
-        actionTypeName, issued: rows.length, active: rows.filter((a) => validityState(a.status, a.validUntil, now) === 'ACTIVE').length,
+        actionTypeName, issued: rows.length, active: rows.filter((a) => validityState(a.status, a.validUntil, now(a)) === 'ACTIVE').length,
       })),
       byMonth: [...months].sort().map((month) => ({ month, cases: casesByMonth.get(month)?.length ?? 0, issued: issuedByMonth.get(month)?.length ?? 0 })),
     };

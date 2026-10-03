@@ -6,7 +6,8 @@ import { auditService } from '../../services/audit/audit.service';
 import { notificationService } from '../../services/notification/notification.service';
 import type { AuthContext } from '../auth/auth.types';
 import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.service';
-import { P, currentOf, employeeSnapshot, has, lifecycleAudit, lifecycleEmployeeWhere, lockRow, notFound, progressOf, snapshotDto, taskDtos, textAudit, today, userNames, type Actor, type Db, type Tx } from './lifecycle.types';
+import { P, currentOf, employeeSnapshot, has, lifecycleAudit, lifecycleEmployeeWhere, lockRow, notFound, progressOf, snapshotDto, taskDtos, textAudit, userNames, type Actor, type Db, type Tx } from './lifecycle.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
 import { probationService } from './probation.service';
 
 /**
@@ -23,7 +24,7 @@ async function dto(db: Db, auth: AuthContext, r: Row, withTasks: boolean): Promi
   const [names, current] = await Promise.all([userNames(db, [r.hrOwnerUserId]), currentOf(db, r.employeeId)]);
   const progress = progressOf(r.tasks);
   const openTasks = r.tasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
-  const t = today();
+  const t = await todayForEmployee(db, r.employeeId); // Task 53: the employee's own today
   const base: OnboardingPlanDto = {
     id: r.id, employeeId: r.employeeId, templateId: r.templateId, templateName: r.templateNameSnapshot, snapshot: snapshotDto(r), current, hireDate: r.hireDateSnapshot, startDate: r.startDate, status: r.status as OnboardingPlanDto['status'],
     hrOwnerUserId: r.hrOwnerUserId, hrOwnerName: r.hrOwnerUserId ? (names.get(r.hrOwnerUserId) ?? null) : null, applicationId: r.applicationId, probationCaseId: r.probationCaseId,

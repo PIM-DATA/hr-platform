@@ -7,7 +7,8 @@ import { notificationService } from '../../services/notification/notification.se
 import type { AuthContext } from '../auth/auth.types';
 import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.service';
 import { trainingNeedService } from '../training/training-need.service';
-import { P, employeeSnapshot, has, learningAudit, lockRow, nextPlanNumber, notFound, scopedEmployeeIds, snapshotDto, textAudit, today, userNames, type Actor, type Db } from './learning.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
+import { P, employeeSnapshot, has, learningAudit, lockRow, nextPlanNumber, notFound, scopedEmployeeIds, snapshotDto, textAudit, userNames, type Actor, type Db } from './learning.types';
 
 /**
  * OJT: a reusable program (objectives, activities, observation criteria) and one plan per trainee that copies it.
@@ -142,7 +143,7 @@ export const ojtPlanService = {
     const trainer = await resolveTrainer(prisma, input.trainerEmployeeId);
     const comps = new Map((await prisma.competency.findMany({ where: { id: { in: program.competencies.map((c) => c.competencyId) } }, select: { id: true, code: true, name: true } })).map((c) => [c.id, c]));
     const id = await prisma.$transaction(async (tx) => {
-      const planNumber = await nextPlanNumber(tx);
+      const planNumber = await nextPlanNumber(tx, employee.id);
       const plan = await tx.ojtPlan.create({ data: { planNumber, employeeId: employee.id, programId: program.id, programNameSnapshot: program.name, ...data, ...trainer, startDate: input.startDate, targetEndDate: input.targetEndDate ?? (program.durationDays ? addDays(input.startDate, program.durationDays) : null), trainingNeedId: input.trainingNeedId ?? null, idpItemId: input.idpItemId ?? null, createdByUserId: actor.auth.userId,
         competencies: { create: program.competencies.map((c) => ({ competencyId: c.competencyId, competencyCodeSnapshot: comps.get(c.competencyId)?.code ?? '?', competencyNameSnapshot: comps.get(c.competencyId)?.name ?? '?', targetLevel: c.targetLevel, importance: c.importance, description: c.description })) },
         activities: { create: program.activities.map((a) => ({ titleSnapshot: a.title, descriptionSnapshot: a.description, activityType: a.activityType, sequence: a.sequence, required: a.required, expectedDays: a.expectedDays, requiresEvidence: a.documentEvidenceRequired, criteria: { create: a.criteria.map((c) => ({ criterionSnapshot: c.criterion, sequence: c.sequence, required: c.required })) } })) } } });
@@ -231,7 +232,8 @@ export const ojtPlanService = {
       if (plan.status !== 'ACTIVE') throw new AppError(409, 'OJT_PLAN_NOT_ACTIVE', 'Observations are recorded while the plan is active');
       if (act.status === 'COMPLETED' || act.status === 'SKIPPED') throw new AppError(409, 'OJT_ACTIVITY_FINISHED', 'This activity is finished');
       if (!act.criteria.some((c) => c.id === input.criterionId)) throw new AppError(422, 'VALIDATION_ERROR', 'Criterion does not belong to this activity', [{ field: 'criterionId', message: 'Unknown criterion' }]);
-      const o = await tx.ojtActivityObservation.upsert({ where: { criterionId_observerUserId: { criterionId: input.criterionId, observerUserId: auth.userId } }, create: { planActivityId: activityId, criterionId: input.criterionId, observerUserId: auth.userId, result: input.result, comment: input.comment ?? null, observedAt: input.observedAt ?? today() }, update: { result: input.result, comment: input.comment ?? null, observedAt: input.observedAt ?? today() } });
+      const observedOn = input.observedAt ?? await todayForEmployee(tx, plan.employeeId); // Task 53: the trainee's today
+      const o = await tx.ojtActivityObservation.upsert({ where: { criterionId_observerUserId: { criterionId: input.criterionId, observerUserId: auth.userId } }, create: { planActivityId: activityId, criterionId: input.criterionId, observerUserId: auth.userId, result: input.result, comment: input.comment ?? null, observedAt: observedOn }, update: { result: input.result, comment: input.comment ?? null, observedAt: observedOn } });
       await auditService.log(learningAudit(actor, AUDIT_ACTIONS.SUBMIT_OJT_OBSERVATION, 'OjtPlanActivity', activityId, { planId: plan.id, criterionId: input.criterionId, result: input.result, observedAt: o.observedAt, ...textAudit('comment', null, input.comment ?? null) }), tx);
       return plan.id;
     });

@@ -1,10 +1,11 @@
 import type { Prisma } from '@prisma/client';
-import { AUDIT_ACTIONS, EXPENSE_RULE_SPECIFICITY, businessToday, type ExpensePolicyConflictDto, type CreateExpenseCategoryInput, type CreateExpensePolicyInput, type CreateTravelPolicyInput, type ExpenseApplicabilityDto, type ExpenseCategoryDto, type ExpensePolicyDto, type ExpensePolicyRuleDto, type TravelPolicyDto, type UpdateExpenseCategoryInput, type UpdateExpensePolicyInput, type UpdateTravelPolicyInput } from '@hr/shared';
+import { AUDIT_ACTIONS, EXPENSE_RULE_SPECIFICITY, type ExpensePolicyConflictDto, type CreateExpenseCategoryInput, type CreateExpensePolicyInput, type CreateTravelPolicyInput, type ExpenseApplicabilityDto, type ExpenseCategoryDto, type ExpensePolicyDto, type ExpensePolicyRuleDto, type TravelPolicyDto, type UpdateExpenseCategoryInput, type UpdateExpensePolicyInput, type UpdateTravelPolicyInput } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
 import { workflowDefinitionsService } from '../../services/workflow';
 import { dec, toMoneyString } from '../payroll/money';
+import { organizationTodays } from '../../services/business-time/business-time';
 import { type Actor, type Db, type EmployeeRow, employeeInclude, expenseAudit, lockRow, notFound, textAudit } from './expense.types';
 
 const m = (v: Prisma.Decimal | null | undefined) => (v ? toMoneyString(v) : null);
@@ -146,11 +147,12 @@ export const expensePolicyService = {
    * policies that tie. Computed on request from the same resolver the reports use, so what HR sees is what employees hit.
    */
   async conflicts(db: Db): Promise<ExpensePolicyConflictDto[]> {
-    const asOf = businessToday('Asia/Bangkok');
+    // Task 53: each employee's resolution as of their own organization's today (this was Bangkok's for everyone).
+    const todays = await organizationTodays(db);
     const employees = await db.employee.findMany({ where: { employmentStatus: 'ACTIVE' }, include: employeeInclude });
     const groups = new Map<string, ExpensePolicyConflictDto>();
     for (const e of employees) {
-      const res = await expensePolicyService.applicable(db, e, asOf);
+      const res = await expensePolicyService.applicable(db, e, todays.get(e.organizationId)!);
       if (!res.ambiguous) continue;
       const top = res.policies.filter((p) => specOf(p) === specOf(res.policies[0]));
       const key = top.map((p) => p.id).sort().join('|');

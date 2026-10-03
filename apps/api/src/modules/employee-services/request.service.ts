@@ -15,9 +15,10 @@ import type { AuthContext } from '../auth/auth.types';
 import { buildAnswerRows, fieldDto, missingRequired } from './catalog.service';
 import { issueLetterWithTx, letterSummary } from './letter.service';
 import {
-  type Actor, type Db, type Tx, P, employeeSnapshot, fulfillerScope, has, history, historyDto, isApprover, isOwner, lockRow, nextNumber, notFound, servicesAudit, snapshotDto, textAudit, today, userNames, visibleRequestWhere,
+  type Actor, type Db, type Tx, P, employeeSnapshot, fulfillerScope, has, history, historyDto, isApprover, isOwner, lockRow, nextNumber, notFound, servicesAudit, snapshotDto, textAudit, userNames, visibleRequestWhere,
 } from './services.types';
 import { isSelf } from '../../services/authorization/self-dealing';
+import { employeeTodays, perOrganizationToday, todayForEmployee } from '../../services/business-time/business-time';
 
 const include = {
   requestType: { select: { id: true, code: true, name: true, category: true, fulfillmentType: true, workflowCode: true, targetDays: true, requiresAttachment: true, letterTemplateId: true, fields: { orderBy: [{ displayOrder: 'asc' }, { key: 'asc' }] } } },
@@ -39,7 +40,8 @@ async function attachments(db: Db, auth: AuthContext, requestId: string): Promis
   return links.map((l) => ({ documentId: l.document.id, documentNumber: l.document.documentNumber, title: l.document.title, accessible: canAccessDocument(auth, l.document) }));
 }
 
-function dto(auth: AuthContext, r: Row, counts: { attachments: number; assignedToName: string | null }): ServiceRequestDto {
+/** `today` is the requester's business date (their organization's zone) — Task 53. */
+function dto(auth: AuthContext, r: Row, counts: { attachments: number; assignedToName: string | null; today: string }): ServiceRequestDto {
   const owner = isOwner(auth, r.employeeId);
   // Task 51: on their own request a fulfiller is only the requester — no handling, and no internal notes about it.
   const fulfiller = isFulfiller(auth) && !owner;
@@ -48,7 +50,7 @@ function dto(auth: AuthContext, r: Row, counts: { attachments: number; assignedT
     id: r.id, requestNumber: r.requestNumber, employeeId: r.employeeId, requestTypeId: r.requestTypeId, requestTypeCode: r.requestTypeCodeSnapshot, requestTypeName: r.requestTypeNameSnapshot,
     category: r.categorySnapshot as ServiceCategory, fulfillmentType: r.fulfillmentTypeSnapshot as 'GENERAL' | 'HR_LETTER', snapshot: snapshotDto(r), subject: r.subject, status: r.status as ServiceRequestStatus,
     assignedToUserId: r.assignedToUserId, assignedToName: counts.assignedToName, workflowInstanceId: r.workflowInstanceId, workflowStatus: r.workflowStatus,
-    submittedAt: r.submittedAt?.toISOString() ?? null, dueDate: r.dueDate, overdue: !!r.dueDate && isOpen(r.status) && r.dueDate < today(),
+    submittedAt: r.submittedAt?.toISOString() ?? null, dueDate: r.dueDate, overdue: !!r.dueDate && isOpen(r.status) && r.dueDate < counts.today,
     fulfilledAt: r.fulfilledAt?.toISOString() ?? null, letterCount: r.letters.length, attachmentCount: counts.attachments, messageCount: r._count.messages,
     createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
     can: {
@@ -75,7 +77,7 @@ async function detail(db: Db, auth: AuthContext, r: Row): Promise<ServiceRequest
   const docs = await attachments(db, auth, r.id);
   const blockers = r.status === 'DRAFT' ? draftBlockers(r, docs.length) : [];
   return {
-    ...dto(auth, r, { attachments: docs.length, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null }),
+    ...dto(auth, r, { attachments: docs.length, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null, today: await todayForEmployee(db, r.employeeId) }),
     description: r.description, answers: r.values.map(answerDto), messages: visibleMessages(auth, r, messages, names), history: await historyDto(db, r.id), documents: docs,
     letters: r.letters.map(letterSummary(auth)), resultNote: r.resultNote, rejectReasonCode: r.rejectReasonCode, rejectExplanation: r.rejectExplanation, blockers,
   };
@@ -110,7 +112,8 @@ export const serviceRequestService = {
     const where: Prisma.ServiceRequestWhereInput = {
       ...scope, status: q.status, requestTypeId: q.requestTypeId, categorySnapshot: q.category, assignedToUserId: q.assignedToUserId,
       ...(q.employeeId ? { employeeId: scope.employeeId && scope.employeeId !== q.employeeId ? '__none__' : q.employeeId } : {}),
-      ...(q.overdue ? { dueDate: { lt: today() }, status: { in: [...SERVICE_REQUEST_OPEN] } } : {}),
+      // Task 53: "before today" in each requester's organization zone, not one server date for all.
+      ...(q.overdue ? { AND: [await perOrganizationToday<Prisma.ServiceRequestWhereInput>(prisma, 'employeeId', (t) => ({ dueDate: { lt: t } }))], status: { in: [...SERVICE_REQUEST_OPEN] } } : {}),
       ...(q.from || q.to ? { submittedDate: { gte: q.from, lte: q.to } } : {}),
       ...(q.search ? { OR: [{ requestNumber: { contains: q.search, mode: 'insensitive' } }, { subject: { contains: q.search, mode: 'insensitive' } }, { employeeNameSnapshot: { contains: q.search, mode: 'insensitive' } }, { employeeCodeSnapshot: { contains: q.search, mode: 'insensitive' } }] } : {}),
     };
@@ -121,7 +124,8 @@ export const serviceRequestService = {
     const names = await userNames(prisma, rows.map((r) => r.assignedToUserId));
     const counts = await prisma.documentLink.groupBy({ by: ['entityId'], where: { entityType: 'SERVICE_REQUEST', entityId: { in: rows.map((r) => r.id) } }, _count: { _all: true } });
     const byId = new Map(counts.map((c) => [c.entityId, c._count._all]));
-    return { data: rows.map((r) => dto(auth, r, { attachments: byId.get(r.id) ?? 0, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null })), meta: { page: q.page, pageSize: q.pageSize, total } };
+    const todays = await employeeTodays(prisma, rows.map((r) => r.employeeId));
+    return { data: rows.map((r) => dto(auth, r, { attachments: byId.get(r.id) ?? 0, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null, today: todays.get(r.employeeId)! })), meta: { page: q.page, pageSize: q.pageSize, total } };
   },
 
   async get(auth: AuthContext, id: string): Promise<ServiceRequestDetailDto> {
@@ -141,7 +145,7 @@ export const serviceRequestService = {
     if (!approver.any && !isFulfiller(auth)) throw notFound('service request');
     const docs = await attachments(prisma, auth, r.id);
     return {
-      request: { ...dto(auth, r, { attachments: docs.length, assignedToName: null }), description: r.description, answers: r.values.filter((v) => v.employeeVisibleSnapshot).map(answerDto), documents: docs },
+      request: { ...dto(auth, r, { attachments: docs.length, assignedToName: null, today: await todayForEmployee(prisma, r.employeeId) }), description: r.description, answers: r.values.filter((v) => v.employeeVisibleSnapshot).map(answerDto), documents: docs },
       workflowInstanceId: r.workflowInstanceId, myStepPending: approver.pendingNow,
     };
   },
@@ -162,8 +166,9 @@ export const serviceRequestService = {
     const counts = await prisma.documentLink.groupBy({ by: ['entityId'], where: { entityType: 'SERVICE_REQUEST', entityId: { in: rows.map((r) => r.id) } }, _count: { _all: true } });
     const byId = new Map(counts.map((c) => [c.entityId, c._count._all]));
     const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { organizationId: true } });
+    const myToday = await todayForEmployee(prisma, employeeId);
     return {
-      requests: rows.map((r) => dto(auth, r, { attachments: byId.get(r.id) ?? 0, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null })),
+      requests: rows.map((r) => dto(auth, r, { attachments: byId.get(r.id) ?? 0, assignedToName: r.assignedToUserId ? (names.get(r.assignedToUserId) ?? null) : null, today: myToday })),
       letters: letters.map(letterSummary(auth)),
       catalog: catalog.filter((t) => !t.organizationId || t.organizationId === employee?.organizationId).map((t) => ({ id: t.id, code: t.code, name: t.name, description: t.description, category: t.category as ServiceCategory, requiresAttachment: t.requiresAttachment, targetDays: t.targetDays, fields: t.fields.map(fieldDto) })),
       queue,
@@ -185,7 +190,7 @@ export const serviceRequestService = {
       const rows = buildAnswerRows(type.fields, input.answers);
       const r = await tx.serviceRequest.create({
         data: {
-          requestNumber: await nextNumber(tx, 'request'), requestTypeId: type.id, employeeId, requestTypeCodeSnapshot: type.code, requestTypeNameSnapshot: type.name, categorySnapshot: type.category,
+          requestNumber: await nextNumber(tx, 'request', employeeId), requestTypeId: type.id, employeeId, requestTypeCodeSnapshot: type.code, requestTypeNameSnapshot: type.name, categorySnapshot: type.category,
           fulfillmentTypeSnapshot: type.fulfillmentType, targetDaysSnapshot: type.targetDays, ...data, subject: input.subject, description: input.description ?? null, status: 'DRAFT',
           createdByUserId: auth.userId, values: { create: rows },
         },
@@ -229,7 +234,7 @@ export const serviceRequestService = {
       const blockers = draftBlockers(r, docs);
       if (employee?.employmentStatus !== 'ACTIVE') blockers.push('Service requests need an active employee');
       if (blockers.length) throw new AppError(422, 'SERVICE_REQUEST_INVALID', blockers.join('; '), blockers.map((b) => ({ field: 'request', message: b })));
-      const submittedDate = today();
+      const submittedDate = await todayForEmployee(tx, r.employeeId);
       await tx.serviceRequest.update({
         where: { id },
         data: {

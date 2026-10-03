@@ -9,8 +9,9 @@ import { auditService } from '../../services/audit/audit.service';
 import { notificationService } from '../../services/notification/notification.service';
 import type { AuthContext } from '../auth/auth.types';
 import { dec, money, toMoneyString } from '../payroll/money';
+import { todayForOrganization } from '../../services/business-time/business-time';
 import {
-  LONG_TX, P, assertStatus, assertWithinBudget, budgetDto, budgetUsed, compAudit, has, lockCycle, notFound, requireHr, today, userHasPermission, userNames,
+  LONG_TX, P, assertStatus, assertWithinBudget, budgetDto, budgetUsed, compAudit, has, lockCycle, notFound, requireHr, userHasPermission, userNames,
   type Actor, type Db, type Tx,
 } from './comp.types';
 
@@ -141,7 +142,7 @@ export const compCycleService = {
     requireHr(auth);
     const cycle = await load(prisma, id);
     assertStatus(cycle, ['DRAFT'], 'preview the population of');
-    const all = await resolveCandidates(prisma, cycle, today());
+    const all = await resolveCandidates(prisma, cycle, await todayForOrganization(prisma, cycle.organizationId)); // Task 53: the cycle's organization's today
     const s = q.search?.toLowerCase();
     const filtered = s ? all.filter(({ e }) => `${e.employeeCode} ${e.firstName} ${e.lastName}`.toLowerCase().includes(s)) : all;
     const rows: CompPopulationRowDto[] = filtered.slice((q.page - 1) * q.pageSize, q.page * q.pageSize).map(({ e, c, eligibility, excluded }) => ({
@@ -200,7 +201,9 @@ export const compCycleService = {
    */
   async activate(id: string, actor: Actor) {
     requireHr(actor.auth);
-    const asOf = today();
+    // Task 53 (T44-P1-23): "today" — the population baseline and the effective-date check — is the cycle's
+    // organization's business date (this was Bangkok's for every organization).
+    const asOf = await todayForOrganization(prisma, (await load(prisma, id)).organizationId);
     const result = await prisma.$transaction(async (tx) => {
       const cycle = await lockCycle(tx, id);
       assertStatus(cycle, ['DRAFT'], 'activate');

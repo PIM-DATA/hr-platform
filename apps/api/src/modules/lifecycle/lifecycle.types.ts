@@ -1,9 +1,10 @@
 import type { Prisma } from '@prisma/client';
-import { PERMISSIONS, businessToday, checklistProgress, type AuditAction, type AuditModule, type LifecycleSnapshotDto, type LifecycleTaskDto } from '@hr/shared';
+import { PERMISSIONS, checklistProgress, type AuditAction, type AuditModule, type LifecycleSnapshotDto, type LifecycleTaskDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { hasPermission } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
+import { employeeTodays, referenceToday } from '../../services/business-time/business-time';
 import { employeeScopeWhere } from '../employees/employees.scope';
 
 export type Tx = Prisma.TransactionClient;
@@ -19,7 +20,6 @@ export const textAudit = (field: string, before: string | null | undefined, afte
 export const notFound = (what: string) => new AppError(404, `${what.toUpperCase().replace(/ /g, '_')}_NOT_FOUND`, `${what.charAt(0).toUpperCase()}${what.slice(1)} not found`);
 export const has = (auth: AuthContext, ...perms: string[]) => perms.some((p) => hasPermission(auth, p));
 export const P = PERMISSIONS;
-export const today = () => businessToday('Asia/Bangkok');
 
 export const lockRow = (tx: Tx, table: 'onboarding_plans' | 'onboarding_tasks' | 'probation_cases' | 'offboarding_cases' | 'offboarding_tasks', id: string) => {
   switch (table) {
@@ -73,14 +73,23 @@ export async function userNames(db: Db, ids: (string | null | undefined)[]): Pro
   return new Map(users.map((u) => [u.id, u.employee ? `${u.employee.firstName} ${u.employee.lastName}` : u.email]));
 }
 
-type TaskRow = { id: string; titleSnapshot: string; descriptionSnapshot: string | null; categorySnapshot: string; assigneeType: string; assigneeUserId: string | null; assigneeEmployeeId: string | null; dueDate: string; required: boolean; requiresDocument: boolean; documentId: string | null; status: string; completedAt: Date | null; completedByUserId: string | null; note: string | null };
+type TaskRow = { id: string; titleSnapshot: string; descriptionSnapshot: string | null; categorySnapshot: string; assigneeType: string; assigneeUserId: string | null; assigneeEmployeeId: string | null; dueDate: string; required: boolean; requiresDocument: boolean; documentId: string | null; status: string; completedAt: Date | null; completedByUserId: string | null; note: string | null; planId?: string; caseId?: string };
 /** Task DTO. The note is shown only to people who may act on the task or manage the process. */
 export async function taskDtos(db: Db, auth: AuthContext, rows: TaskRow[], manage: boolean, complete: boolean, processOpen: boolean): Promise<LifecycleTaskDto[]> {
   const names = await userNames(db, rows.flatMap((r) => [r.assigneeUserId, r.completedByUserId]));
   const docIds = [...new Set(rows.map((r) => r.documentId).filter((x): x is string => !!x))];
   const docs = new Map((docIds.length ? await db.document.findMany({ where: { id: { in: docIds } }, select: { id: true, title: true } }) : []).map((d) => [d.id, d.title]));
-  const t = today();
+  // Task 53 (T44-P1-23): a task is overdue against its process employee's own business today (this was Bangkok's).
+  const planIds = [...new Set(rows.map((r) => r.planId).filter((x): x is string => !!x))];
+  const caseIds = [...new Set(rows.map((r) => r.caseId).filter((x): x is string => !!x))];
+  const owners = new Map<string, string>([
+    ...(planIds.length ? await db.onboardingPlan.findMany({ where: { id: { in: planIds } }, select: { id: true, employeeId: true } }) : []).map((p) => [p.id, p.employeeId] as [string, string]),
+    ...(caseIds.length ? await db.offboardingCase.findMany({ where: { id: { in: caseIds } }, select: { id: true, employeeId: true } }) : []).map((c) => [c.id, c.employeeId] as [string, string]),
+  ]);
+  const todays = await employeeTodays(db, owners.values());
+  const reference = await referenceToday(db);
   return rows.map((r) => {
+    const t = todays.get(owners.get(r.planId ?? r.caseId ?? '') ?? '') ?? reference;
     const mine = r.assigneeUserId === auth.userId && complete;
     const open = r.status === 'PENDING' || r.status === 'IN_PROGRESS';
     return {

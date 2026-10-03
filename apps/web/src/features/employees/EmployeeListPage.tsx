@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/Alert';
 import { PermissionGuard } from '@/components/guards/PermissionGuard';
 import { usePermission } from '@/hooks/usePermission';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatDate } from '@/lib/format';
+import { formatCalendarDate } from '@/lib/format';
 import { useDepartmentOptions, useOrganizationOptions, usePositions } from '@/features/organization/organization.api';
 import { useEmployees } from './employees.api';
 import { EmployeeFormModal } from './EmployeeFormModal';
@@ -54,7 +54,7 @@ export function EmployeeListPage() {
     { key: 'manager', header: 'Manager', hideBelow: 'lg', render: (e) => (e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : <span className="text-slate-400">—</span>) },
     { key: 'type', header: 'Type', hideBelow: 'lg', render: (e) => <span className="text-xs text-slate-600">{e.employmentType.replace('_', ' ')}</span> },
     { key: 'status', header: 'Status', render: (e) => <StatusBadge status={e.employmentStatus} /> },
-    { key: 'hire', header: 'Hire date', hideBelow: 'md', render: (e) => <span className="text-slate-500">{formatDate(e.hireDate)}</span> },
+    { key: 'hire', header: 'Hire date', hideBelow: 'md', render: (e) => <span className="text-slate-500">{formatCalendarDate(e.hireDate)}</span> },
   ];
 
   return (

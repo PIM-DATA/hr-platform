@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type CompPerformanceContextDto, type CompRowDto } from '@hr/shared';
+import { PERMISSIONS, type AuditAction, type AuditModule, type CompPerformanceContextDto, type CompRowDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
@@ -11,7 +11,6 @@ export type Db = Prisma.TransactionClient | typeof prisma;
 export type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 export const P = PERMISSIONS;
 export const has = (auth: AuthContext, ...perms: string[]) => perms.some((p) => hasPermission(auth, p));
-export const today = () => businessToday('Asia/Bangkok');
 /** Batch operations over a whole population (1,000+ rows) run longer than Prisma's 5 s interactive default. */
 export const LONG_TX = { timeout: 120_000, maxWait: 10_000 };
 

@@ -1,7 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { MIN_AGGREGATE_GROUP_SIZE, partitionSuppression } from '@hr/shared';
+import { MIN_AGGREGATE_GROUP_SIZE, addDays, businessDateOf, businessDayStart, partitionSuppression } from '@hr/shared';
 import type { ReportDefinition } from '@hr/shared';
 import { AppError } from '../../lib/errors';
+import { prisma } from '../../lib/prisma';
+import { referenceZone } from '../../services/business-time/business-time';
 import type { FieldDef, ReportDataset, Row, RunContext, RunResult } from './registry';
 
 /**
@@ -15,6 +17,11 @@ import type { FieldDef, ReportDataset, Row, RunContext, RunResult } from './regi
 export interface ColumnDef extends FieldDef {
   /** Dot path on the model, e.g. `department.name`. */
   column: string;
+  /**
+   * Task 53: a DATETIME column that stores a calendar date as UTC midnight (e.g. `hireDate`). Its filters keep UTC day
+   * boundaries. Every other DATETIME column is an instant, filtered by business days in the report's zone.
+   */
+  calendarDate?: boolean;
   /** For groupable nested fields: the scalar column to group by and how to label its values. */
   groupKey?: { column: string; labels: (keys: string[]) => Promise<Map<string, string>> };
 }
@@ -37,20 +44,23 @@ const plain = (v: unknown): string | number | boolean | null => {
   return v as string | number | boolean;
 };
 
-function filterClause(f: ColumnDef, op: string, value: unknown): unknown {
+function filterClause(f: ColumnDef, op: string, value: unknown, timezone: string): unknown {
   const isDate = f.type === 'DATETIME';
-  const v = isDate && typeof value === 'string' ? new Date(`${value}T00:00:00.000Z`) : f.type === 'DECIMAL' ? new Prisma.Decimal(String(value)) : value;
-  const dayEnd = (d: string) => new Date(`${d}T23:59:59.999Z`);
+  // A business date selects the instants from its local 00:00 to the next local 00:00 (23 or 25 hours on a DST day).
+  const zone = f.calendarDate ? 'UTC' : timezone;
+  const dayStart = (d: string) => businessDayStart(d, zone);
+  const nextDay = (d: string) => businessDayStart(addDays(d, 1), zone);
+  const v = isDate && typeof value === 'string' ? dayStart(value) : f.type === 'DECIMAL' ? new Prisma.Decimal(String(value)) : value;
   switch (op) {
-    case 'EQ': return f.type === 'DATETIME' ? { gte: v, lte: dayEnd(String(value)) } : { equals: v };
+    case 'EQ': return f.type === 'DATETIME' ? { gte: v, lt: nextDay(String(value)) } : { equals: v };
     case 'NE': return { not: v };
     case 'CONTAINS': return { contains: v, mode: 'insensitive' };
     case 'STARTS_WITH': return { startsWith: v, mode: 'insensitive' };
-    case 'GT': case 'AFTER': return { gt: isDate ? dayEnd(String(value)) : v };
+    case 'GT': case 'AFTER': return isDate ? { gte: nextDay(String(value)) } : { gt: v };
     case 'GTE': return { gte: v };
     case 'LT': case 'BEFORE': return { lt: v };
-    case 'LTE': return { lte: v };
-    case 'BETWEEN': { const [a, b] = value as [string, string]; return isDate ? { gte: new Date(`${a}T00:00:00.000Z`), lte: dayEnd(b) } : { gte: a, lte: b }; }
+    case 'LTE': return isDate ? { lt: nextDay(String(value)) } : { lte: v };
+    case 'BETWEEN': { const [a, b] = value as [string, string]; return isDate ? { gte: dayStart(a), lt: nextDay(b) } : { gte: a, lte: b }; }
     case 'IN': return { in: value };
     case 'IS_NULL': return null;
     case 'IS_NOT_NULL': return { not: null };
@@ -58,12 +68,12 @@ function filterClause(f: ColumnDef, op: string, value: unknown): unknown {
   }
 }
 
-export function buildWhere(fields: ColumnDef[], def: ReportDefinition, base: unknown): unknown {
+export function buildWhere(fields: ColumnDef[], def: ReportDefinition, base: unknown, timezone = 'UTC'): unknown {
   const and: unknown[] = [base];
   for (const flt of def.filters) {
     const f = fields.find((x) => x.id === flt.fieldId)!;
     const clause: Record<string, unknown> = {};
-    setPath(clause, f.column, filterClause(f, flt.operator, flt.value));
+    setPath(clause, f.column, filterClause(f, flt.operator, flt.value, timezone));
     and.push(clause);
   }
   return { AND: and };
@@ -89,12 +99,12 @@ export function prismaDataset(spec: Omit<ReportDataset, 'run' | 'runAll' | 'fiel
   const scope = async (auth: RunContext['auth']) => { const base = await baseScope(auth); return population ? { AND: [base ?? {}, { [population]: { gte: K } }] } : base; };
   const withheld = async (ctx: RunContext): Promise<RunResult['suppression']> => {
     if (!population) return null;
-    const n = await delegate.count({ where: buildWhere(fields, ctx.definition, { AND: [(await baseScope(ctx.auth)) ?? {}, { [population]: { lt: K } }] }) });
+    const n = await delegate.count({ where: buildWhere(fields, ctx.definition, { AND: [(await baseScope(ctx.auth)) ?? {}, { [population]: { lt: K } }] }, await referenceZone(prisma)) });
     return n ? { suppressedGroups: n, minimumGroupSize: K, reason: `${n} source row(s) describe fewer than ${K} people and are withheld` } : null;
   };
 
   async function runRows(ctx: RunContext, skip: number, take: number): Promise<RunResult> {
-    const where = buildWhere(fields, ctx.definition, await scope(ctx.auth));
+    const where = buildWhere(fields, ctx.definition, await scope(ctx.auth), await referenceZone(prisma));
     const [total, rows, suppression] = await Promise.all([delegate.count({ where }), delegate.findMany({ where, select: buildSelect(fields, ctx.definition), orderBy: buildOrderBy(fields, ctx.definition, defaultOrder), skip, take }), withheld(ctx)]);
     return { total, suppression, rows: rows.map((r) => Object.fromEntries(ctx.definition.columns.map((c) => [c, plain(getPath(r, fields.find((x) => x.id === c)!.column))]))) };
   }
@@ -102,7 +112,7 @@ export function prismaDataset(spec: Omit<ReportDataset, 'run' | 'runAll' | 'fiel
   async function runGrouped(ctx: RunContext, skip: number, take: number): Promise<RunResult> {
     const def = ctx.definition;
     const suppression = await withheld(ctx);
-    const where = buildWhere(fields, def, await scope(ctx.auth));
+    const where = buildWhere(fields, def, await scope(ctx.auth), await referenceZone(prisma));
     const groupFields = def.groupBy.map((g) => fields.find((x) => x.id === g)!);
     const by = groupFields.map((f) => f.groupKey?.column ?? f.column);
     if (by.some((c) => c.includes('.'))) throw new AppError(422, 'REPORT_GROUP_NOT_ALLOWED', 'This field cannot be grouped in the database');
@@ -154,7 +164,7 @@ export function prismaDataset(spec: Omit<ReportDataset, 'run' | 'runAll' | 'fiel
 export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { load: (auth: RunContext['auth'], def: ReportDefinition) => Promise<Row[]> }): ReportDataset {
   const { load, ...rest } = spec;
   const fields = spec.fields;
-  const matches = (row: Row, flt: ReportDefinition['filters'][number]) => {
+  const matches = (row: Row, flt: ReportDefinition['filters'][number], timezone: string) => {
     const f = fields.find((x) => x.id === flt.fieldId)!;
     const v = row[flt.fieldId];
     const num = (x: unknown) => (typeof x === 'string' ? Number(x) : (x as number));
@@ -174,7 +184,8 @@ export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { lo
       case 'GTE': return v !== null && cmp(v, flt.value) >= 0;
       case 'LT': case 'BEFORE': return v !== null && (f.type === 'DATE' ? String(v) < String(flt.value) : cmp(v, flt.value) < 0);
       case 'LTE': return v !== null && cmp(v, flt.value) <= 0;
-      case 'BETWEEN': { const [a, b] = flt.value as [string, string]; return v !== null && String(v).slice(0, 10) >= a && String(v).slice(0, 10) <= b; }
+      // Task 53: an instant's business date in the report's zone (was its UTC date).
+      case 'BETWEEN': { const [a, b] = flt.value as [string, string]; if (v === null) return false; const d = f.type === 'DATETIME' && !(f as ColumnDef).calendarDate ? businessDateOf(new Date(String(v)), timezone) : String(v).slice(0, 10); return d >= a && d <= b; }
       case 'IN': return (flt.value as string[]).includes(String(v));
       default: return false;
     }
@@ -190,7 +201,8 @@ export function memoryDataset(spec: Omit<ReportDataset, 'run' | 'runAll'> & { lo
       withheldRows = source.length - kept.length;
       source = kept;
     }
-    let rows = source.filter((r) => def.filters.every((flt) => matches(r, flt)));
+    const zone = await referenceZone(prisma);
+    let rows = source.filter((r) => def.filters.every((flt) => matches(r, flt, zone)));
     const personRows = privacy?.kind === 'PERSON_ROWS';
     // "Unfiltered − filtered" must not describe fewer than K people either.
     const excludedPeople = personRows && def.filters.length ? new Set(source.filter((r) => !rows.includes(r)).map((r) => String(r.__subject ?? ''))).size : 0;

@@ -10,8 +10,9 @@ import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.se
 import { dec, toMoneyString } from '../payroll/money';
 import { addManualAdjustmentWithTx, findPayrollResultForEmployee } from '../payroll/payroll-run.service';
 import { appendLedger, balanceDto, loadEntitlementForMutation, sumsOf } from './benefit-ledger';
-import { type Actor, type Db, type Tx, adminScope, benefitsAudit, canSeeEmployee, employeeSnapshot, has, lockRow, nextClaimNumber, notFound, P, snapshotDto, textAudit, today, userNames, visibleEmployeeWhere } from './benefits.types';
+import { type Actor, type Db, type Tx, adminScope, benefitsAudit, canSeeEmployee, employeeSnapshot, has, lockRow, nextClaimNumber, notFound, P, snapshotDto, textAudit, userNames, visibleEmployeeWhere } from './benefits.types';
 import { activeOverride, evaluateRules } from './eligibility.service';
+import { todayForEmployee } from '../../services/business-time/business-time';
 import { enrollmentService, entitlementService } from './enrollment.service';
 
 /**
@@ -37,11 +38,12 @@ async function isApprover(db: Db, auth: AuthContext, workflowInstanceId: string 
   return { any: steps.length > 0, pendingNow: steps.some((s) => s.status === 'PENDING') };
 }
 /** Blockers a draft would hit at submit, so the screen can say them before the button is pressed. */
-function submitBlockers(r: ClaimRow, docs: number, employeeActive: boolean): string[] {
+/** `today` is the claimant's business date (Task 53; this was Bangkok's). */
+function submitBlockers(r: ClaimRow, docs: number, employeeActive: boolean, today: string): string[] {
   const b: string[] = [];
   if (r.period.status !== 'OPEN') b.push('The benefit period is not open');
   if (r.serviceDate < r.period.periodStart || r.serviceDate > r.period.periodEnd) b.push('The service date is outside the benefit period');
-  if (r.serviceDate > today()) b.push('The service date is in the future');
+  if (r.serviceDate > today) b.push('The service date is in the future');
   if (r.period.currencySnapshot && r.currency !== r.period.currencySnapshot) b.push('The claim currency does not match the plan');
   if (dec(r.claimedAmount).lte(0)) b.push('The amount must be greater than zero');
   if (r.period.perClaimMaximumSnapshot && dec(r.claimedAmount).gt(r.period.perClaimMaximumSnapshot)) b.push(`The amount exceeds the per-claim maximum of ${toMoneyString(r.period.perClaimMaximumSnapshot)}`);
@@ -69,7 +71,7 @@ async function claimDetailDto(db: Db, auth: AuthContext, r: ClaimRow): Promise<B
   const names = await userNames(db, r.history.map((h) => h.actorUserId));
   const employee = await db.employee.findUnique({ where: { id: r.employeeId }, select: { employmentStatus: true } });
   const history: BenefitClaimHistoryDto[] = r.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actorName: names.get(h.actorUserId ?? '') ?? null, reasonCode: h.reasonCode, at: h.createdAt.toISOString() }));
-  return { ...(await claimDto(db, auth, r, { docs: docs.length })), documents: docs.map((d) => ({ documentId: d.id, title: d.title, documentNumber: d.documentNumber, accessible: canAccessDocument(auth, d) })), history, balance: r.entitlement ? balanceDto(r.entitlement.currency, sumsOf(r.entitlement)) : null, perClaimMaximum: r.period.perClaimMaximumSnapshot ? toMoneyString(r.period.perClaimMaximumSnapshot) : null, blockers: r.status === 'DRAFT' ? submitBlockers(r, docs.length, employee?.employmentStatus === 'ACTIVE') : [] };
+  return { ...(await claimDto(db, auth, r, { docs: docs.length })), documents: docs.map((d) => ({ documentId: d.id, title: d.title, documentNumber: d.documentNumber, accessible: canAccessDocument(auth, d) })), history, balance: r.entitlement ? balanceDto(r.entitlement.currency, sumsOf(r.entitlement)) : null, perClaimMaximum: r.period.perClaimMaximumSnapshot ? toMoneyString(r.period.perClaimMaximumSnapshot) : null, blockers: r.status === 'DRAFT' ? submitBlockers(r, docs.length, employee?.employmentStatus === 'ACTIVE', await todayForEmployee(db, r.employeeId)) : [] };
 }
 async function history(tx: Tx, claimId: string, from: string | null, to: string, actorUserId: string | null, reasonCode: string | null = null) {
   await tx.benefitClaimStatusHistory.create({ data: { claimId, fromStatus: from, toStatus: to, actorUserId, reasonCode } });
@@ -109,7 +111,7 @@ export const claimService = {
       enrollmentService.forEmployee(employeeId), entitlementService.forEmployee(employeeId), this.list(auth, { page: 1, pageSize: 100, employeeId }),
       prisma.benefitPlan.findMany({ where: { status: 'ACTIVE', employeeSelectable: true }, include: { rules: true, category: { select: { name: true } } }, orderBy: { name: 'asc' } }), prisma.employee.findUnique({ where: { id: employeeId }, include: { organization: { select: { id: true, name: true } }, department: { select: { id: true, name: true } }, position: { select: { id: true, title: true, jobId: true, job: { select: { title: true } } } }, user: { select: { id: true, isActive: true } } } }),
     ]);
-    const t = today();
+    const t = await todayForEmployee(prisma, employeeId);
     const selectablePlans = employee ? await Promise.all(plans.map(async (p) => { const e = evaluateRules(employee, p.rules, await activeOverride(prisma, p.id, employeeId), t); return { id: p.id, code: p.code, name: p.name, planType: p.planType as MyBenefitsDto['selectablePlans'][number]['planType'], categoryName: p.category.name, requiresDocument: p.requiresDocument, eligible: e.eligible, reasons: e.reasons.map((x) => x.message), enrollmentStatus: enrollments.find((en) => en.planId === p.id)?.status ?? null }; })) : [];
     return { enrollments: enrollments.filter((e) => e.planType !== 'COVERAGE_ONLY'), entitlements, claims: claims.data, coverage: enrollments.filter((e) => e.planType === 'COVERAGE_ONLY'), selectablePlans };
   },
@@ -128,7 +130,7 @@ export const claimService = {
       const entitlement = await tx.benefitEntitlement.findUnique({ where: { employeeId_planId_periodId: { employeeId, planId: period.planId, periodId: period.id } } });
       if (!entitlement) throw new AppError(409, 'BENEFIT_NO_ENTITLEMENT', 'You have no entitlement for this period');
       const claim = await tx.benefitClaim.create({ data: {
-        claimNumber: await nextClaimNumber(tx), employeeId, planId: period.planId, periodId: period.id, entitlementId: entitlement.id, planCodeSnapshot: period.plan.code, planNameSnapshot: period.plan.name, categorySnapshot: period.plan.category.name, ...data,
+        claimNumber: await nextClaimNumber(tx, employeeId), employeeId, planId: period.planId, periodId: period.id, entitlementId: entitlement.id, planCodeSnapshot: period.plan.code, planNameSnapshot: period.plan.name, categorySnapshot: period.plan.category.name, ...data,
         currency: period.currencySnapshot ?? entitlement.currency, claimedAmount: dec(input.claimedAmount), perClaimMaximumSnapshot: period.perClaimMaximumSnapshot, requiresDocumentSnapshot: period.requiresDocumentSnapshot, sensitivitySnapshot: period.plan.sensitivity, serviceDate: input.serviceDate, description: input.description ?? null, status: 'DRAFT', createdByUserId: auth.userId,
       } });
       await history(tx, claim.id, null, 'DRAFT', auth.userId);
@@ -165,16 +167,17 @@ export const claimService = {
       if (!r.plan.workflowDefinitionCode) throw new AppError(409, 'BENEFIT_PLAN_NO_WORKFLOW', 'The plan has no claim approval workflow');
       const [employee, enrollment, docs] = await Promise.all([tx.employee.findUnique({ where: { id: r.employeeId }, include: { organization: { select: { id: true, name: true } }, department: { select: { id: true, name: true } }, position: { select: { id: true, title: true, jobId: true, job: { select: { title: true } } } }, user: { select: { id: true, isActive: true } } } }), tx.benefitEnrollment.findUnique({ where: { employeeId_planId: { employeeId: r.employeeId, planId: r.planId } } }), docCount(tx, r.id)]);
       if (!employee) throw notFound('employee');
-      const blockers = submitBlockers(r, docs, employee.employmentStatus === 'ACTIVE');
+      const today = await todayForEmployee(tx, r.employeeId);
+      const blockers = submitBlockers(r, docs, employee.employmentStatus === 'ACTIVE', today);
       if (enrollment?.status !== 'ENROLLED') blockers.push('Not enrolled in this plan');
       const plan = await tx.benefitPlan.findUnique({ where: { id: r.planId }, include: { rules: true } });
-      if (plan && !evaluateRules(employee, plan.rules, await activeOverride(tx, r.planId, r.employeeId), today()).eligible && enrollment?.status === 'ENROLLED') { /* an existing enrolment stands: eligibility was snapshotted at enrolment (§28) */ }
+      if (plan && !evaluateRules(employee, plan.rules, await activeOverride(tx, r.planId, r.employeeId), today).eligible && enrollment?.status === 'ENROLLED') { /* an existing enrolment stands: eligibility was snapshotted at enrolment (§28) */ }
       if (blockers.length) throw new AppError(422, 'BENEFIT_CLAIM_INVALID', blockers.join('; '), blockers.map((b) => ({ field: 'claim', message: b })));
       const ent = await loadEntitlementForMutation(tx, r.entitlementId!);
       if (ent.currency !== r.currency) throw new AppError(422, 'BENEFIT_CURRENCY_MISMATCH', 'The claim currency does not match the entitlement');
       const reserve = await appendLedger(tx, { entitlementId: ent.id, entryType: 'RESERVE', amount: dec(r.claimedAmount), claimId: r.id, operationKey: benefitOperationKeys.claim(r.id, 'reserve'), actorUserId: auth.userId }, { guardAvailable: true });
       const now = new Date();
-      await tx.benefitClaim.update({ where: { id }, data: { status: 'PENDING_APPROVAL', submittedDate: today() } });
+      await tx.benefitClaim.update({ where: { id }, data: { status: 'PENDING_APPROVAL', submittedDate: today } });
       await history(tx, id, 'DRAFT', 'PENDING_APPROVAL', auth.userId);
       const instance = await workflowEngine.submit({ definitionCode: r.plan.workflowDefinitionCode, module: BENEFIT_WORKFLOW.module, entityType: BENEFIT_WORKFLOW.entityType, entityId: r.id, requesterEmployeeId: r.employeeId }, actor, tx);
       const after = await tx.benefitClaim.update({ where: { id }, data: { workflowInstanceId: instance.id } });

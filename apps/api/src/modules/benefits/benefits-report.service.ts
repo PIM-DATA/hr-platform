@@ -3,7 +3,7 @@ import type { BenefitMoneyByCurrencyDto, BenefitsDashboardDto, BenefitsReportDto
 import { prisma } from '../../lib/prisma';
 import { ZERO, dec, money, toMoneyString } from '../payroll/money';
 import { availableOf, sumsOf } from './benefit-ledger';
-import { today } from './benefits.types';
+import { referenceToday } from '../../services/business-time/business-time';
 
 /**
  * Aggregates only. Rows are grouped by plan and category, organization-wide: no employee, no department (a department
@@ -37,7 +37,7 @@ export const benefitsReportService = {
     };
   },
   async report(q: { from?: string; to?: string; organizationId?: string }): Promise<BenefitsReportDto> {
-    const t = today(); const from = q.from ?? `${t.slice(0, 4)}-01-01`; const to = q.to ?? t;
+    const t = await referenceToday(prisma, q.organizationId); const from = q.from ?? `${t.slice(0, 4)}-01-01`; const to = q.to ?? t; // Task 53
     const orgName = q.organizationId ? (await prisma.organization.findUnique({ where: { id: q.organizationId }, select: { name: true } }))?.name ?? '?' : null;
     const [plans, enrollments, entitlements, claims] = await Promise.all([
       prisma.benefitPlan.findMany({ where: q.organizationId ? { OR: [{ organizationId: q.organizationId }, { organizationId: null }] } : {}, include: { category: { select: { name: true } } } }),

@@ -8,7 +8,8 @@ import type { AuthContext } from '../auth/auth.types';
 import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.service';
 import { separateEmployeeWithTx } from '../employees/employees.service';
 import { deactivateUserWithTx } from '../users/users.service';
-import { P, currentOf, employeeSnapshot, has, lifecycleAudit, lifecycleEmployeeWhere, lockRow, notFound, progressOf, snapshotDto, taskDtos, textAudit, today, userNames, type Actor, type Db, type Tx } from './lifecycle.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
+import { P, currentOf, employeeSnapshot, has, lifecycleAudit, lifecycleEmployeeWhere, lockRow, notFound, progressOf, snapshotDto, taskDtos, textAudit, userNames, type Actor, type Db, type Tx } from './lifecycle.types';
 
 /**
  * Offboarding: a checklist and a decision record for a departure. Activation starts tasks; completing tasks makes
@@ -29,7 +30,7 @@ async function dto(db: Db, auth: AuthContext, r: Row, withTasks: boolean): Promi
   const visibleTasks = self ? r.tasks.filter((t) => !CONFIDENTIAL_CATEGORIES.has(t.categorySnapshot) || t.assigneeUserId === auth.userId) : r.tasks;
   const progress = progressOf(r.tasks);
   const open = r.tasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
-  const t = today();
+  const t = await todayForEmployee(db, r.employeeId); // Task 53: the employee's own today
   const base: OffboardingCaseDto = {
     id: r.id, employeeId: r.employeeId, templateId: r.templateId, templateName: r.templateNameSnapshot, snapshot: snapshotDto(r), current,
     reasonCode: r.reasonCode as OffboardingCaseDto['reasonCode'], reasonNote: manage ? r.reasonNote : null, plannedLastWorkingDate: r.plannedLastWorkingDate, actualLastWorkingDate: r.actualLastWorkingDate, status: r.status as OffboardingCaseDto['status'],
@@ -84,7 +85,7 @@ export const offboardingService = {
     const template = input.templateId ? await prisma.lifecycleTemplate.findUnique({ where: { id: input.templateId }, include: { tasks: { orderBy: { sortOrder: 'asc' } } } }) : null;
     if (input.templateId && (!template || template.type !== 'OFFBOARDING' || !template.isActive)) throw new AppError(422, 'VALIDATION_ERROR', 'Choose an active offboarding template', [{ field: 'templateId', message: 'Not an active offboarding template' }]);
     const hrOwnerUserId = input.hrOwnerUserId ?? actor.auth.userId;
-    const caseStart = today();
+    const caseStart = await todayForEmployee(prisma, employee.id); // Task 53: the leaver's business today
     const id = await prisma.$transaction(async (tx) => {
       const c = await tx.offboardingCase.create({ data: { employeeId: employee.id, templateId: template?.id ?? null, templateNameSnapshot: template?.name ?? null, reasonCode: input.reasonCode, reasonNote: input.reasonNote ?? null, plannedLastWorkingDate: input.plannedLastWorkingDate, ...data, hrOwnerUserId, createdByUserId: actor.auth.userId } });
       const tasks: Prisma.OffboardingTaskCreateManyInput[] = [];

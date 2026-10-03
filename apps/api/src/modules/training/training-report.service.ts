@@ -1,6 +1,8 @@
 import { completionRate, trainingHours, type MyDevelopmentDto, type TeamDevelopmentDto, type TrainingReportDto, type TrainingReportQuery } from '@hr/shared';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
+import { addDays, businessDayStart } from '@hr/shared';
+import { referenceZone } from '../../services/business-time/business-time';
 import { employeeScopeWhere } from '../employees/employees.scope';
 import type { AuthContext } from '../auth/auth.types';
 import { enrollmentInclude, toEnrollmentDto } from './enrollment.service';
@@ -20,6 +22,7 @@ import { enrollmentInclude, toEnrollmentDto } from './enrollment.service';
  */
 export const trainingReportService = {
   async report(q: TrainingReportQuery): Promise<TrainingReportDto> {
+    const zone = q.from || q.to ? await referenceZone(prisma) : 'UTC'; // Task 53: business days in the reference organization's zone
     const where: Prisma.TrainingEnrollmentWhereInput = {
       ...(q.courseId ? { session: { courseId: q.courseId } } : {}),
       ...(q.departmentId ? { employee: { departmentId: q.departmentId } } : {}),
@@ -27,8 +30,8 @@ export const trainingReportService = {
         ? {
             session: {
               ...(q.courseId ? { courseId: q.courseId } : {}),
-              ...(q.from ? { startAt: { gte: new Date(`${q.from}T00:00:00.000Z`) } } : {}),
-              ...(q.to ? { endAt: { lte: new Date(`${q.to}T23:59:59.999Z`) } } : {}),
+              ...(q.from ? { startAt: { gte: businessDayStart(q.from, zone) } } : {}),
+              ...(q.to ? { endAt: { lt: businessDayStart(addDays(q.to, 1), zone) } } : {}),
             },
           }
         : {}),

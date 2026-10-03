@@ -13,13 +13,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { errorMessage } from '@/features/organization/shared';
 import { useMyDocuments } from '@/features/documents/documents.api';
 import { useBenefitClaim, useBenefitsMutations, useBenefitsOptions, useClaimReview, usePayrollPeriodOptions } from './benefits.api';
+import { localToday } from '@/lib/format';
 import { BalanceBar, BenefitBadge, fmtDate, money } from './benefits-ui';
 
 /** A claim as its owner or an administrator sees it: facts, balance, documents, history, and the actions the API allows. */
 export function ClaimModal({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useBenefitClaim(id); const m = useBenefitsMutations(); const toast = useToast(); const { user, hasPermission } = useAuth();
   const [confirm, setConfirm] = useState<'submit' | 'cancel' | null>(null); const [paying, setPaying] = useState(false); const [payroll, setPayroll] = useState(false); const [error, setError] = useState<string | null>(null);
-  const [pay, setPay] = useState({ paymentMethod: 'EXTERNAL', paymentReference: '', paidDate: new Date().toISOString().slice(0, 10) }); const [pr, setPr] = useState({ payrollPeriodId: '', componentId: '' }); const [docId, setDocId] = useState('');
+  const [pay, setPay] = useState({ paymentMethod: 'EXTERNAL', paymentReference: '', paidDate: localToday() }); const [pr, setPr] = useState({ payrollPeriodId: '', componentId: '' }); const [docId, setDocId] = useState('');
   const options = useBenefitsOptions(); const periods = usePayrollPeriodOptions(payroll);
   const isOwner = !!user?.employee && q.data?.employeeId === user.employee.id;
   const myDocs = useMyDocuments(isOwner && !!q.data && (q.data.status === 'DRAFT' || q.data.status === 'PENDING_APPROVAL'));

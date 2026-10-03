@@ -5,7 +5,8 @@ import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
 import { notificationService } from '../../services/notification/notification.service';
 import type { AuthContext } from '../auth/auth.types';
-import { P, employeeSnapshot, has, learningAudit, lockRow, notFound, scopedEmployeeIds, snapshotDto, textAudit, today, userNames, type Actor, type Db } from './learning.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
+import { P, employeeSnapshot, has, learningAudit, lockRow, notFound, scopedEmployeeIds, snapshotDto, textAudit, userNames, type Actor, type Db } from './learning.types';
 
 /**
  * Learning paths: an ordered list of steps (course, OJT program, IDP activity, certification) with an optional
@@ -72,7 +73,7 @@ async function loadAssignment(db: Db, id: string) { const r = await db.learningP
 /** Projects each step's fulfilment from its source domain and caches it. Called before every read of an assignment. */
 async function refresh(db: Db, r: AsgRow): Promise<AsgRow> {
   if (r.status !== 'ACTIVE') return r;
-  const t = today(); let changed = false;
+  const t = await todayForEmployee(db, r.employeeId); let changed = false; // Task 53: the employee's own today
   for (const s of r.steps) {
     if (s.fulfilledAt) continue;
     let sourceId: string | null = null;

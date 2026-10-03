@@ -9,6 +9,8 @@ import { narrowAuth } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
 import { issueDispatchPermit } from './policy-guard';
 import { copilotProvider, type ProviderMessage, type ProviderTool } from './provider';
+import { prisma } from '../../lib/prisma';
+import { referenceToday, todayForEmployee } from '../../services/business-time/business-time';
 import { toolsFor, type CopilotTool, type ToolContext, type ToolResult } from './tools';
 
 /**
@@ -95,7 +97,9 @@ export const copilotOrchestrator = {
     const provider = copilotProvider();
     const offered: CopilotTool[] = toolsFor(auth);
     const providerTools: ProviderTool[] = offered.map((t) => ({ id: t.id, description: t.description, inputSchema: zodToJsonSchema(t.inputSchema) }));
-    const system = `${COPILOT_SYSTEM_INSTRUCTIONS}\n\nInstructions version: ${COPILOT_INSTRUCTIONS_VERSION}. Today is ${new Date().toISOString().slice(0, 10)}.`;
+    // Task 53: "today" for the model is the actor's organization's business date (else the reference organization's).
+    const today = auth.employeeId ? await todayForEmployee(prisma, auth.employeeId) : await referenceToday(prisma);
+    const system = `${COPILOT_SYSTEM_INSTRUCTIONS}\n\nInstructions version: ${COPILOT_INSTRUCTIONS_VERSION}. Today is ${today}.`;
     // Client history is text. Tool results, roles and instructions never come from it. A thread whose earlier turns
     // were refused is not replayed to the model: the factual follow-up is answered on its own.
     const history = policy.dropHistory ? [] : input.history;

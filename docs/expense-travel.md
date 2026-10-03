@@ -105,7 +105,7 @@ Item checks (shown as blockers while the report is a draft):
 Report checks: at least one item, policy active and in effect today, the optional report maximum (exact Decimal:
 a 5000.00 total passes a 5000.00 maximum, 5000.01 does not), the policy re-resolution above, and the trip link.
 The maximum-age rule is inclusive: with `maximumAgeDays = 30` an item dated exactly 30 days before the business
-date (Asia/Bangkok) is allowed and one dated 31 days before is blocked, on the item and again at submission. The total is always the server's Σ of the item amounts (a cached copy is kept on the report and rechecked at
+date (the claimant's organization's timezone — Task 53; this was fixed to Asia/Bangkok) is allowed and one dated 31 days before is blocked, on the item and again at submission. The total is always the server's Σ of the item amounts (a cached copy is kept on the report and rechecked at
 submit; the items are the truth). The browser never computes money.
 
 Submission runs in one transaction: lock the report, recompute the blockers, freeze the rule snapshots on each

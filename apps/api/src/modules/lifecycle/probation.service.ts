@@ -5,7 +5,8 @@ import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
 import { notificationService } from '../../services/notification/notification.service';
 import type { AuthContext } from '../auth/auth.types';
-import { P, currentOf, employeeSnapshot, has, lifecycleAudit, lifecycleEmployeeWhere, lockRow, notFound, snapshotDto, textAudit, today, userNames, type Actor, type Db, type Tx } from './lifecycle.types';
+import { perOrganizationToday, todayForEmployee } from '../../services/business-time/business-time';
+import { P, currentOf, employeeSnapshot, has, lifecycleAudit, lifecycleEmployeeWhere, lockRow, notFound, snapshotDto, textAudit, userNames, type Actor, type Db, type Tx } from './lifecycle.types';
 
 /**
  * Probation: a configurable period, a human review, an optional extension, a recorded outcome. The system computes
@@ -23,7 +24,7 @@ async function dto(db: Db, auth: AuthContext, r: Row, self: boolean): Promise<Pr
   const [names, current] = await Promise.all([userNames(db, [r.reviewerUserId, ...r.reviews.map((x) => x.reviewerUserId)]), currentOf(db, r.employeeId)]);
   const open = r.status === 'ACTIVE' || r.status === 'PENDING_REVIEW' || r.status === 'EXTENDED';
   return {
-    id: r.id, employeeId: r.employeeId, policyId: r.policyId, policyName: r.policyNameSnapshot, snapshot: snapshotDto(r), current, startDate: r.startDate, originalEndDate: r.originalEndDate, currentEndDate: r.currentEndDate, daysRemaining: calendarDaysBetween(today(), r.currentEndDate),
+    id: r.id, employeeId: r.employeeId, policyId: r.policyId, policyName: r.policyNameSnapshot, snapshot: snapshotDto(r), current, startDate: r.startDate, originalEndDate: r.originalEndDate, currentEndDate: r.currentEndDate, daysRemaining: calendarDaysBetween(await todayForEmployee(db, r.employeeId), r.currentEndDate),
     reviewerUserId: self ? null : r.reviewerUserId, reviewerName: self ? null : (r.reviewerUserId ? (names.get(r.reviewerUserId) ?? null) : null), status: r.status as ProbationCaseDto['status'], finalOutcome: r.finalOutcome as ProbationCaseDto['finalOutcome'], extensions: r.reviews.filter((x) => x.outcome === 'EXTEND').length,
     // Review comments are the reviewer's and HR's; the employee sees dates and outcomes only.
     reviews: r.reviews.map((x) => ({ id: x.id, reviewerUserId: x.reviewerUserId, reviewerName: names.get(x.reviewerUserId) ?? null, reviewDate: x.reviewDate, outcome: x.outcome as ProbationCaseDto['reviews'][number]['outcome'], comment: manage || reviewer ? x.comment : null, extensionEndDate: x.extensionEndDate, submittedAt: x.submittedAt.toISOString() })),
@@ -58,7 +59,7 @@ export const probationService = {
   },
 
   async list(auth: AuthContext, q: { page: number; pageSize: number; status?: string; departmentId?: string; dueWithinDays?: number; mine?: string; employeeId?: string }) {
-    const where: Prisma.ProbationCaseWhereInput = { ...(await lifecycleEmployeeWhere(auth) as Prisma.ProbationCaseWhereInput), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.employeeId ? { AND: [{ employeeId: q.employeeId }] } : {}), ...(q.dueWithinDays !== undefined ? { status: { in: ['ACTIVE', 'PENDING_REVIEW', 'EXTENDED'] }, currentEndDate: { lte: addCalendarDays(today(), q.dueWithinDays) } } : {}) };
+    const where: Prisma.ProbationCaseWhereInput = { ...(await lifecycleEmployeeWhere(auth) as Prisma.ProbationCaseWhereInput), status: q.status, departmentIdSnapshot: q.departmentId, ...(q.employeeId ? { AND: [{ employeeId: q.employeeId }] } : {}), ...(q.dueWithinDays !== undefined ? { status: { in: ['ACTIVE', 'PENDING_REVIEW', 'EXTENDED'] }, AND: [await perOrganizationToday<Prisma.ProbationCaseWhereInput>(prisma, 'employeeId', (t) => ({ currentEndDate: { lte: addCalendarDays(t, q.dueWithinDays!) } }))] } : {}) };
     const final: Prisma.ProbationCaseWhereInput = q.mine ? { OR: [where, { reviewerUserId: auth.userId }] } : where;
     const [total, rows] = await prisma.$transaction([prisma.probationCase.count({ where: final }), prisma.probationCase.findMany({ where: final, include, orderBy: [{ currentEndDate: 'asc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize })]);
     return { data: await Promise.all(rows.map((r) => dto(prisma, auth, r, r.employeeId === auth.employeeId && !has(auth, P.PROBATION_MANAGE)))), meta: { page: q.page, pageSize: q.pageSize, total } };
@@ -118,7 +119,7 @@ export const probationService = {
       const reviewer = c.reviewerUserId === auth.userId && has(auth, P.PROBATION_REVIEW);
       if (!reviewer && !has(auth, P.PROBATION_MANAGE)) throw AppError.forbidden('Only the assigned reviewer or a probation manager may record the review');
       if (!['ACTIVE', 'PENDING_REVIEW', 'EXTENDED'].includes(c.status)) throw new AppError(409, 'PROBATION_CASE_CLOSED', `A ${c.status.toLowerCase().replace('_', ' ')} case cannot be reviewed again`);
-      const reviewDate = input.reviewDate ?? today();
+      const reviewDate = input.reviewDate ?? await todayForEmployee(tx, c.employeeId);
       let newEnd = c.currentEndDate;
       if (input.outcome === 'EXTEND') {
         if (!c.allowExtension) throw new AppError(409, 'PROBATION_EXTENSION_NOT_ALLOWED', 'This probation policy does not allow extensions');

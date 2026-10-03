@@ -12,6 +12,7 @@ import { hasPermission } from '../../services/authorization/authorization.servic
 import { employeeScopeWhere } from '../employees/employees.scope';
 import type { AuthContext } from '../auth/auth.types';
 import { activeEnrollmentCount, sessionInclude, toSessionDto } from './training-catalog.service';
+import { businessDateIn } from '../../services/business-time/business-time';
 import { trainingAudit, type Actor, type Db, type Tx } from './training.types';
 
 /**
@@ -143,7 +144,7 @@ export const enrollmentService = {
             data: { sessionId },
             dedupeKey: `training:${sessionId}:${employee.id}:enrolled:${Date.now()}`,
           },
-          { courseTitle: session.courseTitleSnapshot, date: session.startAt.toISOString().slice(0, 10) },
+          { courseTitle: session.courseTitleSnapshot, date: businessDateIn(session.startAt, session.timezone) },
           tx,
         );
       }
@@ -325,7 +326,7 @@ export const sessionLifecycleService = {
               data: { sessionId },
               dedupeKey: `training:${sessionId}:${place.employeeId}:cancelled`,
             },
-            { courseTitle: session.courseTitleSnapshot, date: session.startAt.toISOString().slice(0, 10) },
+            { courseTitle: session.courseTitleSnapshot, date: businessDateIn(session.startAt, session.timezone) },
             tx,
           );
         }

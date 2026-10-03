@@ -7,7 +7,8 @@ import { hasPermission, scopeFor } from '../../services/authorization/authorizat
 import type { AuthContext } from '../auth/auth.types';
 import { getDataset, listDatasets, validateDefinition, type FieldDef, type ReportDataset } from './registry';
 import './datasets';
-import { REPORT_TEMPLATES } from './templates';
+import { reportTemplates } from './templates';
+import { referenceToday } from '../../services/business-time/business-time';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
 const audit = (actor: Actor, action: AuditAction, recordId: string, newValue: unknown, oldValue?: unknown) => ({ userId: actor.auth.userId, ipAddress: actor.ipAddress, userAgent: actor.userAgent, action, module: 'reports' as AuditModule, recordType: 'SavedReport', recordId, oldValue, newValue });
@@ -47,7 +48,7 @@ function requireDataset(auth: AuthContext, id: string): ReportDataset {
 
 export const reportsService = {
   datasets(auth: AuthContext): ReportDatasetDto[] { return listDatasets().filter((d) => datasetAccess(auth, d)).map((d) => datasetDto(auth, d)); },
-  templates(auth: AuthContext): ReportTemplateDto[] { return REPORT_TEMPLATES.filter((t) => { const d = getDataset(t.datasetId); return d && datasetAccess(auth, d); }); },
+  async templates(auth: AuthContext): Promise<ReportTemplateDto[]> { return reportTemplates(await referenceToday(prisma)).filter((t) => { const d = getDataset(t.datasetId); return d && datasetAccess(auth, d); }); },
 
   async run(auth: AuthContext, datasetId: string, definition: ReportDefinition, page: number): Promise<ReportRunResultDto> {
     const d = requireDataset(auth, datasetId);

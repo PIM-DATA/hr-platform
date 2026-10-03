@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { formatDate } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -19,4 +20,5 @@ export function Progress({ pct, hint }: { pct: number; hint?: string }) { return
 export const Table = ({ head, rows }: { head: string[]; rows: ReactNode[][] }) => (
   <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{head.map((h) => <th key={h} className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{rows.length === 0 ? <tr><td colSpan={head.length} className="px-4 py-4 text-sm text-slate-400">Nothing in this range.</td></tr> : rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="px-4 py-2 tabular-nums">{c}</td>)}</tr>)}</tbody></table></div>
 );
-export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
+/** Task 53: business dates as calendar dates in any browser zone; instants in the viewer's zone. */
+export const fmtDate = (iso: string | null | undefined) => formatDate(iso);

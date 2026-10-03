@@ -11,8 +11,9 @@ import { toMoneyString } from '../payroll/money';
 import { canAccessDocument } from '../documents/documents.service';
 import type { AuthContext } from '../auth/auth.types';
 import {
-  type Actor, type Db, type EmployeeRow, type Tx, P, canIssueSalaryLetter, employeeInclude, has, isOwner, letterAdminScope, lockRow, nextNumber, notFound, servicesAudit, snapshotData, snapshotDto, textAudit, today, userNames, visibleLetterWhere,
+  type Actor, type Db, type EmployeeRow, type Tx, P, canIssueSalaryLetter, employeeInclude, has, isOwner, letterAdminScope, lockRow, nextNumber, notFound, servicesAudit, snapshotData, snapshotDto, textAudit, userNames, visibleLetterWhere,
 } from './services.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
 import { isSelf } from '../../services/authorization/self-dealing';
 
 const letterInclude = { template: { select: { code: true, name: true } }, serviceRequest: { select: { requestNumber: true } } } satisfies Prisma.HrLetterInclude;
@@ -152,9 +153,9 @@ export async function issueLetterWithTx(tx: Tx, input: IssueHrLetterInput & { se
   const template = await tx.hrLetterTemplate.findUnique({ where: { id: input.templateId } });
   if (!template) throw notFound('hr letter template');
   if (!template.isActive) throw new AppError(409, 'HR_LETTER_TEMPLATE_NOT_ACTIVE', 'This letter template is not active');
-  const issueDate = input.issueDate ?? today();
+  const issueDate = input.issueDate ?? await todayForEmployee(tx, input.employeeId);
   const scan = scanOrThrow(template.bodyTemplate, template.subjectTemplate);
-  const letterNumber = await nextNumber(tx, 'letter');
+  const letterNumber = await nextNumber(tx, 'letter', input.employeeId);
   const { values, salary } = await resolveTokens(tx, employee, scan.tokens, letterNumber, issueDate, auth);
   const body = renderHrLetter(template.bodyTemplate, values);
   const subject = template.subjectTemplate ? renderHrLetter(template.subjectTemplate, values) : null;

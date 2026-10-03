@@ -5,6 +5,7 @@ import { prisma } from '../../lib/prisma';
 import { auditService } from '../../services/audit/audit.service';
 import type { AuthContext } from '../auth/auth.types';
 import { engagementAudit, lockAssignment, notFound, questionDto, shareLockSurvey, type Actor } from './engagement.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
 import { loadSurvey } from './survey.service';
 
 /**
@@ -61,7 +62,7 @@ export const responseService = {
       const now = new Date();
       // The response row carries the survey, the day and the assignment's survey-local cohort tokens — nothing else.
       // Identity for an identified survey goes to its own table; an anonymous submission never writes that table.
-      const response = await tx.engagementResponse.create({ data: { surveyId, responseMode: survey.responseMode, orgCohortId: a.orgCohortId, deptCohortId: a.deptCohortId, jobCohortId: a.jobCohortId, submittedDate: now.toISOString().slice(0, 10) } });
+      const response = await tx.engagementResponse.create({ data: { surveyId, responseMode: survey.responseMode, orgCohortId: a.orgCohortId, deptCohortId: a.deptCohortId, jobCohortId: a.jobCohortId, submittedDate: await todayForEmployee(tx, employeeId) } }); // Task 53: the respondent's business date (no zone or identity is stored)
       if (!anonymous) await tx.engagementIdentifiedRespondent.create({ data: { responseId: response.id, assignmentId: a.id, employeeId, submittedAt: now } });
       const rows: Prisma.EngagementResponseAnswerCreateManyInput[] = [];
       for (const ans of input.answers) {

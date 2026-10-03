@@ -7,7 +7,8 @@ import { notificationService } from '../../services/notification';
 import { workflowEngine, type WorkflowCallbackContext } from '../../services/workflow';
 import type { AuthContext } from '../auth/auth.types';
 import { dec, toMoneyString } from '../payroll/money';
-import { type Actor, type Db, type Tx, adminScope, canSeeEmployee, employeeSnapshot, expenseAudit, has, history, historyDto, lockRow, nextNumber, notFound, P, snapshotDto, textAudit, today, visibleEmployeeWhere } from './expense.types';
+import { todayForEmployee } from '../../services/business-time/business-time';
+import { type Actor, type Db, type Tx, adminScope, canSeeEmployee, employeeSnapshot, expenseAudit, has, history, historyDto, lockRow, nextNumber, notFound, P, snapshotDto, textAudit, visibleEmployeeWhere } from './expense.types';
 
 /**
  * Travel requests: a plan with an estimate, approved through the generic workflow. Approval books nothing, pays
@@ -73,7 +74,7 @@ export const travelService = {
       const { employee, data } = await employeeSnapshot(tx, employeeId);
       if (employee.employmentStatus !== 'ACTIVE') throw new AppError(409, 'EMPLOYEE_NOT_ACTIVE', 'Travel requests need an active employee');
       if (policy.organizationId && policy.organizationId !== employee.organizationId) throw new AppError(422, 'VALIDATION_ERROR', 'This travel policy belongs to another organization', [{ field: 'travelPolicyId', message: 'Not applicable' }]);
-      const r = await tx.travelRequest.create({ data: { requestNumber: await nextNumber(tx, 'travel'), employeeId, travelPolicyId: policy.id, travelPolicyNameSnapshot: policy.name, ...data, purpose: input.purpose, destination: input.destination, startDate: input.startDate, endDate: input.endDate, estimatedAmount: dec(input.estimatedAmount), currency: policy.currency, createdByUserId: auth.userId } });
+      const r = await tx.travelRequest.create({ data: { requestNumber: await nextNumber(tx, 'travel', employeeId), employeeId, travelPolicyId: policy.id, travelPolicyNameSnapshot: policy.name, ...data, purpose: input.purpose, destination: input.destination, startDate: input.startDate, endDate: input.endDate, estimatedAmount: dec(input.estimatedAmount), currency: policy.currency, createdByUserId: auth.userId } });
       await history(tx, 'TRAVEL_REQUEST', r.id, null, 'DRAFT', auth.userId);
       await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.CREATE_TRAVEL_REQUEST, 'TravelRequest', r.id, { requestNumber: r.requestNumber, travelPolicyId: policy.id, startDate: r.startDate, endDate: r.endDate, estimatedAmount: toMoneyString(r.estimatedAmount), currency: r.currency, destinationLength: r.destination.length, purposeLength: r.purpose.length }), tx);
       return r.id;
@@ -140,7 +141,7 @@ export const travelService = {
       if (r.status !== 'APPROVED') throw new AppError(409, 'TRAVEL_REQUEST_NOT_APPROVED', 'Only an approved trip can be marked completed');
       await tx.travelRequest.update({ where: { id }, data: { status: 'COMPLETED', completedAt: new Date() } });
       await history(tx, 'TRAVEL_REQUEST', id, 'APPROVED', 'COMPLETED', auth.userId);
-      await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.COMPLETE_TRAVEL_REQUEST, 'TravelRequest', id, { completedOn: today() }), tx);
+      await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.COMPLETE_TRAVEL_REQUEST, 'TravelRequest', id, { completedOn: await todayForEmployee(tx, r.employeeId) }), tx);
     });
     return this.get(auth, id);
   },

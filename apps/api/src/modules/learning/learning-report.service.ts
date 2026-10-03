@@ -2,7 +2,8 @@ import { CERTIFICATION_EXPIRY_WINDOW_DAYS, certificationStatus, type LearningDas
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import type { AuthContext } from '../auth/auth.types';
-import { scopedEmployeeIds, today } from './learning.types';
+import { scopedEmployeeIds } from './learning.types';
+import { businessRange, employeeTodays, referenceToday, referenceZone } from '../../services/business-time/business-time';
 
 /**
  * Learning reporting: counts by department, program, path and certification. Nothing here names a person or
@@ -31,7 +32,7 @@ async function scope(auth: AuthContext) { const ids = await scopedEmployeeIds(au
 
 export const learningReportService = {
   async dashboard(auth: AuthContext): Promise<LearningDashboardDto> {
-    const s = await scope(auth); const t = today(); const ago90 = new Date(Date.now() - 90 * 86_400_000);
+    const s = await scope(auth); const ago90 = new Date(Date.now() - 90 * 86_400_000);
     const [openNeeds, completedEnrollments, upcoming, activeIdps, ojtActiveRows, ojtCompleted, paths, certs] = await Promise.all([
       prisma.trainingNeed.count({ where: { ...s, status: { in: ['OPEN', 'PLANNED', 'IN_PROGRESS'] } } }),
       prisma.trainingEnrollment.count({ where: { ...s, status: 'COMPLETED', updatedAt: { gte: ago90 } } }),
@@ -40,13 +41,14 @@ export const learningReportService = {
       prisma.ojtPlan.findMany({ where: { ...s, status: 'ACTIVE' }, select: { trainerUserId: true, activities: { select: { status: true, required: true, criteria: { select: { id: true, required: true } }, observations: { select: { criterionId: true, observerUserId: true, result: true } } } }, assessments: { select: { id: true } } } }),
       prisma.ojtPlan.count({ where: { ...s, status: 'COMPLETED', completedAt: { gte: ago90 } } }),
       prisma.learningPathAssignment.findMany({ where: { ...s, OR: [{ status: 'ACTIVE' }, { status: 'COMPLETED', completedAt: { gte: ago90 } }] }, select: { status: true, steps: { select: { fulfilledAt: true } } } }),
-      prisma.employeeCertification.findMany({ where: s, select: { expiryDate: true, revokedAt: true, definition: { select: { expiryWindowDays: true } } } }),
+      prisma.employeeCertification.findMany({ where: s, select: { employeeId: true, expiryDate: true, revokedAt: true, definition: { select: { expiryWindowDays: true } } } }),
     ]);
     const awaiting = ojtActiveRows.filter((p) => p.activities.filter((a) => a.required).every((a) => a.status === 'COMPLETED' || a.status === 'SKIPPED') && p.assessments.length === 0).length;
     const needObs = ojtActiveRows.reduce((n, p) => n + p.activities.filter((a) => (a.status === 'PENDING' || a.status === 'IN_PROGRESS') && a.criteria.some((c) => c.required && !a.observations.some((o) => o.criterionId === c.id && o.observerUserId === p.trainerUserId && o.result === 'MEETS'))).length, 0);
     const activePaths = paths.filter((p) => p.status === 'ACTIVE');
     const pcts = activePaths.map((p) => (p.steps.length ? (p.steps.filter((x) => x.fulfilledAt).length / p.steps.length) * 100 : 0));
-    const statuses = certs.map((c) => certificationStatus({ expiryDate: c.expiryDate, revokedAt: c.revokedAt }, t, c.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS));
+    const certTodays = await employeeTodays(prisma, certs.map((c) => c.employeeId)); // Task 53: each holder's own today
+    const statuses = certs.map((c) => certificationStatus({ expiryDate: c.expiryDate, revokedAt: c.revokedAt }, certTodays.get(c.employeeId)!, c.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS));
     return {
       training: { openNeeds, completedEnrollmentsLast90Days: completedEnrollments, upcomingSessions: upcoming, activeIdps },
       ojt: { active: ojtActiveRows.length, completedLast90Days: ojtCompleted, awaitingAssessment: awaiting, activitiesNeedingObservation: needObs },
@@ -56,18 +58,21 @@ export const learningReportService = {
     };
   },
   async report(auth: AuthContext, q: { from?: string; to?: string; organizationId?: string }): Promise<LearningReportDto> {
-    const s = await scope(auth); const t = today(); const from = q.from ?? `${t.slice(0, 4)}-01-01`; const to = q.to ?? t;
+    // Task 53: default range from the filtered (or reference) organization's today; instant filters use its day boundaries.
+    const zone = await referenceZone(prisma, q.organizationId);
+    const s = await scope(auth); const t = await referenceToday(prisma, q.organizationId); const from = q.from ?? `${t.slice(0, 4)}-01-01`; const to = q.to ?? t;
     const org: Prisma.OjtPlanWhereInput = q.organizationId ? { organizationSnapshot: (await prisma.organization.findUnique({ where: { id: q.organizationId }, select: { name: true } }))?.name ?? '?' } : {};
     const [plans, asgs, certs] = await Promise.all([
       prisma.ojtPlan.findMany({ where: { ...s, ...org, OR: [{ startDate: { gte: from, lte: to } }, { status: 'ACTIVE' }] }, select: { status: true, startDate: true, completedAt: true, departmentSnapshot: true, programNameSnapshot: true, activities: { select: { status: true } } } }),
-      prisma.learningPathAssignment.findMany({ where: { ...s, ...(org as Prisma.LearningPathAssignmentWhereInput), OR: [{ assignedAt: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T23:59:59Z`) } }, { status: 'ACTIVE' }] }, select: { status: true, pathNameSnapshot: true, departmentSnapshot: true, steps: { select: { fulfilledAt: true } } } }),
+      prisma.learningPathAssignment.findMany({ where: { ...s, ...(org as Prisma.LearningPathAssignmentWhereInput), OR: [{ assignedAt: businessRange(from, to, zone) }, { status: 'ACTIVE' }] }, select: { status: true, pathNameSnapshot: true, departmentSnapshot: true, steps: { select: { fulfilledAt: true } } } }),
       prisma.employeeCertification.findMany({ where: { AND: [s, await certOrganizationWhere(q.organizationId)] }, select: { employeeId: true, expiryDate: true, revokedAt: true, definitionNameSnapshot: true, definition: { select: { expiryWindowDays: true } } } }),
     ]);
     const group = <T, K extends string>(rows: T[], key: (r: T) => K) => { const m = new Map<K, T[]>(); for (const r of rows) { const k = key(r); m.set(k, [...(m.get(k) ?? []), r]); } return m; };
     const completedPlans = plans.filter((p) => p.status === 'COMPLETED' && p.completedAt);
     const durations = completedPlans.map((p) => Math.round((p.completedAt!.getTime() - Date.parse(`${p.startDate}T00:00:00Z`)) / 86_400_000)).filter((d) => d >= 0);
     const deptOf = new Map((await prisma.employee.findMany({ where: { id: { in: [...new Set(certs.map((c) => c.employeeId))] } }, select: { id: true, department: { select: { name: true } } } })).map((e) => [e.id, e.department.name]));
-    const certRows = certs.map((c) => ({ ...c, st: certificationStatus({ expiryDate: c.expiryDate, revokedAt: c.revokedAt }, t, c.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), department: deptOf.get(c.employeeId) ?? '—' }));
+    const certTodays = await employeeTodays(prisma, certs.map((c) => c.employeeId));
+    const certRows = certs.map((c) => ({ ...c, st: certificationStatus({ expiryDate: c.expiryDate, revokedAt: c.revokedAt }, certTodays.get(c.employeeId)!, c.definition.expiryWindowDays ?? CERTIFICATION_EXPIRY_WINDOW_DAYS), department: deptOf.get(c.employeeId) ?? '—' }));
     const count = (rows: { st: string }[], st: string) => rows.filter((x) => x.st === st).length;
     return {
       range: { from, to },

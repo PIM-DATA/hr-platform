@@ -21,7 +21,7 @@ export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
 
 reportsRouter.get('/datasets', view, (req, res) => res.json({ data: reportsService.datasets(req.auth!) }));
-reportsRouter.get('/templates', view, (req, res) => res.json({ data: reportsService.templates(req.auth!) }));
+reportsRouter.get('/templates', view, async (req, res) => res.json({ data: await reportsService.templates(req.auth!) }));
 reportsRouter.post('/run', view, validate(runReportSchema), async (req, res) => res.json({ data: await reportsService.run(req.auth!, req.body.datasetId, req.body.definition, req.body.page) }));
 reportsRouter.post('/export', view, validate(runReportSchema.omit({ page: true }).extend({ name: z.string().trim().max(120).optional() })), async (req, res) => {
   const { csv, rows } = await reportsService.exportCsv(actor(req), req.body.datasetId, req.body.definition, null);

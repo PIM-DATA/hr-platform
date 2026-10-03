@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ModuleIndex } from '@/components/guards/ModuleIndex';
+import { localToday, formatDate } from '@/lib/format';
 import { useAuth } from '@/hooks/useAuth';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -14,8 +15,9 @@ const LABEL: Record<string, string> = { PENDING_APPROVAL: 'Pending approval', RE
 export function ExpenseBadge({ status }: { status: string }) { return <StatusBadge status={LABEL[status] ?? titleCase(status)} tone={TONE[status] ?? 'neutral'} />; }
 /** Money arrives as a decimal string and is shown as a decimal string: no arithmetic, no float, no rounding in the browser. The total is the API's Σ of the items. */
 export const money = (v: string | null | undefined, currency?: string | null) => (v === null || v === undefined ? '—' : `${v}${currency ? ` ${currency}` : ''}`);
-export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
-export const todayIso = () => new Date().toISOString().slice(0, 10);
+/** Task 53: business dates as calendar dates in any browser zone; instants in the viewer's zone. */
+export const fmtDate = (iso: string | null | undefined) => formatDate(iso);
+export const todayIso = () => localToday();
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: string; tone?: 'warning' | 'danger' }) {
   return <div className={`rounded-lg border p-4 ${tone === 'danger' ? 'border-red-200 bg-red-50' : tone === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}><div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value}</div>{hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}</div>;
 }

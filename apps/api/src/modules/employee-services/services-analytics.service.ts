@@ -1,6 +1,6 @@
 import type { HrLetterType, ServiceCategory, ServiceDashboardDto, ServiceReportsDto } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
-import { today } from './services.types';
+import { employeeTodays, referenceToday } from '../../services/business-time/business-time';
 
 /**
  * Aggregates only. Counts, months and averages by request type, category and letter type; never an employee, a
@@ -20,20 +20,21 @@ const average = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a
 export const serviceAnalyticsService = {
   /** Current state. With an organization, rows are those whose organization snapshot matches. */
   async dashboard(q: { organizationId?: string } = {}): Promise<ServiceDashboardDto> {
-    const t = today();
     const orgName = q.organizationId ? ((await prisma.organization.findUnique({ where: { id: q.organizationId }, select: { name: true } }))?.name ?? '?') : null;
     const snap = orgName ? { organizationSnapshot: orgName } : {};
     const [requests, letters] = await Promise.all([
-      prisma.serviceRequest.findMany({ where: snap, select: { status: true, dueDate: true, submittedAt: true, fulfilledAt: true } }),
+      prisma.serviceRequest.findMany({ where: snap, select: { employeeId: true, status: true, dueDate: true, submittedAt: true, fulfilledAt: true } }),
       prisma.hrLetter.findMany({ where: snap, select: { status: true, letterTypeSnapshot: true } }),
     ]);
     const count = (s: string) => requests.filter((r) => r.status === s).length;
     const open = requests.filter((r) => ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(r.status));
     const fulfilled = requests.filter((r) => r.fulfilledAt && r.submittedAt);
+    // Task 53: "before today" is judged in each requester's organization zone — the same rule as the request list.
+    const todays = await employeeTodays(prisma, open.map((r) => r.employeeId));
     return {
       requests: {
         draft: count('DRAFT'), submitted: count('SUBMITTED'), inProgress: count('IN_PROGRESS'), waitingEmployee: count('WAITING_EMPLOYEE'),
-        overdue: open.filter((r) => r.dueDate && r.dueDate < t).length, fulfilled: count('FULFILLED'), rejected: count('REJECTED'), cancelled: count('CANCELLED'),
+        overdue: open.filter((r) => r.dueDate && r.dueDate < todays.get(r.employeeId)!).length, fulfilled: count('FULFILLED'), rejected: count('REJECTED'), cancelled: count('CANCELLED'),
       },
       letters: {
         issued: letters.filter((l) => l.status === 'ISSUED').length, voided: letters.filter((l) => l.status === 'VOID').length,
@@ -45,14 +46,15 @@ export const serviceAnalyticsService = {
   },
 
   async report(q: { from?: string; to?: string; organizationId?: string }): Promise<ServiceReportsDto> {
-    const t = today();
+    // Task 53: the default range is the (filtered or reference) organization's year to date; requests are matched on
+    // their submitted BUSINESS date (recorded in the requester's zone), not on a UTC day of the submission instant.
+    const t = await referenceToday(prisma, q.organizationId);
     const from = q.from ?? `${t.slice(0, 4)}-01-01`;
     const to = q.to ?? t;
     const orgName = q.organizationId ? ((await prisma.organization.findUnique({ where: { id: q.organizationId }, select: { name: true } }))?.name ?? '?') : null;
     const orgWhere = orgName ? { organizationSnapshot: orgName } : {};
-    const range = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T23:59:59Z`) };
     const [requests, letters] = await Promise.all([
-      prisma.serviceRequest.findMany({ where: { ...orgWhere, status: { not: 'DRAFT' }, submittedAt: range }, select: { status: true, requestTypeNameSnapshot: true, categorySnapshot: true, submittedAt: true, fulfilledAt: true } }),
+      prisma.serviceRequest.findMany({ where: { ...orgWhere, status: { not: 'DRAFT' }, submittedDate: { gte: from, lte: to } }, select: { status: true, requestTypeNameSnapshot: true, categorySnapshot: true, submittedDate: true, submittedAt: true, fulfilledAt: true } }),
       prisma.hrLetter.findMany({ where: { ...orgWhere, issuedDate: { gte: from, lte: to } }, select: { status: true, letterTypeSnapshot: true, issuedDate: true } }),
     ]);
     const fulfilledDays = (rows: typeof requests) => average(rows.filter((r) => r.fulfilledAt && r.submittedAt).map((r) => days(r.submittedAt!, r.fulfilledAt!)));
@@ -61,7 +63,7 @@ export const serviceAnalyticsService = {
       rejected: rows.filter((r) => r.status === 'REJECTED').length, open: rows.filter((r) => ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(r.status)).length, averageFulfillmentDays: fulfilledDays(rows),
     })).sort((a, b) => a.requestType.localeCompare(b.requestType));
     const byCategory = [...group(requests, (r) => r.categorySnapshot as ServiceCategory)].map(([category, rows]) => ({ category, submitted: rows.length, fulfilled: rows.filter((r) => r.status === 'FULFILLED').length })).sort((a, b) => a.category.localeCompare(b.category));
-    const byMonth = [...group(requests, (r) => r.submittedAt!.toISOString().slice(0, 7))].map(([month, rows]) => ({ month, submitted: rows.length, fulfilled: rows.filter((r) => r.status === 'FULFILLED').length })).sort((a, b) => a.month.localeCompare(b.month));
+    const byMonth = [...group(requests, (r) => (r.submittedDate ?? '').slice(0, 7))].map(([month, rows]) => ({ month, submitted: rows.length, fulfilled: rows.filter((r) => r.status === 'FULFILLED').length })).sort((a, b) => a.month.localeCompare(b.month));
     const isOpen = (st: string) => ['SUBMITTED', 'IN_PROGRESS', 'WAITING_EMPLOYEE'].includes(st);
     return {
       range: { from, to },

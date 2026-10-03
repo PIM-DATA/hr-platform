@@ -1,8 +1,9 @@
 import type { Prisma } from '@prisma/client';
-import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type BenefitSnapshotDto } from '@hr/shared';
+import { PERMISSIONS, type AuditAction, type AuditModule, type BenefitSnapshotDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
+import { businessYear } from '../../services/business-time/business-time';
 import type { AuthContext } from '../auth/auth.types';
 
 export type Tx = Prisma.TransactionClient;
@@ -18,7 +19,6 @@ export const textAudit = (field: string, before: string | null | undefined, afte
 export const notFound = (what: string) => new AppError(404, `${what.toUpperCase().replace(/ /g, '_')}_NOT_FOUND`, `${what.charAt(0).toUpperCase()}${what.slice(1)} not found`);
 export const has = (auth: AuthContext, ...perms: string[]) => perms.some((p) => hasPermission(auth, p));
 export const P = PERMISSIONS;
-export const today = () => businessToday('Asia/Bangkok');
 
 export const lockRow = (tx: Tx, table: 'benefit_plans' | 'benefit_periods' | 'benefit_entitlements' | 'benefit_claims' | 'benefit_enrollments', id: string) => {
   switch (table) {
@@ -29,8 +29,8 @@ export const lockRow = (tx: Tx, table: 'benefit_plans' | 'benefit_periods' | 'be
     case 'benefit_enrollments': return tx.$executeRaw`SELECT "id" FROM "benefit_enrollments" WHERE "id" = ${id} FOR UPDATE`;
   }
 };
-export async function nextClaimNumber(tx: Tx): Promise<string> {
-  const year = new Date().getUTCFullYear(); const kind = 'claim';
+export async function nextClaimNumber(tx: Tx, employeeId: string): Promise<string> {
+  const year = await businessYear(tx, { employeeId }); const kind = 'claim'; // Task 53: the claimant's business year
   await tx.benefitSequence.upsert({ where: { kind_year: { kind, year } }, create: { kind, year, next: 1 }, update: {} });
   await tx.$executeRaw`SELECT "next" FROM "benefit_sequences" WHERE "kind" = ${kind} AND "year" = ${year} FOR UPDATE`;
   const row = await tx.benefitSequence.findUniqueOrThrow({ where: { kind_year: { kind, year } } });

@@ -1,6 +1,6 @@
 import {
   ACKNOWLEDGEMENT_STATEMENT, AUDIT_ACTIONS, EMPLOYEE_RELATIONS_WORKFLOW, NOTIFICATION_TYPES, PERMISSIONS, addDays,
-  businessToday, formatCaseNumber, renderLetterTemplate, toPlainText, validityState,
+  formatCaseNumber, renderLetterTemplate, toPlainText, validityState,
   type AcknowledgementDto, type ApprovalProjectionDto, type CaseDetailDto, type CaseListQuery, type CaseSummaryDto,
   type CreateActionInput, type CreateCaseInput, type DeclineAcknowledgementInput, type DisciplinaryActionDto,
   type ActionListQuery, type EmployeeRelationsSummaryDto, type MyDisciplinaryRecordDto, type PriorActionDto,
@@ -16,6 +16,7 @@ import { workflowEngine } from '../../services/workflow';
 import type { AuthContext } from '../auth/auth.types';
 import { actionTypeService, disciplinaryPolicyService } from './er-config.service';
 import { erAudit, narrativeAudit, type Actor, type Db, type Tx } from './er.types';
+import { businessYear, employeeTodays, perOrganizationToday, todayForEmployee } from '../../services/business-time/business-time';
 import { isSelf } from '../../services/authorization/self-dealing';
 
 /**
@@ -51,7 +52,6 @@ const caseInclude = {
 } satisfies Prisma.EmployeeRelationCaseInclude;
 type CaseRow = Prisma.EmployeeRelationCaseGetPayload<{ include: typeof caseInclude }>;
 
-const today = () => businessToday('UTC');
 
 const toLetterDto = (row: NonNullable<ActionRow['letter']>): WarningLetterDto => ({
   id: row.id,
@@ -70,7 +70,8 @@ const toLetterDto = (row: NonNullable<ActionRow['letter']>): WarningLetterDto =>
   acknowledgementText: row.acknowledgementTextSnapshot,
 });
 
-const toActionDto = (row: ActionRow): DisciplinaryActionDto => ({
+/** `today` is the subject employee's business date in their organization's zone (Task 53; ER used UTC). */
+const toActionDto = (row: ActionRow, today: string): DisciplinaryActionDto => ({
   id: row.id,
   caseId: row.caseId,
   caseNumber: row.case.caseNumber,
@@ -83,7 +84,7 @@ const toActionDto = (row: ActionRow): DisciplinaryActionDto => ({
   validityDays: row.validityDays,
   issuedDate: row.issuedDate,
   validUntil: row.validUntil,
-  validity: validityState(row.status, row.validUntil, today()),
+  validity: validityState(row.status, row.validUntil, today),
   status: row.status as DisciplinaryActionDto['status'],
   workflowInstanceId: row.workflowInstanceId,
   letterSubject: row.letterSubject,
@@ -101,7 +102,7 @@ const toActionDto = (row: ActionRow): DisciplinaryActionDto => ({
 const currentActionOf = (row: CaseRow) =>
   [...row.actions].reverse().find((a) => !['REJECTED', 'CANCELLED'].includes(a.status)) ?? null;
 
-function toSummaryDto(row: CaseRow): CaseSummaryDto {
+function toSummaryDto(row: CaseRow, today: string): CaseSummaryDto {
   const current = currentActionOf(row);
   return {
     id: row.id,
@@ -116,7 +117,7 @@ function toSummaryDto(row: CaseRow): CaseSummaryDto {
     currentAction: current
       ? {
           id: current.id, actionTypeName: current.actionTypeNameSnapshot, status: current.status, issuedDate: current.issuedDate,
-          validUntil: current.validUntil, validity: validityState(current.status, current.validUntil, today()),
+          validUntil: current.validUntil, validity: validityState(current.status, current.validUntil, today),
           acknowledgedAt: current.acknowledgedAt?.toISOString() ?? null,
         }
       : null,
@@ -157,7 +158,7 @@ async function priorActiveActions(db: Db, employeeId: string, excludeCaseId?: st
     include: { case: { select: { caseNumber: true } } },
     orderBy: { issuedAt: 'desc' },
   });
-  const now = today();
+  const now = await todayForEmployee(db, employeeId);
   return rows
     .map((a) => ({ actionId: a.id, caseNumber: a.case.caseNumber, actionTypeName: a.actionTypeNameSnapshot, issuedDate: a.issuedDate, validUntil: a.validUntil, validity: validityState(a.status, a.validUntil, now) }))
     .filter((a) => a.validity === 'ACTIVE');
@@ -189,12 +190,13 @@ async function timelineOf(db: Db, row: CaseRow): Promise<TimelineEntryDto[]> {
 }
 
 async function toDetailDto(db: Db, row: CaseRow, includeInternal: boolean): Promise<CaseDetailDto> {
+  const today = await todayForEmployee(db, row.employeeId);
   return {
-    ...toSummaryDto(row),
+    ...toSummaryDto(row, today),
     description: row.description,
     ...(includeInternal ? { internalNotes: row.internalNotes } : {}),
     assignedTo: row.assignedTo,
-    actions: row.actions.map(toActionDto),
+    actions: row.actions.map((a) => toActionDto(a, today)),
     priorActiveActions: await priorActiveActions(db, row.employeeId, row.id),
     timeline: await timelineOf(db, row),
     closedAt: row.closedAt?.toISOString() ?? null,
@@ -203,8 +205,8 @@ async function toDetailDto(db: Db, row: CaseRow, includeInternal: boolean): Prom
 }
 
 /** Case numbers come from a per-year counter taken under a row lock: two cases opened at once get two numbers. */
-async function nextCaseNumber(tx: Tx): Promise<string> {
-  const year = new Date().getUTCFullYear();
+async function nextCaseNumber(tx: Tx, employeeId: string): Promise<string> {
+  const year = await businessYear(tx, { employeeId }); // Task 53: the subject's business year
   await tx.employeeRelationCaseSequence.upsert({ where: { year }, create: { year, next: 1 }, update: {} });
   await tx.$executeRaw`SELECT "year" FROM "employee_relation_case_sequences" WHERE "year" = ${year} FOR UPDATE`;
   const row = await tx.employeeRelationCaseSequence.findUniqueOrThrow({ where: { year } });
@@ -231,7 +233,7 @@ export const erCaseService = {
 
       const created = await tx.employeeRelationCase.create({
         data: {
-          caseNumber: await nextCaseNumber(tx),
+          caseNumber: await nextCaseNumber(tx, employee.id),
           employeeId: employee.id,
           employeeCodeSnapshot: employee.employeeCode,
           employeeNameSnapshot: `${employee.firstName} ${employee.lastName}`,
@@ -317,7 +319,8 @@ export const erCaseService = {
       prisma.employeeRelationCase.count({ where }),
       prisma.employeeRelationCase.findMany({ where, include: caseInclude, orderBy: { createdAt: 'desc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
     ]);
-    return { data: rows.map(toSummaryDto), meta: { page: q.page, pageSize: q.pageSize, total } };
+    const todays = await employeeTodays(prisma, rows.map((r) => r.employeeId));
+    return { data: rows.map((r) => toSummaryDto(r, todays.get(r.employeeId)!)), meta: { page: q.page, pageSize: q.pageSize, total } };
   },
 
   async get(auth: AuthContext, id: string): Promise<CaseDetailDto> {
@@ -483,7 +486,7 @@ export const erCaseService = {
     if (fresh.status !== 'PENDING_APPROVAL') throw new AppError(409, 'DISCIPLINARY_ACTION_NOT_PENDING', `This proposal is ${fresh.status.toLowerCase().replace('_', ' ')}`);
     const erCase = await loadCase(tx, action.caseId);
 
-    const issuedDate = today();
+    const issuedDate = await todayForEmployee(tx, erCase.employeeId);
     const validUntil = fresh.validityDays ? addDays(issuedDate, fresh.validityDays) : null;
     const policy = erCase.organizationId ? await disciplinaryPolicyService.resolve(tx, erCase.organizationId, erCase.incidentDate).catch(() => null) : null;
     const dueDate = fresh.requiresAcknowledgement && policy?.defaultAcknowledgementDueDays ? addDays(issuedDate, policy.defaultAcknowledgementDueDays) : null;
@@ -567,7 +570,7 @@ export const erCaseService = {
     if (!step && !hasPermission(auth, PERMISSIONS.EMPLOYEE_RELATIONS_MANAGE)) throw AppError.forbidden();
     const erCase = await loadCase(prisma, action.caseId, auth);
     return {
-      action: toActionDto(action),
+      action: toActionDto(action, await todayForEmployee(prisma, action.employeeId)),
       caseSummary: { caseNumber: erCase.caseNumber, title: erCase.title, category: erCase.categoryNameSnapshot, incidentDate: erCase.incidentDate, description: erCase.description },
       priorActiveActions: await priorActiveActions(prisma, erCase.employeeId, erCase.id),
       workflowInstanceId: action.workflowInstanceId,
@@ -576,15 +579,17 @@ export const erCaseService = {
   },
 
   async listActions(auth: AuthContext, q: ActionListQuery): Promise<{ data: DisciplinaryActionDto[]; meta: { page: number; pageSize: number; total: number } }> {
-    const now = today();
+    // Task 53: "still valid" is judged on each subject's own business today.
+    const validFrom = await perOrganizationToday<Prisma.DisciplinaryActionWhereInput>(prisma, 'employeeId', (t) => ({ validUntil: { gte: t } }));
+    const expiredBefore = await perOrganizationToday<Prisma.DisciplinaryActionWhereInput>(prisma, 'employeeId', (t) => ({ validUntil: { lt: t } }));
     const where: Prisma.DisciplinaryActionWhereInput = {
       ...(auth.employeeId ? { NOT: { employeeId: auth.employeeId } } : {}), // Task 51: never one's own actions
       employeeId: q.employeeId,
       actionTypeId: q.actionTypeId,
       status: q.status,
       ...(q.departmentId ? { case: { departmentId: q.departmentId } } : {}),
-      ...(q.validity === 'ACTIVE' ? { status: { in: ['ISSUED', 'ACKNOWLEDGED'] }, OR: [{ validUntil: null }, { validUntil: { gte: now } }] } : {}),
-      ...(q.validity === 'EXPIRED' ? { status: { in: ['ISSUED', 'ACKNOWLEDGED'] }, validUntil: { lt: now } } : {}),
+      ...(q.validity === 'ACTIVE' ? { status: { in: ['ISSUED', 'ACKNOWLEDGED'] }, OR: [{ validUntil: null }, validFrom] } : {}),
+      ...(q.validity === 'EXPIRED' ? { status: { in: ['ISSUED', 'ACKNOWLEDGED'] }, AND: [expiredBefore] } : {}),
       ...(q.awaitingAcknowledgement ? { status: 'ISSUED', requiresAcknowledgement: true, acknowledgedAt: null } : {}),
       ...(q.search ? { case: { OR: [{ caseNumber: { contains: q.search, mode: 'insensitive' } }, { employeeNameSnapshot: { contains: q.search, mode: 'insensitive' } }] } } : {}),
     };
@@ -592,7 +597,8 @@ export const erCaseService = {
       prisma.disciplinaryAction.count({ where }),
       prisma.disciplinaryAction.findMany({ where, include: actionInclude, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
     ]);
-    return { data: rows.map(toActionDto), meta: { page: q.page, pageSize: q.pageSize, total } };
+    const todays = await employeeTodays(prisma, rows.map((r) => r.employeeId));
+    return { data: rows.map((r) => toActionDto(r, todays.get(r.employeeId)!)), meta: { page: q.page, pageSize: q.pageSize, total } };
   },
 
   // -------------------------------------------------------------------------
@@ -602,7 +608,7 @@ export const erCaseService = {
   async myRecords(auth: AuthContext): Promise<MyDisciplinaryRecordDto[]> {
     if (!auth.employeeId) return [];
     const rows = await prisma.disciplinaryAction.findMany({ where: { employeeId: auth.employeeId, status: { in: ['ISSUED', 'ACKNOWLEDGED'] } }, include: actionInclude, orderBy: { issuedAt: 'desc' } });
-    const now = today();
+    const now = await todayForEmployee(prisma, auth.employeeId);
     return rows.map((row) => ({
       id: row.id, caseNumber: row.case.caseNumber, actionTypeName: row.actionTypeNameSnapshot, issuedDate: row.issuedDate ?? '',
       validUntil: row.validUntil, validity: validityState(row.status, row.validUntil, now), requiresAcknowledgement: row.requiresAcknowledgement,
@@ -673,7 +679,7 @@ export const erCaseService = {
   async summaryFor(auth: AuthContext, employeeId: string): Promise<EmployeeRelationsSummaryDto> {
     if (isSelf(auth, employeeId)) throw new AppError(404, 'ER_CASE_NOT_FOUND', 'Case not found'); // Task 51
     const rows = await prisma.disciplinaryAction.findMany({ where: { employeeId, status: { in: ['ISSUED', 'ACKNOWLEDGED'] } }, select: { status: true, validUntil: true, issuedAt: true, requiresAcknowledgement: true, acknowledgedAt: true } });
-    const now = today();
+    const now = await todayForEmployee(prisma, employeeId);
     return {
       employeeId,
       activeWarnings: rows.filter((r) => validityState(r.status, r.validUntil, now) === 'ACTIVE').length,

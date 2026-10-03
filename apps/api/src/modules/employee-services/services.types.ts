@@ -1,9 +1,10 @@
 import type { Prisma } from '@prisma/client';
-import { PERMISSIONS, businessToday, type AuditAction, type AuditModule, type ServiceHistoryDto, type ServiceSnapshotDto } from '@hr/shared';
+import { PERMISSIONS, type AuditAction, type AuditModule, type ServiceHistoryDto, type ServiceSnapshotDto } from '@hr/shared';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { hasPermission, scopeFor } from '../../services/authorization/authorization.service';
 import type { AuthContext } from '../auth/auth.types';
+import { businessYear } from '../../services/business-time/business-time';
 
 export type Tx = Prisma.TransactionClient;
 export type Db = Prisma.TransactionClient | typeof prisma;
@@ -21,7 +22,6 @@ export const textAudit = (field: string, before: string | null | undefined, afte
 export const notFound = (what: string) => new AppError(404, `${what.toUpperCase().replace(/ /g, '_')}_NOT_FOUND`, `${what.charAt(0).toUpperCase()}${what.slice(1)} not found`);
 export const has = (auth: AuthContext, ...perms: string[]) => perms.some((p) => hasPermission(auth, p));
 export const P = PERMISSIONS;
-export const today = () => businessToday('Asia/Bangkok');
 
 export const lockRow = (tx: Tx, table: 'service_requests' | 'hr_letters', id: string) => {
   switch (table) {
@@ -31,8 +31,9 @@ export const lockRow = (tx: Tx, table: 'service_requests' | 'hr_letters', id: st
 };
 
 /** Gap-free, concurrency-safe numbers from a row-locked per-kind, per-year counter. */
-export async function nextNumber(tx: Tx, kind: 'request' | 'letter'): Promise<string> {
-  const year = new Date().getUTCFullYear();
+export async function nextNumber(tx: Tx, kind: 'request' | 'letter', employeeId: string): Promise<string> {
+  // Task 53: the number's year is the subject employee's business year (it was the server's UTC year).
+  const year = await businessYear(tx, { employeeId });
   await tx.serviceSequence.upsert({ where: { kind_year: { kind, year } }, create: { kind, year, next: 1 }, update: {} });
   await tx.$executeRaw`SELECT "next" FROM "service_sequences" WHERE "kind" = ${kind} AND "year" = ${year} FOR UPDATE`;
   const row = await tx.serviceSequence.findUniqueOrThrow({ where: { kind_year: { kind, year } } });

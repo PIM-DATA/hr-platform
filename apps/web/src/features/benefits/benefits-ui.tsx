@@ -4,6 +4,7 @@ import { PERMISSIONS } from '@hr/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatDate } from '@/lib/format';
 import { useAuth } from '@/hooks/useAuth';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -23,7 +24,8 @@ export function BalanceBar({ balance }: { balance: { currency: string; granted: 
   const item = (label: string, value: string, strong = false) => <div key={label} className="min-w-[7rem]"><div className="text-xs text-slate-500">{label}</div><div className={`tabular-nums ${strong ? 'font-semibold text-slate-900' : ''}`}>{value}</div></div>;
   return <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">{item('Granted', money(balance.granted))}{item('Adjustments', money(balance.adjustment))}{item('Reserved', money(balance.reserved))}{item('Used', money(balance.consumed))}{item('Available', money(balance.available, balance.currency), true)}</div>;
 }
-export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
+/** Task 53: business dates as calendar dates in any browser zone; instants in the viewer's zone. */
+export const fmtDate = (iso: string | null | undefined) => formatDate(iso);
 
 /** Tabs by capability. Administration needs the benefits permissions; the employee tab needs only an employee record. */
 export function useBenefitsTabs() {

@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ModuleIndex } from '@/components/guards/ModuleIndex';
+import { localToday, formatDate } from '@/lib/format';
 import { useAuth } from '@/hooks/useAuth';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -14,9 +15,10 @@ const TONE: Record<string, Tone> = {
   ISSUED: 'success', VOID: 'danger', APPROVED: 'success', PENDING: 'warning', EMPLOYMENT_CERTIFICATE: 'info', SALARY_CERTIFICATE: 'warning', GENERAL: 'neutral', HR_LETTER: 'info',
 };
 export function ServiceBadge({ status }: { status: string }) { return <StatusBadge status={titleCase(status)} tone={TONE[status] ?? 'neutral'} />; }
-export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
+/** Task 53: business dates as calendar dates in any browser zone; instants in the viewer's zone. */
+export const fmtDate = (iso: string | null | undefined) => formatDate(iso);
 export const fmtDateTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-export const todayIso = () => new Date().toISOString().slice(0, 10);
+export const todayIso = () => localToday();
 /** A frozen answer is shown as it was stored; a boolean reads as yes or no. */
 export const answerText = (fieldType: string, value: string) => (fieldType === 'BOOLEAN' ? (value === 'true' ? 'Yes' : 'No') : value);
 

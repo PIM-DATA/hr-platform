@@ -66,6 +66,18 @@ export function zonedTimeToUtc(date: string, time: string, timezone: string): Da
   return new Date(guess - timezoneOffsetMs(firstPass, timezone));
 }
 
+/**
+ * Task 53: the instant a business date begins in a timezone (local 00:00). A local day is not always 24 hours — it
+ * is 23 or 25 across a DST change — so day boundaries are always computed, never `date + 86_400_000`.
+ */
+export function businessDayStart(date: string, timezone: string): Date {
+  return zonedTimeToUtc(date, '00:00', timezone);
+}
+/** Instants covering the business dates `from`..`to` inclusive in a timezone: `[start of from, start of the day after to)`. */
+export function businessDateRangeInstants(from: string, to: string, timezone: string): { gte: Date; lt: Date } {
+  return { gte: businessDayStart(from, timezone), lt: businessDayStart(addDays(to, 1), timezone) };
+}
+
 /** The business date an instant falls on, in a timezone (the inverse of the date part of `zonedTimeToUtc`). */
 export function businessDateOf(instant: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(instant);

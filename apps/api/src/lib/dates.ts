@@ -1,4 +1,7 @@
-/** Date helpers — the only place day boundaries are computed. All boundaries are UTC (hireDate is stored as UTC midnight). */
+/**
+ * UTC day arithmetic for values that are UTC instants by definition. Task 53: business "today" and business-day
+ * boundaries are NOT computed here — they come from services/business-time (the organization's IANA zone).
+ */
 
 const DAY_MS = 86_400_000;
 

@@ -30,6 +30,8 @@ or an approved correction.
 A shift's `08:00` is a wall-clock time, so the instant it means changes with the organization's timezone and with
 daylight saving. Nothing in the code assumes an offset: `zonedTimeToUtc(date, time, timezone)` resolves it per date,
 and `Organization.timezone` is the only source of "what time is it here".
+Since Task 53 the same rule holds in every module (expense, services, learning, lifecycle, benefits, ER, documents,
+reports, copilot) — see docs/business-dates.md. Attendance day allocation itself is unchanged.
 
 ## 3. Shifts
 

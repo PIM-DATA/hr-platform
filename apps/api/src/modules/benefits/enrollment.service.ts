@@ -7,7 +7,8 @@ import { notificationService } from '../../services/notification';
 import type { AuthContext } from '../auth/auth.types';
 import { dec, toMoneyString } from '../payroll/money';
 import { appendLedger, balanceDto, loadEntitlementForMutation, sumsOf } from './benefit-ledger';
-import { type Actor, type Db, adminScope, benefitsAudit, canSeeEmployee, employeeInclude, employeeSnapshot, lockRow, notFound, snapshotData, snapshotDto, textAudit, today, userNames, visibleEmployeeWhere } from './benefits.types';
+import { type Actor, type Db, adminScope, benefitsAudit, canSeeEmployee, employeeInclude, employeeSnapshot, lockRow, notFound, snapshotData, snapshotDto, textAudit, userNames, visibleEmployeeWhere } from './benefits.types';
+import { organizationTodays, todayForEmployee } from '../../services/business-time/business-time';
 import { activeOverride, evaluateRules } from './eligibility.service';
 
 // ---------- enrollments ----------
@@ -21,14 +22,15 @@ async function enrollWithTx(tx: Prisma.TransactionClient, planId: string, employ
   if (source === 'SELF' && !plan.employeeSelectable) throw new AppError(409, 'BENEFIT_PLAN_NOT_SELECTABLE', 'This plan is enrolled by HR');
   const { employee, data } = await employeeSnapshot(tx, employeeId);
   if (employee.employmentStatus !== 'ACTIVE') throw new AppError(409, 'EMPLOYEE_NOT_ACTIVE', 'Only an active employee can be enrolled');
-  const elig = evaluateRules(employee, plan.rules, await activeOverride(tx, plan.id, employeeId), today());
+  const today = await todayForEmployee(tx, employeeId); // Task 53: the employee's own business today (was Bangkok's)
+  const elig = evaluateRules(employee, plan.rules, await activeOverride(tx, plan.id, employeeId), today);
   if (!elig.eligible) throw new AppError(422, 'BENEFIT_NOT_ELIGIBLE', 'Not eligible for this plan', elig.reasons.map((r) => ({ field: 'employeeId', message: r.message })));
   const existing = await tx.benefitEnrollment.findUnique({ where: { employeeId_planId: { employeeId, planId } } });
   if (existing?.status === 'ENROLLED') throw new AppError(409, 'BENEFIT_ALREADY_ENROLLED', 'Already enrolled');
   const now = new Date();
   const row = existing
-    ? await tx.benefitEnrollment.update({ where: { id: existing.id }, data: { status: 'ENROLLED', source, enrolledAt: now, endedAt: null, coverageStart: coverage.coverageStart ?? existing.coverageStart ?? today(), coverageEnd: coverage.coverageEnd ?? null, ...data }, include: enrInclude })
-    : await tx.benefitEnrollment.create({ data: { employeeId, planId, ...data, status: 'ENROLLED', source, enrolledAt: now, coverageStart: coverage.coverageStart ?? today(), coverageEnd: coverage.coverageEnd ?? null }, include: enrInclude });
+    ? await tx.benefitEnrollment.update({ where: { id: existing.id }, data: { status: 'ENROLLED', source, enrolledAt: now, endedAt: null, coverageStart: coverage.coverageStart ?? existing.coverageStart ?? today, coverageEnd: coverage.coverageEnd ?? null, ...data }, include: enrInclude })
+    : await tx.benefitEnrollment.create({ data: { employeeId, planId, ...data, status: 'ENROLLED', source, enrolledAt: now, coverageStart: coverage.coverageStart ?? today, coverageEnd: coverage.coverageEnd ?? null }, include: enrInclude });
   await auditService.log(benefitsAudit(actor, AUDIT_ACTIONS.ENROLL_BENEFIT, 'BenefitEnrollment', row.id, { planId, employeeId, source, coverageStart: row.coverageStart, coverageEnd: row.coverageEnd, reenrolled: !!existing }), tx);
   if (employee.user) await notificationService.publish({ userId: employee.user.id, type: NOTIFICATION_TYPES.BENEFIT_ENROLLMENT_CONFIRMED, source: { module: 'benefits', entityType: 'BENEFIT_ENROLLMENT', entityId: row.id }, data: { enrollmentId: row.id, planId }, dedupeKey: `benefits:enrollment:${row.id}:${now.getTime()}` }, { planName: plan.name }, tx);
   return row;
@@ -72,7 +74,7 @@ export const enrollmentService = {
       await lockRow(tx, 'benefit_enrollments', id);
       const e = await tx.benefitEnrollment.findUnique({ where: { id } }); if (!e) throw notFound('benefit enrollment');
       if (e.status !== 'ENROLLED') throw new AppError(409, 'BENEFIT_NOT_ENROLLED', `This enrolment is ${e.status.toLowerCase()}`);
-      const r = await tx.benefitEnrollment.update({ where: { id }, data: { status: 'ENDED', endedAt: new Date(), coverageEnd: input.coverageEnd ?? today() }, include: enrInclude });
+      const r = await tx.benefitEnrollment.update({ where: { id }, data: { status: 'ENDED', endedAt: new Date(), coverageEnd: input.coverageEnd ?? await todayForEmployee(tx, e.employeeId) }, include: enrInclude });
       await auditService.log(benefitsAudit(actor, AUDIT_ACTIONS.ENROLL_BENEFIT, 'BenefitEnrollment', id, { status: 'ENDED', coverageEnd: r.coverageEnd }, { status: 'ENROLLED' }), tx);
       return r;
     });
@@ -118,12 +120,13 @@ export const entitlementService = {
       const existing = new Set((await tx.benefitEntitlement.findMany({ where: { periodId: period.id }, select: { employeeId: true } })).map((e) => e.employeeId));
       const overrides = new Map(period.plan.overrides.map((o) => [o.employeeId, { mode: o.mode, reasonCode: o.reasonCode }]));
       const employees = await tx.employee.findMany({ where: { id: { in: candidates } }, include: employeeInclude });
-      const asOf = period.periodStart > today() ? period.periodStart : today();
+      const todays = await organizationTodays(tx); // Task 53: each employee's own organization's today
+      const asOfFor = (e: { organizationId: string }) => { const t = todays.get(e.organizationId)!; return period.periodStart > t ? period.periodStart : t; };
       let created = 0, skippedExisting = 0, skippedIneligible = 0, skippedNotEnrolled = 0;
       for (const e of employees) {
         if (existing.has(e.id)) { skippedExisting += 1; continue; }
         if (!enrolledSet.has(e.id)) { skippedNotEnrolled += 1; continue; }
-        if (!evaluateRules(e, period.plan.rules, overrides.get(e.id) ?? null, asOf).eligible) { skippedIneligible += 1; continue; }
+        if (!evaluateRules(e, period.plan.rules, overrides.get(e.id) ?? null, asOfFor(e)).eligible) { skippedIneligible += 1; continue; }
         const ent = await tx.benefitEntitlement.create({ data: { employeeId: e.id, planId: period.planId, periodId: period.id, currency: period.currencySnapshot, ...snapshotData(e), createdByUserId: actor.auth.userId } });
         await appendLedger(tx, { entitlementId: ent.id, entryType: 'GRANT', amount: dec(period.entitlementAmountSnapshot), operationKey: benefitOperationKeys.grant(ent.id), actorUserId: actor.auth.userId, reasonCode: 'PERIOD_GRANT' });
         created += 1;

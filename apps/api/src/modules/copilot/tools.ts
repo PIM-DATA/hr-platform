@@ -17,6 +17,7 @@ import { recruitmentReportService } from '../recruitment/report.service';
 import { talentReportService } from '../talent/talent-report.service';
 import { skillGapService } from '../competency/skill-gap.service';
 import { employeesService } from '../employees/employees.service';
+import { referenceToday, todayForEmployee } from '../../services/business-time/business-time';
 import { assertDispatchAllowed, type DispatchPermit } from './policy-guard';
 
 /**
@@ -53,7 +54,6 @@ export interface CopilotTool {
   handler(args: unknown, ctx: ToolContext): Promise<ToolResult>;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 const asOfNow = () => new Date().toISOString();
 const src = (label: string, module: string, asOf: string | null, deepLink: string | null, metricDefinition?: string): CopilotSourceDto => ({ label, module, asOf, deepLink, ...(metricDefinition ? { metricDefinition } : {}) });
 const link = (auth: AuthContext, permission: string | string[], to: string) => ((Array.isArray(permission) ? permission : [permission]).some((p) => hasPermission(auth, p)) ? to : null);
@@ -80,7 +80,8 @@ async function section(ctx: ToolContext, lookup: { employeeId?: string; employee
 
 /** Date range + optional organization for the Task 42 aggregate tools. No department, job or person filter exists. */
 const rangeSchema = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), organizationId: z.string().min(1).optional() }).strict();
-const rangeOf = (a: { from?: string; to?: string; organizationId?: string }) => ({ from: a.from ?? `${new Date().getUTCFullYear()}-01-01`, to: a.to ?? today(), organizationId: a.organizationId });
+/** Task 53: "this year" / "today" in the filtered (or reference) organization's zone — never the server's UTC date. */
+const rangeOf = async (a: { from?: string; to?: string; organizationId?: string }) => { const t = await referenceToday(prisma, a.organizationId); return { from: a.from ?? `${t.slice(0, 4)}-01-01`, to: a.to ?? t, organizationId: a.organizationId }; };
 /** Defence in depth: the orchestrator already offers these tools only to holders of the source report permission. */
 const requireRollup = (ctx: ToolContext, key: RollupKey) => { if (!mayRollup(ctx.auth, key)) throw new AppError(403, 'FORBIDDEN', 'You do not have access to this report'); };
 const AGGREGATE_NOTE = 'Organization-level aggregate. There is no person, department or individual amount in this data, and none can be derived from it. Do not infer fraud, dishonesty, health, financial hardship, engagement, performance or flight risk from it.';
@@ -190,7 +191,7 @@ const tools: CopilotTool[] = [
     async handler(_args, ctx) {
       const { auth } = ctx;
       if (!auth.employeeId) throw new AppError(409, 'EMPLOYEE_PROFILE_REQUIRED', 'Your account is not linked to an employee record');
-      const t = today();
+      const t = await todayForEmployee(prisma, auth.employeeId); // Task 53: the manager's own business today
       const team = await prisma.employee.findMany({ where: { managerId: auth.employeeId, employmentStatus: 'ACTIVE' }, select: { id: true, employeeCode: true, firstName: true }, orderBy: { employeeCode: 'asc' }, take: 100 });
       const ids = new Set(team.map((e) => e.id));
       const sources: CopilotSourceDto[] = [];
@@ -224,8 +225,8 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังสรุปภาพรวม HR…', inputSchema: z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), organizationId: z.string().min(1).optional(), departmentId: z.string().min(1).optional() }).strict(), requiredPermissions: [PERMISSIONS.ANALYTICS_VIEW_EXECUTIVE], sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 40, sourceLabel: 'Executive analytics',
     async handler(args, ctx) {
       const a = args as { from?: string; to?: string; organizationId?: string; departmentId?: string };
-      const year = new Date().getUTCFullYear();
-      const from = a.from ?? `${year}-01-01`; const to = a.to ?? today();
+      const t = await referenceToday(prisma, a.organizationId); // Task 53
+      const from = a.from ?? `${t.slice(0, 4)}-01-01`; const to = a.to ?? t;
       const o = await executiveAnalyticsService.overview(ctx.auth, { from, to, organizationId: a.organizationId, departmentId: a.departmentId });
       const s = o.sections;
       const data = {
@@ -263,7 +264,7 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังสรุปข้อมูลสวัสดิการ…', inputSchema: rangeSchema, requiredPermissions: ROLLUP_PERMISSIONS.benefits, sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Benefits report',
     async handler(args, ctx) {
       requireRollup(ctx, 'benefits');
-      const r = rangeOf(args as { from?: string; to?: string; organizationId?: string });
+      const r = await rangeOf(args as { from?: string; to?: string; organizationId?: string });
       const b = await domainRollups.benefits(r);
       return { data: { ...b, inRange: { ...b.inRange, byCategory: b.inRange.byCategory.slice(0, 15) }, note: AGGREGATE_NOTE }, sources: [src(`Benefits report · ${r.from} → ${r.to}`, 'benefits', asOfNow(), link(ctx.auth, ROLLUP_PERMISSIONS.benefits, '/hrm/benefits/reports'), 'Consumed = approved claims (not paid). Ready for payment, sent to payroll and paid are separate states. Amounts per currency.')], consulted: 'สวัสดิการ' };
     },
@@ -273,7 +274,7 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังสรุปค่าใช้จ่ายและการเดินทาง…', inputSchema: rangeSchema, requiredPermissions: ROLLUP_PERMISSIONS.expense, sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 30, sourceLabel: 'Expense report',
     async handler(args, ctx) {
       requireRollup(ctx, 'expense');
-      const r = rangeOf(args as { from?: string; to?: string; organizationId?: string });
+      const r = await rangeOf(args as { from?: string; to?: string; organizationId?: string });
       const x = await domainRollups.expense(r);
       return { data: { ...x, inRange: { ...x.inRange, byCategory: x.inRange.byCategory.slice(0, 15), byMonth: x.inRange.byMonth.slice(-12) }, note: AGGREGATE_NOTE }, sources: [src(`Expense & travel report · ${r.from} → ${r.to}`, 'expense', asOfNow(), link(ctx.auth, ROLLUP_PERMISSIONS.expense, '/hrm/expenses/analytics'), 'Pending, ready for payment, sent to payroll and paid are separate states. In-range totals follow the report submitted date. Amounts per currency.')], consulted: 'ค่าใช้จ่ายและการเดินทาง' };
     },
@@ -283,7 +284,7 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังสรุปคำขอ Employee Services…', inputSchema: rangeSchema, requiredPermissions: ROLLUP_PERMISSIONS.employeeServices, sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Employee services report',
     async handler(args, ctx) {
       requireRollup(ctx, 'employeeServices');
-      const r = rangeOf(args as { from?: string; to?: string; organizationId?: string });
+      const r = await rangeOf(args as { from?: string; to?: string; organizationId?: string });
       const v = await domainRollups.employeeServices(r);
       return { data: { ...v, inRange: { ...v.inRange, byMonth: v.inRange.byMonth.slice(-12) }, note: AGGREGATE_NOTE }, sources: [src(`Employee services report · ${r.from} → ${r.to}`, 'employee_services', asOfNow(), link(ctx.auth, ROLLUP_PERMISSIONS.employeeServices, '/hrm/services/reports'), 'Overdue = open with a due date before today. Average fulfilment = mean calendar days from submission to fulfilment.')], consulted: 'Employee Services' };
     },
@@ -293,8 +294,8 @@ const tools: CopilotTool[] = [
     statusLabel: 'กำลังดู recruitment funnel…', inputSchema: z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).strict(), requiredPermissions: [PERMISSIONS.RECRUITMENT_MANAGE], sensitivity: 'AGGREGATE', audience: 'ORG', maxRows: 20, sourceLabel: 'Recruitment',
     async handler(args, ctx) {
       const a = args as { from?: string; to?: string };
-      const year = new Date().getUTCFullYear();
-      const from = a.from ?? `${year}-01-01`; const to = a.to ?? today();
+      const t = await referenceToday(prisma); // Task 53
+      const from = a.from ?? `${t.slice(0, 4)}-01-01`; const to = a.to ?? t;
       const r = await recruitmentReportService.report({ from, to });
       return { data: { range: { from, to }, funnel: r.funnel, bySource: r.bySource, interviews: r.interviews, offers: r.offers, hires: r.hires, averageTimeToHireDays: r.averageTimeToHireDays, rejectionsByReason: r.rejectionsByReason }, sources: [src(`Recruitment report · ${from} → ${to}`, 'recruitment', asOfNow(), link(ctx.auth, PERMISSIONS.RECRUITMENT_MANAGE, '/hrm/recruitment/reports'), 'Time to hire = days from application to hire, averaged over hires in the range.')], consulted: 'Recruitment' };
     },

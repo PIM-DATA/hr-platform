@@ -1,4 +1,4 @@
-import { PERMISSIONS, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem, checklistProgress, certificationStatus, CERTIFICATION_EXPIRY_WINDOW_DAYS } from '@hr/shared';
+import { PERMISSIONS, addDays, payrollPeriodLabel, type Employee360Dto, type EmploymentTimelineEventDto, type ManagerHistoryItem, type PositionHistoryItem, checklistProgress, certificationStatus, CERTIFICATION_EXPIRY_WINDOW_DAYS } from '@hr/shared';
 import { prisma } from '../../lib/prisma';
 import { balanceDto, sumsOf } from '../benefits/benefit-ledger';
 import { logger } from '../../lib/logger';
@@ -14,6 +14,7 @@ import { skillGapService } from '../competency/skill-gap.service';
 import { trainingReportService } from '../training/training-report.service';
 import { erCaseService } from '../employee-relations/er-case.service';
 import { careerService } from '../talent/career.service';
+import { todayForEmployee } from '../../services/business-time/business-time';
 import { developmentService } from '../talent/development.service';
 
 type Actor = { auth: AuthContext; ipAddress: string | null; userAgent: string | null };
@@ -72,10 +73,11 @@ export const employee360Service = {
     const scoped = (...perms: string[]) => inScopeFor(auth, employeeId, managerId, ...perms);
     const isManagerOf = (...perms: string[]) => scopeFor(auth, ...perms) === 'TEAM' && managerId === auth.employeeId && !self;
     const as = (...perms: string[]) => narrowAuth(auth, ...perms);
-    const year = new Date().getUTCFullYear();
-    const today = new Date().toISOString().slice(0, 10);
+    // Task 53 (T44-P1-23): every window is the SUBJECT employee's business calendar (this was the server's UTC date).
+    const today = await todayForEmployee(prisma, employeeId);
+    const year = Number(today.slice(0, 4));
     const monthStart = `${today.slice(0, 7)}-01`;
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+    const ninetyDaysAgo = addDays(today, -90);
     const activity: Activity[] = [];
 
     // ---- which sections may this caller see? (source-module rules, restated, never widened) ----
@@ -172,7 +174,7 @@ export const employee360Service = {
               prisma.learningPathAssignment.findMany({ where: { employeeId, status: { not: 'CANCELLED' } }, select: { id: true, pathNameSnapshot: true, status: true, steps: { select: { fulfilledAt: true } } }, orderBy: { assignedAt: 'desc' }, take: 10 }),
               prisma.employeeCertification.findMany({ where: { employeeId }, select: { id: true, definitionNameSnapshot: true, issuedDate: true, expiryDate: true, revokedAt: true, definition: { select: { expiryWindowDays: true } } }, orderBy: { issuedDate: 'desc' }, take: 20 }),
             ]);
-            const t = new Date().toISOString().slice(0, 10);
+            const t = today;
             return {
               ojt: ojt.map((p) => ({ id: p.id, planNumber: p.planNumber, program: p.programNameSnapshot, status: p.status, startDate: p.startDate, completedAt: p.completedAt?.toISOString() ?? null, activitiesCompleted: p.activities.filter((a) => a.status === 'COMPLETED').length, activities: p.activities.length })),
               learningPaths: paths.map((a) => ({ id: a.id, path: a.pathNameSnapshot, status: a.status, stepsFulfilled: a.steps.filter((x) => x.fulfilledAt).length, steps: a.steps.length })),

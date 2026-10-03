@@ -9,8 +9,9 @@ import type { AuthContext } from '../auth/auth.types';
 import { canAccessDocument, linkDocumentWithTx } from '../documents/documents.service';
 import { ZERO, dec, money, toMoneyString } from '../payroll/money';
 import { addManualAdjustmentWithTx, findPayrollResultForEmployee } from '../payroll/payroll-run.service';
-import { type Actor, type Db, type Tx, adminScope, canSeeEmployee, employeeInclude, employeeSnapshot, expenseAudit, has, history, historyDto, isApprover, lockRow, nextNumber, notFound, P, snapshotDto, textAudit, today, visibleEmployeeWhere } from './expense.types';
+import { type Actor, type Db, type Tx, adminScope, canSeeEmployee, employeeInclude, employeeSnapshot, expenseAudit, has, history, historyDto, isApprover, lockRow, nextNumber, notFound, P, snapshotDto, textAudit, visibleEmployeeWhere } from './expense.types';
 import { expensePolicyService, type PolicyResolution } from './policy.service';
+import { todayForEmployee } from '../../services/business-time/business-time';
 import { loadTravelForMutation, travelDto, travelForReviewer } from './travel.service';
 
 /**
@@ -38,7 +39,8 @@ async function receiptCounts(db: Db, itemIds: string[]): Promise<Map<string, num
 const ruleFor = (r: Row, categoryId: string) => r.policy.rules.find((x) => x.categoryId === categoryId) ?? null;
 /** Receipt required when the rule says so and (no threshold, or amount >= threshold — inclusive, exact Decimal). */
 const receiptRequired = (rule: Row['policy']['rules'][number] | null, amount: Prisma.Decimal) => !!rule && rule.requiresReceipt && (!rule.receiptRequiredAbove || dec(amount).gte(rule.receiptRequiredAbove));
-function itemBlockers(r: Row, i: ItemRow, receipts: number, hasTravel: boolean): string[] {
+/** `today` is the claimant's business date (Task 53; this was Bangkok's). */
+function itemBlockers(r: Row, i: ItemRow, receipts: number, hasTravel: boolean, today: string): string[] {
   const b: string[] = [];
   const rule = ruleFor(r, i.categoryId);
   const required = r.status === 'DRAFT' ? receiptRequired(rule, i.amount) : i.receiptRequiredSnapshot;
@@ -48,11 +50,12 @@ function itemBlockers(r: Row, i: ItemRow, receipts: number, hasTravel: boolean):
   if (required && receipts === 0) b.push('A receipt is required');
   if (rule?.descriptionRequired && !i.description) b.push('A description is required for this category');
   if (rule?.allowedForTravelOnly && !hasTravel) b.push('This category is allowed on travel expense reports only');
-  if (rule?.maximumAgeDays) { const age = Math.round((Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${i.expenseDate}T00:00:00Z`)) / 86_400_000); if (age > rule.maximumAgeDays) b.push(`Older than the ${rule.maximumAgeDays}-day limit`); }
-  if (i.expenseDate > today()) b.push('The expense date is in the future');
+  if (rule?.maximumAgeDays) { const age = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${i.expenseDate}T00:00:00Z`)) / 86_400_000); if (age > rule.maximumAgeDays) b.push(`Older than the ${rule.maximumAgeDays}-day limit`); }
+  if (i.expenseDate > today) b.push('The expense date is in the future');
   return b;
 }
 async function itemDtos(db: Db, auth: AuthContext, r: Row): Promise<ExpenseItemDto[]> {
+  const today = await todayForEmployee(db, r.employeeId);
   const links = await db.documentLink.findMany({ where: { entityType: 'EXPENSE_ITEM', entityId: { in: r.items.map((i) => i.id) } }, select: { entityId: true, documentId: true } });
   const docs = links.length ? await db.document.findMany({ where: { id: { in: [...new Set(links.map((l) => l.documentId))] } }, include: { category: true, links: true, ownerEmployee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, managerId: true } } } }) : [];
   const dm = new Map(docs.map((d) => [d.id, d]));
@@ -61,14 +64,14 @@ async function itemDtos(db: Db, auth: AuthContext, r: Row): Promise<ExpenseItemD
     const rule = ruleFor(r, i.categoryId);
     return { id: i.id, categoryId: i.categoryId, categoryCode: i.categoryCodeSnapshot, categoryName: i.categoryNameSnapshot, expenseDate: i.expenseDate, amount: toMoneyString(i.amount), merchant: i.merchant, description: i.description, originalAmount: i.originalAmount ? toMoneyString(i.originalAmount) : null, originalCurrency: i.originalCurrency,
       receiptRequired: r.status === 'DRAFT' ? receiptRequired(rule, i.amount) : i.receiptRequiredSnapshot, perItemMaximum: r.status === 'DRAFT' ? (rule?.perItemMaximum ? toMoneyString(rule.perItemMaximum) : null) : (i.perItemMaximumSnapshot ? toMoneyString(i.perItemMaximumSnapshot) : null),
-      documents: mine.map((d) => ({ documentId: d.id, title: d.title, documentNumber: d.documentNumber, accessible: canAccessDocument(auth, d) })), blockers: r.status === 'DRAFT' ? itemBlockers(r, i, mine.length, !!r.travelRequestId) : [] };
+      documents: mine.map((d) => ({ documentId: d.id, title: d.title, documentNumber: d.documentNumber, accessible: canAccessDocument(auth, d) })), blockers: r.status === 'DRAFT' ? itemBlockers(r, i, mine.length, !!r.travelRequestId, today) : [] };
   });
 }
-function reportBlockers(r: Row, items: ExpenseItemDto[]): string[] {
+function reportBlockers(r: Row, items: ExpenseItemDto[], t: string): string[] {
   const b: string[] = [];
   if (r.items.length === 0) b.push('Add at least one item');
   if (r.policy.status !== 'ACTIVE') b.push('The expense policy is not active');
-  const t = today(); if (r.policy.effectiveFrom > t || (r.policy.effectiveTo && r.policy.effectiveTo < t)) b.push('The expense policy is not in effect today');
+  if (r.policy.effectiveFrom > t || (r.policy.effectiveTo && r.policy.effectiveTo < t)) b.push('The expense policy is not in effect today');
   if (r.policy.maximumReportAmount && sumItems(r.items).gt(r.policy.maximumReportAmount)) b.push(`The total exceeds the policy maximum of ${toMoneyString(r.policy.maximumReportAmount)}`);
   if (r.travelRequest && r.travelRequest.employeeId !== r.employeeId) b.push('The travel request belongs to another employee');
   if (r.travelRequest && !['APPROVED', 'COMPLETED'].includes(r.travelRequest.status)) b.push('The travel request is not approved');
@@ -85,7 +88,7 @@ function dto(auth: AuthContext, r: Row): ExpenseReportDto {
 }
 export async function reportDetail(db: Db, auth: AuthContext, r: Row): Promise<ExpenseReportDetailDto> {
   const items = await itemDtos(db, auth, r);
-  return { ...dto(auth, r), items, history: await historyDto(db, 'EXPENSE_REPORT', r.id), blockers: r.status === 'DRAFT' ? reportBlockers(r, items) : [], travel: r.travelRequest ? { requestNumber: r.travelRequest.requestNumber, destination: r.travelRequest.destination, startDate: r.travelRequest.startDate, endDate: r.travelRequest.endDate, estimatedAmount: toMoneyString(r.travelRequest.estimatedAmount) } : null, maximumReportAmount: r.maximumReportAmountSnapshot ? toMoneyString(r.maximumReportAmountSnapshot) : r.policy.maximumReportAmount ? toMoneyString(r.policy.maximumReportAmount) : null };
+  return { ...dto(auth, r), items, history: await historyDto(db, 'EXPENSE_REPORT', r.id), blockers: r.status === 'DRAFT' ? reportBlockers(r, items, await todayForEmployee(db, r.employeeId)) : [], travel: r.travelRequest ? { requestNumber: r.travelRequest.requestNumber, destination: r.travelRequest.destination, startDate: r.travelRequest.startDate, endDate: r.travelRequest.endDate, estimatedAmount: toMoneyString(r.travelRequest.estimatedAmount) } : null, maximumReportAmount: r.maximumReportAmountSnapshot ? toMoneyString(r.maximumReportAmountSnapshot) : r.policy.maximumReportAmount ? toMoneyString(r.policy.maximumReportAmount) : null };
 }
 async function notifyOwner(tx: Tx, r: { id: string; employeeId: string; reportNumber: string; status: string }, type: (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES]) {
   const emp = await tx.employee.findUnique({ where: { id: r.employeeId }, select: { user: { select: { id: true } } } });
@@ -138,7 +141,7 @@ export const expenseReportService = {
     const [travel, reports, applicable, travelPolicies] = await Promise.all([
       prisma.travelRequest.findMany({ where: { employeeId }, include: { travelPolicy: { select: { name: true, workflowCode: true, status: true, currency: true, maximumEstimatedAmount: true, effectiveFrom: true, effectiveTo: true } }, reports: { select: { id: true, reportNumber: true, status: true, totalAmount: true } } }, orderBy: { createdAt: 'desc' }, take: 50 }),
       prisma.expenseReport.findMany({ where: { employeeId }, include, orderBy: { createdAt: 'desc' }, take: 50 }),
-      employee ? expensePolicyService.resolve(prisma, employee, today()) : Promise.resolve<PolicyResolution>({ kind: 'NONE', policies: [] }),
+      employee ? expensePolicyService.resolve(prisma, employee, await todayForEmployee(prisma, employee.id)) : Promise.resolve<PolicyResolution>({ kind: 'NONE', policies: [] }),
       employee ? prisma.travelPolicy.findMany({ where: { status: 'ACTIVE', OR: [{ organizationId: null }, { organizationId: employee.organizationId }] }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
     ]);
     return { travelRequests: await Promise.all(travel.map((t) => travelDto(prisma, auth, t))), reports: reports.map((r) => dto(auth, r)), policyResolution: resolutionDto(applicable), policies: applicable.kind === 'RESOLVED' || applicable.kind === 'LINKED' ? [{ id: applicable.policy.id, code: applicable.policy.code, name: applicable.policy.name, currency: applicable.policy.currency, isDefault: true }] : [], travelPolicies: travelPolicies.map((p) => ({ id: p.id, code: p.code, name: p.name, currency: p.currency })), queue };
@@ -159,10 +162,10 @@ export const expenseReportService = {
       }
       // Server authority: the policy is resolved here, never chosen by the claimant. A travel policy's explicit expense
       // policy is business configuration and wins; otherwise the unique most-specific applicable policy; ties are refused.
-      const resolution = await expensePolicyService.resolve(tx, employee, today(), linkedPolicyId);
+      const resolution = await expensePolicyService.resolve(tx, employee, await todayForEmployee(tx, employee.id), linkedPolicyId);
       if (linkedPolicyId && resolution.kind === 'NONE') throw new AppError(422, 'EXPENSE_POLICY_NOT_APPLICABLE', 'The expense policy linked to this trip\'s travel policy is not active or does not apply to you. Ask HR.');
       const policy = expensePolicyService.require(resolution, input.policyId);
-      const r = await tx.expenseReport.create({ data: { reportNumber: await nextNumber(tx, 'report'), title: input.title, employeeId, policyId: policy.id, travelRequestId: input.travelRequestId ?? null, policyCodeSnapshot: policy.code, policyNameSnapshot: policy.name, maximumReportAmountSnapshot: policy.maximumReportAmount, ...data, currency: policy.currency, createdByUserId: auth.userId } });
+      const r = await tx.expenseReport.create({ data: { reportNumber: await nextNumber(tx, 'report', employeeId), title: input.title, employeeId, policyId: policy.id, travelRequestId: input.travelRequestId ?? null, policyCodeSnapshot: policy.code, policyNameSnapshot: policy.name, maximumReportAmountSnapshot: policy.maximumReportAmount, ...data, currency: policy.currency, createdByUserId: auth.userId } });
       await history(tx, 'EXPENSE_REPORT', r.id, null, 'DRAFT', auth.userId);
       await auditService.log(expenseAudit(actor, AUDIT_ACTIONS.CREATE_EXPENSE_REPORT, 'ExpenseReport', r.id, { reportNumber: r.reportNumber, policyId: policy.id, travelRequestId: r.travelRequestId, currency: r.currency, titleLength: r.title.length }), tx);
       return r.id;
@@ -240,11 +243,11 @@ export const expenseReportService = {
       if (r.status !== 'DRAFT') throw new AppError(409, 'EXPENSE_REPORT_NOT_DRAFT', `This report is ${r.status.toLowerCase().replace(/_/g, ' ')}`);
       const employee = await tx.employee.findUnique({ where: { id: r.employeeId }, select: { employmentStatus: true } });
       const items = await itemDtos(tx, auth, r);
-      const blockers = reportBlockers(r, items);
+      const blockers = reportBlockers(r, items, await todayForEmployee(tx, r.employeeId));
       if (employee?.employmentStatus !== 'ACTIVE') blockers.push('Expense reports need an active employee');
       // Independent re-resolution at submit: a crafted or stale draft cannot bypass the policy the server assigns today.
       const { employee: emp } = await employeeSnapshot(tx, r.employeeId);
-      const resolution = await expensePolicyService.resolve(tx, emp, today(), r.travelRequest ? (await tx.travelRequest.findUniqueOrThrow({ where: { id: r.travelRequestId! }, include: { travelPolicy: { select: { expensePolicyId: true } } } })).travelPolicy.expensePolicyId : null);
+      const resolution = await expensePolicyService.resolve(tx, emp, await todayForEmployee(tx, r.employeeId), r.travelRequest ? (await tx.travelRequest.findUniqueOrThrow({ where: { id: r.travelRequestId! }, include: { travelPolicy: { select: { expensePolicyId: true } } } })).travelPolicy.expensePolicyId : null);
       if (resolution.kind === 'AMBIGUOUS') expensePolicyService.require(resolution);
       else if (resolution.kind === 'NONE') blockers.push('No active expense policy applies to you today');
       else if (resolution.policy.id !== r.policyId) blockers.push(`Your expense policy is now ${resolution.policy.name}; create a new report`);

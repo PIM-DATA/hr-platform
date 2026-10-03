@@ -3,6 +3,8 @@ import { WORKFLOW_SOURCE_MODULES, type WorkflowMonitorDetailDto, type WorkflowMo
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { hasPermission } from '../../services/authorization/authorization.service';
+import { addDays, businessDayStart } from '@hr/shared';
+import { referenceZone } from '../../services/business-time/business-time';
 import type { AuthContext } from '../auth/auth.types';
 
 /**
@@ -67,10 +69,11 @@ function stepDto(s: Row['steps'][number], showComment: boolean): WorkflowMonitor
 export const workflowMonitorService = {
   async list(auth: AuthContext, q: WorkflowMonitorQuery) {
     const now = new Date();
+    const zone = q.from || q.to ? await referenceZone(prisma) : 'UTC'; // Task 53: business days in the reference organization's zone
     const where: Prisma.WorkflowInstanceWhereInput = {
       module: q.module, entityType: q.entityType, status: q.status,
       ...(q.definitionCode ? { definition: { code: q.definitionCode } } : {}),
-      ...(q.from || q.to ? { submittedAt: { gte: q.from ? new Date(`${q.from}T00:00:00Z`) : undefined, lte: q.to ? new Date(`${q.to}T23:59:59Z`) : undefined } } : {}),
+      ...(q.from || q.to ? { submittedAt: { gte: q.from ? businessDayStart(q.from, zone) : undefined, lt: q.to ? businessDayStart(addDays(q.to, 1), zone) : undefined } } : {}),
       ...(q.stalledDays ? { status: 'PENDING', submittedAt: { lt: new Date(now.getTime() - q.stalledDays * 86_400_000) } } : {}),
       ...(q.search
         ? { OR: [{ entityId: q.search }, { requesterEmployee: { employeeCode: { contains: q.search, mode: 'insensitive' } } }, { requesterEmployee: { firstName: { contains: q.search, mode: 'insensitive' } } }, { requesterEmployee: { lastName: { contains: q.search, mode: 'insensitive' } } }] }
